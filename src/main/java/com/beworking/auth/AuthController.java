@@ -1,29 +1,43 @@
 package com.beworking.auth;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus; // it contains the HttpStatus enum. It is used to represent HTTP status codes.
+import org.springframework.http.ResponseEntity; // it contains the ResponseEntity class. It is used to represent an HTTP response, including status code, headers, and body.
+import org.springframework.web.bind.annotation.*; // it contains the annotations for RESTful web services such as @RestController, @RequestMapping, @PostMapping, etc.
 
 import java.util.Map;
 
-@RestController
-@RequestMapping("/api/auth")
+@RestController // it indicates that this class is a REST controller. It is a specialized version of the @Controller annotation. It is used to handle HTTP requests and responses in a RESTful manner.
+@RequestMapping("/api/auth") // it specifies the base URL for all the endpoints in this controller.
 public class AuthController {
+    private final AuthService authService;
+    private final JwtUtil jwtUtil;
 
-    // Hardcoded admin credentials for demonstration
-    private static final String ADMIN_EMAIL = "admin@beworking.com";
-    private static final String ADMIN_PASSWORD = "admin123";
+    public AuthController(AuthService authService, JwtUtil jwtUtil) {
+        this.authService = authService;
+        this.jwtUtil = jwtUtil;
+    }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, String> credentials) {
-        String email = credentials.get("email");
-        String password = credentials.get("password");
-
-        if (ADMIN_EMAIL.equals(email) && ADMIN_PASSWORD.equals(password)) {
-            // In a real app, return a JWT or session token here
-            return ResponseEntity.ok(Map.of("message", "Login successful", "token", "dummy-token"));
+    public ResponseEntity<AuthResponse> login(@RequestBody AuthRequest request) {
+        var userOpt = authService.authenticate(request.getEmail(), request.getPassword(), User.Role.USER);
+        if (userOpt.isPresent()) {
+            String token = jwtUtil.generateToken(request.getEmail(), User.Role.USER.name());
+            return ResponseEntity.ok(new AuthResponse("Login successful", token));
         } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid credentials"));
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new AuthResponse("Invalid credentials or role", null));
+        }
+    }
+
+    @PostMapping("/admin/login")
+    public ResponseEntity<AuthResponse> adminLogin(@RequestBody AuthRequest request) {
+        var userOpt = authService.authenticate(request.getEmail(), request.getPassword(), User.Role.ADMIN);
+        if (userOpt.isPresent()) {
+            String token = jwtUtil.generateToken(request.getEmail(), User.Role.ADMIN.name());
+            return ResponseEntity.ok(new AuthResponse("Admin login successful", token));
+        } else {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new AuthResponse("Invalid admin credentials or role", null));
         }
     }
 }
