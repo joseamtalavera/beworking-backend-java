@@ -1,0 +1,16 @@
+target/
+.git/
+.gitignore
+*.iml
+.idea/
+.vscode/
+*.log
+*.swp
+.DS_Store
+mvnw.cmd
+*.class
+*.jar
+*.war
+*.db
+node_modules/
+.env
