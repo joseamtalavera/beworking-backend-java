@@ -4,8 +4,6 @@ import org.springframework.http.HttpStatus; // it contains the HttpStatus enum. 
 import org.springframework.http.ResponseEntity; // it contains the ResponseEntity class. It is used to represent an HTTP response, including status code, headers, and body.
 import org.springframework.web.bind.annotation.*; // it contains the annotations for RESTful web services such as @RestController, @RequestMapping, @PostMapping, etc.
 
-import java.util.Map;
-
 @RestController // it indicates that this class is a REST controller. It is a specialized version of the @Controller annotation. It is used to handle HTTP requests and responses in a RESTful manner.
 @RequestMapping("/api/auth") // it specifies the base URL for all the endpoints in this controller.
 public class AuthController {
