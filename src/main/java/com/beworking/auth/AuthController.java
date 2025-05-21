@@ -1,18 +1,20 @@
 package com.beworking.auth;
 
-import org.springframework.http.HttpStatus; // it contains the HttpStatus enum. It is used to represent HTTP status codes.
-import org.springframework.http.ResponseEntity; // it contains the ResponseEntity class. It is used to represent an HTTP response, including status code, headers, and body.
-import org.springframework.web.bind.annotation.*; // it contains the annotations for RESTful web services such as @RestController, @RequestMapping, @PostMapping, etc.
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-@RestController // it indicates that this class is a REST controller. It is a specialized version of the @Controller annotation. It is used to handle HTTP requests and responses in a RESTful manner.
-@RequestMapping("/api/auth") // it specifies the base URL for all the endpoints in this controller.
+@RestController
+@RequestMapping("/api/auth")
 public class AuthController {
     private final AuthService authService;
     private final JwtUtil jwtUtil;
+    private final RegisterService registerService;
 
-    public AuthController(AuthService authService, JwtUtil jwtUtil) {
+    public AuthController(AuthService authService, JwtUtil jwtUtil, RegisterService registerService) {
         this.authService = authService;
         this.jwtUtil = jwtUtil;
+        this.registerService = registerService;
     }
 
     @PostMapping("/login")
@@ -36,6 +38,17 @@ public class AuthController {
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new AuthResponse("Invalid admin credentials or role", null));
+        }
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
+        boolean created = registerService.registerUser(request.getName(), request.getEmail(), request.getPassword());
+        if (created) {
+            return ResponseEntity.ok(new AuthResponse("User registered successfully", null));
+        } else {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new AuthResponse("User already exists", null));
         }
     }
 }
