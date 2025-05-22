@@ -1,14 +1,14 @@
-package com.beworking.auth; // package declaration
+package com.beworking.auth;
 
-import jakarta.persistence.*; // it contanis the annotations for JPA such as @Entity, @Table, @Id, @GeneratedValue, etc.
-import jakarta.persistence.GenerationType; // it contains the GenerationType enum. A enum is a special Java type used to define collections of constants.
+import jakarta.persistence.*;
+import jakarta.persistence.GenerationType;
 
-@Entity // it specifies that the class is an entity and is mapped to a database table.
-@Table(name = "users")// it specifies the name of the database table to be used for mapping.
+@Entity
+@Table(name = "users", schema = "beworking")
 public class User {
-    @Id // it specifies the primary key of the entity.
-    @GeneratedValue(strategy = GenerationType.IDENTITY) // it specifies the generation strategy for the primary key. IDENTITY means that the database will generate the primary key value.
-    private Long id; // it is the primary key of the entity.
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(nullable = false, unique = true)
     private String email;
@@ -16,7 +16,7 @@ public class User {
     @Column(nullable = false)
     private String password;
 
-    @Enumerated(EnumType.STRING) // it specifies that the enum should be stored as a string in the database.
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
 
@@ -24,7 +24,6 @@ public class User {
         ADMIN, USER
     }
 
-    // Constructors
     public User() {}
 
     public User(String email, String password, Role role) {
@@ -33,7 +32,6 @@ public class User {
         this.role = role;
     }
 
-    // Getters and setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
