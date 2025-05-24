@@ -43,7 +43,7 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
-        System.out.println("Recivido register request: name=" + request.getName() + ", email=" + request.getEmail() + ", password=" + request.getPassword());
+        System.out.println("Recibido register request: name=" + request.getName() + ", email=" + request.getEmail() + ", password=" + request.getPassword());
         boolean created = registerService.registerUser(request.getName(), request.getEmail(), request.getPassword());
         if (created) {
             return ResponseEntity.ok(new AuthResponse("User registered successfully", null));
