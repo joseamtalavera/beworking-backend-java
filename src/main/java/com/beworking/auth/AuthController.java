@@ -19,25 +19,15 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
-        var userOpt = loginService.authenticate(request.getEmail(), request.getPassword(), User.Role.USER);
+        var userOpt = loginService.authenticate(request.getEmail(), request.getPassword());
         if (userOpt.isPresent()) {
-            String token = jwtUtil.generateToken(request.getEmail(), User.Role.USER.name());
-            return ResponseEntity.ok(new AuthResponse("Login successful", token));
+            User user = userOpt.get();
+            String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
+            System.out.println("[AuthController] Generated token for user " + user.getEmail() + ": " + token); // Log the token
+            return ResponseEntity.ok(new AuthResponse("Login successful", token, user.getRole().name()));
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new AuthResponse("Invalid credentials or role", null));
-        }
-    }
-
-    @PostMapping("/admin/login")
-    public ResponseEntity<AuthResponse> adminLogin(@RequestBody LoginRequest request) {
-        var userOpt = loginService.authenticate(request.getEmail(), request.getPassword(), User.Role.ADMIN);
-        if (userOpt.isPresent()) {
-            String token = jwtUtil.generateToken(request.getEmail(), User.Role.ADMIN.name());
-            return ResponseEntity.ok(new AuthResponse("Admin login successful", token));
-        } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new AuthResponse("Invalid admin credentials or role", null));
+                    .body(new AuthResponse("Invalid credentials", null, null));
         }
     }
 
@@ -46,10 +36,10 @@ public class AuthController {
         System.out.println("Recibido register request: name=" + request.getName() + ", email=" + request.getEmail() + ", password=" + request.getPassword());
         boolean created = registerService.registerUser(request.getName(), request.getEmail(), request.getPassword());
         if (created) {
-            return ResponseEntity.ok(new AuthResponse("User registered successfully", null));
+            return ResponseEntity.ok(new AuthResponse("User registered successfully", null, "USER"));
         } else {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(new AuthResponse("User already exists", null));
+                    .body(new AuthResponse("User already exists", null, null));
         }
     }
 

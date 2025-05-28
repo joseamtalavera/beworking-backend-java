@@ -14,11 +14,11 @@ public class LoginService {
         this.passwordEncoder = passwordEncoder;
     }
 
-    public Optional<User> authenticate(String email, String password, User.Role requiredRole) {
+    public Optional<User> authenticate(String email, String password) {
         Optional<User> userOpt = userRepository.findByEmail(email);
         if (userOpt.isPresent()) {
             User user = userOpt.get();
-            if (passwordEncoder.matches(password, user.getPassword()) && user.getRole() == requiredRole) {
+            if (passwordEncoder.matches(password, user.getPassword())) {
                 return Optional.of(user);
             }
         }
