@@ -26,6 +26,15 @@ public class User {
     @Column(name = "tenant_id", nullable = true)
     private Long tenantId;
 
+    @Column(name = "email_confirmed", nullable = false)
+    private boolean emailConfirmed = false;
+
+    @Column(name = "confirmation_token")
+    private String confirmationToken;
+
+    @Column(name = "confirmation_token_expiry")
+    private java.time.Instant confirmationTokenExpiry;
+
     public enum Role {
         ADMIN, USER;
         // For future extensibility, you can add more roles here
@@ -120,4 +129,13 @@ public class User {
 
     public Long getTenantId() { return tenantId; }
     public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
+
+    public boolean isEmailConfirmed(){ return emailConfirmed; }
+    public void setEmailConfirmed(boolean emailConfirmed) { this.emailConfirmed = emailConfirmed;}
+
+    public String getConfirmationToken() { return confirmationToken;}
+    public void setConfirmationToken(String confirmationToken) { this.confirmationToken = confirmationToken;}
+
+    public java.time.Instant getConfirmationTokenExpiry() { return confirmationTokenExpiry;}
+    public void setConfirmationTokenExpiry(java.time.Instant confirmationTokenExpiry) { this.confirmationTokenExpiry = confirmationTokenExpiry;}
 }
