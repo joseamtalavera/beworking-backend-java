@@ -2,6 +2,9 @@ package com.beworking.auth;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import java.util.UUID; 
+import java.time.Instant; 
+import java.time.temporal.ChronoUnit;
 
 @Service
 public class RegisterService {
@@ -21,6 +24,9 @@ public class RegisterService {
         }
         String hashedPassword = passwordEncoder.encode(password);
         User user = new User(email, hashedPassword, User.Role.USER);
+        user.setEmailConfirmed(false);
+        user.setConfirmationToken(UUID.randomUUID().toString());
+        user.setConfirmationTokenExpiry(Instant.now().plus(24, ChronoUnit.HOURS));
         userRepository.save(user);
         System.out.println("User registered successfully: " + email);
         return true;
