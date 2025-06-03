@@ -10,10 +10,12 @@ import java.time.temporal.ChronoUnit;
 public class RegisterService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
-    public RegisterService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public RegisterService(UserRepository userRepository, PasswordEncoder passwordEncoder, EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
     }
 
     public boolean registerUser(String name, String email, String password) {
@@ -29,6 +31,18 @@ public class RegisterService {
         user.setConfirmationTokenExpiry(Instant.now().plus(24, ChronoUnit.HOURS));
         userRepository.save(user);
         System.out.println("User registered successfully: " + email);
+        // Send confirmation email
+        emailService.sendConfirmationEmail(email, user.getConfirmationToken());
         return true;
+    }
+
+    public java.util.Optional<User> findByConfirmationToken(String token) {
+        return userRepository.findAll().stream()
+            .filter(u -> token != null && token.equals(u.getConfirmationToken()))
+            .findFirst();
+    }
+
+    public void saveUser(User user) {
+        userRepository.save(user);
     }
 }

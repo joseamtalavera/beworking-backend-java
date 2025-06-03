@@ -39,7 +39,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/api/auth/login",
-                    "/api/auth/register" // Make registration public
+                    "/api/auth/register",
+                    "/api/auth/confirm" // Allow public access to confirmation endpoint
                 ).permitAll()
                 .anyRequest().authenticated()
             )
