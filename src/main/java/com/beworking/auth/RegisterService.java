@@ -45,4 +45,37 @@ public class RegisterService {
     public void saveUser(User user) {
         userRepository.save(user);
     }
+
+    public boolean sendPasswordResetEmail(String email) {
+        var userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return false;
+        }
+        User user = userOpt.get();
+        String token = UUID.randomUUID().toString();
+        user.setConfirmationToken(token);
+        user.setConfirmationTokenExpiry(Instant.now().plus(1, ChronoUnit.HOURS));
+        userRepository.save(user);
+        emailService.sendPasswordResetEmail(email, token);
+        return true;
+    }
+
+    public boolean resetPassword(String token, String newPassword) {
+        var userOpt = userRepository.findAll().stream()
+            .filter(u -> token != null && token.equals(u.getConfirmationToken()))
+            .findFirst();
+        if (userOpt.isEmpty()) {
+            return false;
+        }
+        User user = userOpt.get();
+        if (user.getConfirmationTokenExpiry() == null || user.getConfirmationTokenExpiry().isBefore(Instant.now())) {
+            return false;
+        }
+        String hashedPassword = passwordEncoder.encode(newPassword);
+        user.setPassword(hashedPassword);
+        user.setConfirmationToken(null);
+        user.setConfirmationTokenExpiry(null);
+        userRepository.save(user);
+        return true;
+    }
 }

@@ -35,6 +35,12 @@ public class User {
     @Column(name = "confirmation_token_expiry")
     private java.time.Instant confirmationTokenExpiry;
 
+    @Column(name = "reset_token")
+    private String resetToken;
+
+    @Column(name = "reset_token_expiry")
+    private java.time.Instant resetTokenExpiry;
+
     public enum Role {
         ADMIN, USER;
         // For future extensibility, you can add more roles here
@@ -138,4 +144,10 @@ public class User {
 
     public java.time.Instant getConfirmationTokenExpiry() { return confirmationTokenExpiry;}
     public void setConfirmationTokenExpiry(java.time.Instant confirmationTokenExpiry) { this.confirmationTokenExpiry = confirmationTokenExpiry;}
+
+    public String getResetToken() { return resetToken; }
+    public void setResetToken(String resetToken) { this.resetToken = resetToken; }
+
+    public java.time.Instant getResetTokenExpiry() { return resetTokenExpiry; }
+    public void setResetTokenExpiry(java.time.Instant resetTokenExpiry) { this.resetTokenExpiry = resetTokenExpiry; }
 }

@@ -40,7 +40,10 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/api/auth/login",
                     "/api/auth/register",
-                    "/api/auth/confirm" // Allow public access to confirmation endpoint
+                    "/api/auth/confirm",
+                    "/api/auth/forgot-password",
+                    "/api/auth/reset-password"
+                    // Allow public access to confirmation endpoint
                 ).permitAll()
                 .anyRequest().authenticated()
             )

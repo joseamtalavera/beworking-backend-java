@@ -35,5 +35,24 @@ public class EmailService {
             logger.error("Failed to send confirmation email to {}: {}", to, e.getMessage(), e);
         }
     }
+    public void sendPasswordResetEmail(String to, String token) {
+        String subject = "Reset your password";
+        String resetLink = "http://localhost:3020/main/reset-password?token=" + token;
+        String content = "<p>You requested a password reset.</p>"
+                + "<p>Click the link below to reset your password. This link will expire in 1 hour.</p>"
+                + "<a href='" + resetLink + "'>Reset Password</a>";
+        try {
+            logger.info("Attempting to send password reset email to {}", to);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(content, true);
+            mailSender.send(message);
+            logger.info("Password reset email sent successfully to {}", to);
+        } catch (Exception e) {
+            logger.error("Failed to send password reset email to {}: {}", to, e.getMessage(), e);
+        }
+    }
 
 }
