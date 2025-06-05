@@ -5,14 +5,20 @@ import io.jsonwebtoken.SignatureAlgorithm; // it is the import of the SignatureA
 import io.jsonwebtoken.security.Keys; // it is the import of the Keys class. It is used to generate a secret key for signing the JWT token.
 import io.jsonwebtoken.Claims; // it is the import of the Claims class. It is used to represent the claims in a JWT token.
 import org.springframework.stereotype.Component; // it is the import of the Component annotation. It is used to mark a class as a Spring component. It is used for dependency injection and component scanning.
+import org.springframework.beans.factory.annotation.Value;
 
 import java.security.Key;
 import java.util.Date;
 
 @Component
 public class JwtUtil {
-    private final Key key = Keys.secretKeyFor(SignatureAlgorithm.HS256);
+    @Value("${jwt.secret}")
+    private String jwtSecret;
     private final long EXPIRATION_TIME = 1000 * 60 * 60; // 1 hour
+
+    private Key getSigningKey() {
+        return Keys.hmacShaKeyFor(jwtSecret.getBytes());
+    }
 
     public String generateToken(String email, String role) {
         return Jwts.builder()
@@ -20,13 +26,13 @@ public class JwtUtil {
                 .claim("role", role)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
-                .signWith(key)
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 
     public Claims parseToken(String token) {
         return Jwts.parserBuilder()
-                .setSigningKey(key)
+                .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody();

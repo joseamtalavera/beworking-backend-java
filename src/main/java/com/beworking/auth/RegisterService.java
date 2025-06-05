@@ -24,6 +24,15 @@ public class RegisterService {
             System.out.println("User already exists: " + email);
             return false; // User already exists
         }
+        // Password complexity: min 8 chars, upper, lower, number, symbol
+        if (password == null || password.length() < 8 ||
+            !password.matches(".*[a-z].*") ||
+            !password.matches(".*[A-Z].*") ||
+            !password.matches(".*\\d.*") ||
+            !password.matches(".*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?].*")) {
+            System.out.println("Password does not meet complexity requirements");
+            return false;
+        }
         String hashedPassword = passwordEncoder.encode(password);
         User user = new User(email, hashedPassword, User.Role.USER);
         user.setEmailConfirmed(false);
@@ -61,6 +70,15 @@ public class RegisterService {
     }
 
     public boolean resetPassword(String token, String newPassword) {
+        // Password complexity: min 8 chars, upper, lower, number, symbol
+        if (newPassword == null || newPassword.length() < 8 ||
+            !newPassword.matches(".*[a-z].*") ||
+            !newPassword.matches(".*[A-Z].*") ||
+            !newPassword.matches(".*\\d.*") ||
+            !newPassword.matches(".*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?].*")) {
+            System.out.println("Password does not meet complexity requirements");
+            return false;
+        }
         var userOpt = userRepository.findAll().stream()
             .filter(u -> token != null && token.equals(u.getConfirmationToken()))
             .findFirst();
