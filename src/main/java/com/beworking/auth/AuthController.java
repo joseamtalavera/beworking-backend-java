@@ -1,5 +1,6 @@
 package com.beworking.auth;
 
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,7 +21,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         var userOpt = loginService.authenticate(request.getEmail(), request.getPassword());
         if (userOpt.isPresent()) {
             User user = userOpt.get();
@@ -34,7 +35,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
         System.out.println("Recibido register request: name=" + request.getName() + ", email=" + request.getEmail() + ", password=" + request.getPassword());
         boolean created = registerService.registerUser(request.getName(), request.getEmail(), request.getPassword());
         if (created) {
