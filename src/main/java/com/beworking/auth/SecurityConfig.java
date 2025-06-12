@@ -47,7 +47,18 @@ public class SecurityConfig {
                 ).permitAll()
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class) //
+            .headers(headers -> headers 
+                .contentTypeOptions(contentType -> contentType.and()) 
+                .xssProtection(xss -> xss.block(true))
+                .frameOptions(frame -> frame.sameOrigin())
+                .httpStrictTransportSecurity(hsts -> hsts
+                    .includeSubDomains(true)
+                    .maxAgeInSeconds(31536000)
+                )
+            );
+
+        // Disable caching for security headers
         return http.build();
     }
 
