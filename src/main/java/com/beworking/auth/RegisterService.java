@@ -25,7 +25,8 @@ public class RegisterService {
             return false; // User already exists
         }
         // Password complexity: min 8 chars, upper, lower, number, symbol
-        if (password == null || password.length() < 8 ||
+        if (name == null || name.isEmpty() || email == null || email.isEmpty() || password == null || password.isEmpty() ||
+            password.length() < 8 ||
             !password.matches(".*[a-z].*") ||
             !password.matches(".*[A-Z].*") ||
             !password.matches(".*\\d.*") ||
