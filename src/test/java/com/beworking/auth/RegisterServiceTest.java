@@ -111,7 +111,7 @@ class RegisterServiceTest {
 
     /**
      * Test registration with a weak password.
-     * Expects registration to fail and no user to be saved or email sent.
+     * Expects registration to fail for weak passorod.
      * Password must be at least 8 characters long and contain upper, lower, number,
      * and special characters.
      */
@@ -134,5 +134,47 @@ class RegisterServiceTest {
         verify(userRepository, never()).save(any(User.class));
         verify(emailService, never()).sendConfirmationEmail(anyString(), anyString());
      }
+
+     /**
+      * Test registration with minimum password (8 characters, upper, lower, number, symbol).
+      * Expects registration to scucceed for strong password.
+      * This test checks that the password meets the minimum requirements.
+      */
+
+      @Test 
+      void testRegisterUser_MinimumValidPassword(){
+        String name = "Test User";
+        String email = "test@example.com";
+        String password = "Aa1!aaaa";
+        when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(password)).thenReturn("hashed");
+        when(userRepository.save(any(User.class))).thenReturn(new User());
+        boolean result = registerService.registerUser(name, email, password);
+        assertTrue(result);
+        verify(emailService).sendConfirmationEmail(eq(email), anyString());
+      }
+
+    /**
+     * test for confirmation to
+     */
+    @Test 
+    void testRegisterUser_ConfirmationTokenAndExpirySet(){
+        String name = "Test User";
+        String email = "test@example.com";
+        String password = "Password123!";
+        when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(password)).thenReturn("hashed");
+        final User[] savedUser = new User[1];
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            savedUser[0] = invocation.getArgument(0);
+            return savedUser[0];
+        });
+        boolean result = registerService.registerUser(name, email, password);
+        assertTrue(result);
+        assertNotNull(savedUser[0]);
+        assertNotNull(savedUser[0].getConfirmationToken());
+        assertNotNull(savedUser[0].getConfirmationTokenExpiry());
+
+    }
 
 }
