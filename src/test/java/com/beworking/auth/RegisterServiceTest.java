@@ -177,4 +177,61 @@ class RegisterServiceTest {
 
     }
 
+    /**
+     * Test that confirm that the email is sent with the correct token.
+     */
+    @Test
+    void testRegisterUser_ConfirmationEmailContent() {
+        String name = "Test User";
+        String email = "test@example.com";
+        String password = "Password123!";
+        when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(password)).thenReturn("hashed");
+        final User[] savedUser = new User[1];
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            savedUser[0] = invocation.getArgument(0);
+            return savedUser[0];
+        });
+        boolean result = registerService.registerUser(name, email, password);
+        assertTrue(result); // Add this line to assert registration succeeded
+        // verify that the confirmation email was sent with the correct token
+        verify(emailService).sendConfirmationEmail(eq(email), eq(savedUser[0].getConfirmationToken()));
+    }
+
+    /**
+     * This test checks if the confirmation token is found in the user repository.
+     * It simulates a scenario where a user has a confirmation token and verifies that the
+     * service can find the user by that token.
+     */
+
+     @Test
+     void testRegisterUser_ConfirmationToken_Found() {
+        String token ="abc123";
+        User user = new User("test@example.com", "hashed", User.Role.USER);
+        user.setConfirmationToken(token);
+        when(userRepository.findAll()).thenReturn(java.util.List.of(user));
+
+        Optional<User> result = registerService.findByConfirmationToken(token);
+        assertTrue(result.isPresent());
+        assertEquals(token, result.get().getConfirmationToken());
+     }
+
+     @Test
+     void testRegisterUser_ConfirmationToken_NotFound(){
+        String token = "notfound";
+        when(userRepository.findAll()).thenReturn(java.util.List.of());
+        Optional<User> result = registerService.findByConfirmationToken(token);
+        assertTrue(result.isEmpty());
+     }
+
+     /**
+      * test that the saveUser method saves the user to the repository.
+      */
+
+     @Test 
+     void testSaveUser_SavesToRepository() {
+        User user = new User("test@example.com", "hashed", User.Role.USER);
+        registerService.saveUser(user);
+        verify(userRepository).save(user);
+     }
 }

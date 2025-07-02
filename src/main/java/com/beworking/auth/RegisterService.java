@@ -1,6 +1,6 @@
 package com.beworking.auth;
 
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder; // PasswordEncoder interface for encoding passwords
 import org.springframework.stereotype.Service;
 import java.util.UUID; 
 import java.time.Instant; 
