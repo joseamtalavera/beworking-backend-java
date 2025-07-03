@@ -8,6 +8,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.MockitoAnnotations;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -234,4 +237,67 @@ class RegisterServiceTest {
         registerService.saveUser(user);
         verify(userRepository).save(user);
      }
+
+     /**
+      * Test for sending a password reset email.
+      * This test verifes:
+       * - The user exists in the repository.
+       * - A reset token is generated and set on the user.
+       * - The user is saved with the new token and expiry.
+       * - The password reset email is sent with the correct token.
+      */
+      @Test
+      void testSendPasswordResetEmail_UserExists() {
+        String email = "reset@example.com";
+        User user = new User(email, "hashed", User.Role.USER);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> { return invocation.getArgument(0); });
+
+        boolean result = registerService.sendPasswordResetEmail(email);
+
+        assertTrue(result, "Should return true when user exists");
+        assertNotNull(user.getConfirmationToken(), "Confirmation token should not be null");
+        assertNotNull(user.getConfirmationTokenExpiry(), "Token expiry should not be null");
+        verify(userRepository).save(user);
+        verify(emailService).sendPasswordResetEmail(eq(email), eq(user.getConfirmationToken()));
+      }
+
+        /**
+         * Test for sending a password reset email when the user does NOT exist.
+         * This test verifies that:
+         * - The method returns false
+         * - No user is saved
+         * - No email is sent
+         */
+
+        @Test
+        void testSendPasswordResetEmail_UserDoesNotExist() {
+            String email = "notfound@example.com";
+            when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+
+            boolean result = registerService.sendPasswordResetEmail(email);
+
+            assertFalse(result, "Should return false when user does not exist");
+            verify(userRepository, never()).save(any(User.class));
+            verify(emailService, never()).sendPasswordResetEmail(anyString(), anyString());
+        }
+
+        /**
+        * Test resetPassword method with a weak password.
+        * This should fail since the password does not meet complexity requirements.
+        */
+
+         @Test
+        void testResetPassword_WeakOrNullPassword() {
+            assertFalse(registerService.resetPassword( "token", null));
+            assertFalse(registerService.resetPassword("token", "P1!a"));
+            assertFalse(registerService.resetPassword("token", "passoword123!"));
+            assertFalse(registerService.resetPassword("token", "PASSWORD123!"));
+            assertFalse(registerService.resetPassword("token", "Password!"));
+            assertFalse(registerService.resetPassword("token", "Password123"));
+            verify(userRepository, never()).save(any(User.class));
+        }
+
+
+     
 }

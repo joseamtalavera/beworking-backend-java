@@ -1,5 +1,6 @@
 package com.beworking.auth;
 
+import org.hibernate.annotations.TimeZoneStorage;
 import org.springframework.security.crypto.password.PasswordEncoder; // PasswordEncoder interface for encoding passwords
 import org.springframework.stereotype.Service;
 import java.util.UUID; 
