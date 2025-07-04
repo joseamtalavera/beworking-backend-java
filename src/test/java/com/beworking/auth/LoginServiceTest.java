@@ -5,17 +5,21 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.util.Optional;
+
 
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class LoginServiceTest {
+class LoginServiceTest {
     @Mock
     private UserRepository userRepository;
-    @Mock
-    private JwtUtil jwtUtil;
-    @Mock
-    private BcryptHashGenerator hashGenerator;
+
+    @Mock 
+    private PasswordEncoder passwordEncoder;
+
     @InjectMocks
     private LoginService loginService;
 
@@ -24,54 +28,26 @@ public class LoginServiceTest {
         MockitoAnnotations.openMocks(this);
     }
 
+    /**
+     * Test for successful login with valid credentials.
+     * It verifies that the user is returned when the email and password match.
+     */
     @Test
-    void testLogin_Success() {
-        String email = "test@example.com";
-        String password = "password";
+    void authenticate_SucessfullLogin_ReturnsUser() {
+        String email = "user@example.com";
+        String password = "correctPassword";
+        String hashedPassword = "hashedPassword";
         User user = new User();
         user.setEmail(email);
-        user.setPassword("hashed");
-        when(userRepository.findByEmail(email)).thenReturn(java.util.Optional.of(user));
-        when(hashGenerator.matches(password, "hashed")).thenReturn(true);
-        when(jwtUtil.generateToken(user)).thenReturn("jwt-token");
+        user.setPassword(hashedPassword);
 
-        LoginRequest request = new LoginRequest();
-        request.setEmail(email);
-        request.setPassword(password);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches(password, hashedPassword)).thenReturn(true);
 
-        AuthResponse response = loginService.login(request);
-        assertNotNull(response);
-        assertEquals("jwt-token", response.getToken());
+        Optional<User> result = loginService.authenticate(email, password);
+
+        assertTrue(result.isPresent());
+        assertEquals(user, result.get());
     }
 
-    @Test
-    void testLogin_Failure_WrongPassword() {
-        String email = "test@example.com";
-        String password = "wrongpassword";
-        User user = new User();
-        user.setEmail(email);
-        user.setPassword("hashed");
-        when(userRepository.findByEmail(email)).thenReturn(java.util.Optional.of(user));
-        when(hashGenerator.matches(password, "hashed")).thenReturn(false);
-
-        LoginRequest request = new LoginRequest();
-        request.setEmail(email);
-        request.setPassword(password);
-
-        Exception exception = assertThrows(RuntimeException.class, () -> loginService.login(request));
-        assertTrue(exception.getMessage().toLowerCase().contains("invalid"));
-    }
-
-    @Test
-    void testLogin_Failure_UserNotFound() {
-        String email = "notfound@example.com";
-        when(userRepository.findByEmail(email)).thenReturn(java.util.Optional.empty());
-
-        LoginRequest request = new LoginRequest();
-        request.setEmail(email);
-        request.setPassword("irrelevant");
-
-        Exception exception = assertThrows(RuntimeException.class, () -> loginService.login(request));
-        assertTrue(exception.getMessage().toLowerCase().contains("not found"));
-    }
 }

@@ -291,13 +291,57 @@ class RegisterServiceTest {
         void testResetPassword_WeakOrNullPassword() {
             assertFalse(registerService.resetPassword( "token", null));
             assertFalse(registerService.resetPassword("token", "P1!a"));
-            assertFalse(registerService.resetPassword("token", "passoword123!"));
-            assertFalse(registerService.resetPassword("token", "PASSWORD123!"));
+            assertFalse(registerService.resetPassword("token", "password123!"));
+            assertFalse(registerService.resetPassword("token", "PASSWORD234!"));
             assertFalse(registerService.resetPassword("token", "Password!"));
             assertFalse(registerService.resetPassword("token", "Password123"));
             verify(userRepository, never()).save(any(User.class));
         }
 
+        /**
+         * Test resestPassword method when no user is found with the given token.
+         * This should return false and not save any user.
+         */
+        @Test
+        void testResetPassword_UserNotFound() {
+            when(userRepository.findAll()).thenReturn(java.util.List.of());
+            assertFalse(registerService.resetPassword("notfoundtoken", "Password123!"));
+            verify(userRepository, never()).save(any(User.class));
+        }
+
+        /**
+         * Test resetPassword method when the token is expired.
+         * This should return false and not save any user.
+         */
+        @Test
+        void testResetPassword_TokenExpired() {
+            User user = new User("test@example.com", "hashed", User.Role.USER);
+            user.setConfirmationToken("validtoken");
+            user.setConfirmationTokenExpiry(java.time.Instant.now().minus(2, java.time.temporal.ChronoUnit.HOURS));
+            when(userRepository.findAll()).thenReturn(java.util.List.of(user));
+            assertFalse(registerService.resetPassword("validtoken", "Password123!"));
+            verify(userRepository, never()).save(any(User.class));
+        }
+        /**
+         * Test sucessful password reset.
+         * This test expects to update the user's password, clear token, save the user, and return true.
+         */
+        @Test
+        void testResetPassword_Success() {
+            User user = new User( "test@example.com", "hashed", User.Role.USER);
+            user.setConfirmationToken("validtoken");
+            user.setConfirmationTokenExpiry(java.time.Instant.now().plus(2, java.time.temporal.ChronoUnit.HOURS));
+            when(userRepository.findAll()).thenReturn(java.util.List.of(user));
+            when(passwordEncoder.encode("Valid1!pass")).thenReturn("newhashed");
+            
+            boolean result = registerService.resetPassword("validtoken", "Valid1!pass");
+
+            assertTrue(result);
+            assertEquals("newhashed", user.getPassword());
+            assertNull(user.getConfirmationToken());
+            assertNull(user.getConfirmationTokenExpiry());
+            verify(userRepository).save(user);
+        }
 
      
 }
