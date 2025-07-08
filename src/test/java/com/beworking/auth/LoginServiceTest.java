@@ -33,7 +33,7 @@ class LoginServiceTest {
      * It verifies that the user is returned when the email and password match.
      */
     @Test
-    void authenticate_SucessfullLogin_ReturnsUser() {
+    void authenticate_SuccessfulLogin_ReturnsUser() {
         String email = "user@example.com";
         String password = "correctPassword";
         String hashedPassword = "hashedPassword";
@@ -48,6 +48,44 @@ class LoginServiceTest {
 
         assertTrue(result.isPresent());
         assertEquals(user, result.get());
+    }
+
+    /**
+     * Test for login failure with wrong password.
+     * It verifies that an empty Optional is returned when the password is incorrect.
+     */
+
+    @Test 
+    void authenticate_WrongPassword_ReturnsEmpty() {
+        String email = "user@example.com";
+        String password = "wrongPassword";
+        String hashedPassword = "hashedPassword";
+        User user = new User();
+        user.setEmail(email);
+        user.setPassword(hashedPassword);
+        
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches(password, hashedPassword)).thenReturn(false);
+
+        Optional<User> result = loginService.authenticate(email, password);
+        
+        assertFalse(result.isPresent());
+    }
+
+    /**
+     * Test for login failure when the user is not found.
+     */
+
+    @Test
+    void authenticate_UserNotFound_ReturnsEmpty() {
+        String email = "user@example.com";
+        String password = "anyPassword";
+
+        when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+
+        Optional<User> result = loginService.authenticate(email, password);
+
+        assertFalse(result.isPresent());
     }
 
 }
