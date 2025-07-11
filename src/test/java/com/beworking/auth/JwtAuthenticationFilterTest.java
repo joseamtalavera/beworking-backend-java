@@ -32,6 +32,7 @@ class JwtAuthenticationFilterTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        SecurityContextHolder.clearContext();
         jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil);
     }
 
@@ -48,7 +49,7 @@ class JwtAuthenticationFilterTest {
         String role = "USER";
 
         Claims claims = mock(Claims.class);
-        when(request.getHeader("Authorization")).thenReturn("Bearer" + token);
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
         when(jwtUtil.parseToken(token)).thenReturn(claims);
         when(claims.getSubject()).thenReturn(email);
         when(claims.get("role", String.class)).thenReturn(role);
@@ -61,11 +62,37 @@ class JwtAuthenticationFilterTest {
         
     }
 
+    /**
+     * Test for doFilterInternal when the token is invalid.
+     * It should not set the authentication in the SecurityContext.
+     * @throws Exception
+     */
+
+
     @Test
     void doFilterInternal_InvalidToken_DoesNotSetAuthentication() throws Exception {
         String token = "invalid.jwt.token";
-        when(request.getHeader("Authorization")).thenReturn("Bearer"+ token);
-        when(jwtUtil.)
+        when(request.getHeader("Authorization")).thenReturn("Bearer" + token);
+        when(jwtUtil.parseToken(token)).thenThrow(new RuntimeException("Invalid token"));
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        verify(filterChain).doFilter(request, response);
+    }
+
+    /***
+     * Test for doFilterInternal when no token is provided.
+     * It should not set the authentication in the SecurityContext.
+     */
+    @Test 
+    void doFilterInternal_Notoken_DoesNotSetAuthentication() throws Exception {
+        when(request.getHeader("Authorization")).thenReturn(null);
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        verify(filterChain).doFilter(request, response);
     }
 
 }   
