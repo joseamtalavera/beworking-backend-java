@@ -12,12 +12,14 @@ import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Profile;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Profile("!test")
 @Component
 public class RateLimitingFilter implements Filter {
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
