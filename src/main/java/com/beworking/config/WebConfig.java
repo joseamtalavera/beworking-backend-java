@@ -7,5 +7,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer; // We
 
 @Configuration // Configuration annotation indicates that the class has `@Bean` definition methods. These methods return an object that should be registered as a bean in the Spring application context.
 public class WebConfig {
+    @Bean
+    public WebMvcConfigurer corsConfigurer() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addCorsMappings(CorsRegistry registry) {
+                registry.addMapping("/api/**")
+                        .allowedOrigins("http://localhost:3020") // Allow requests from this origin
+                        .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // Allow these HTTP methods
+                        .allowedHeaders("*");
+                }
+            };
+    }
     
 }

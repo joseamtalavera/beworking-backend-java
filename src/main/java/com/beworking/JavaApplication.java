@@ -12,11 +12,4 @@ public class JavaApplication {
 		SpringApplication.run(JavaApplication.class, args);
 	}
 
-	@Bean
-	public FilterRegistrationBean<RateLimitingFilter> rateLimitingFilterRegistration() {
-		FilterRegistrationBean<RateLimitingFilter> registrationBean = new FilterRegistrationBean<>();
-		registrationBean.setFilter(new RateLimitingFilter());
-		registrationBean.addUrlPatterns("/api/auth/*");
-		return registrationBean;
-	}
 }
