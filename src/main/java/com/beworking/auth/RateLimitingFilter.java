@@ -52,6 +52,7 @@ public class RateLimitingFilter implements Filter {
         return path.startsWith("/api/auth/login") ||
                path.startsWith("/api/auth/register") ||
                path.startsWith("/api/auth/forgot-password") ||
-               path.startsWith("/api/auth/reset-password");
+               path.startsWith("/api/auth/reset-password") ||
+               path.equals("/api/leads");
     }
 }
