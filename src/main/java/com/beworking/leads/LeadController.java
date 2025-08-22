@@ -7,10 +7,8 @@ import org.springframework.http.HttpStatus; // Import for HttpStatus which is us
 import org.springframework.http.ResponseEntity; // Import for ResponseEntity which is used to return HTTP responses
 import org.springframework.web.bind.annotation.*;
 import org.springframework.context.ApplicationEventPublisher;
-
 import java.util.HashMap; // Import for HashMap to store leads in memory
 import java.util.Map; // Import for Map interface which is used to define the structure of the response
-
 
 @RestController // Annotation to define this class as a REST controller which handles HTTP requests
 @RequestMapping ("/api/leads") // Base URL for all endpoints in this controller. We receive the RESTful requests here from the client side, in this case from the handleSubmit function in the frontend
@@ -23,9 +21,8 @@ public class LeadController {
 
     public LeadController(LeadRepository leadRepository, ApplicationEventPublisher eventPublisher) {
         this.leadRepository = leadRepository;
-         this.eventPublisher = eventPublisher; // Initialize the event publisher
+        this.eventPublisher = eventPublisher; // Initialize the event publisher
     }
-
     public static class LeadRequest {
         @NotBlank
         public String name;
