@@ -10,8 +10,26 @@ import java.util.HashMap; // Import for HashMap to store leads in memory
 import java.util.Map; // Import for Map interface which is used to define the structure of the response
 import com.beworking.leads.SanitizationUtils;
 
-@RestController // Annotation to define this class as a REST controller which handles HTTP requests
-@RequestMapping ("/api/leads") // Base URL for all endpoints in this controller. We receive the RESTful requests here from the client side, in this case from the handleSubmit function in the frontend
+/**
+ * REST controller that accepts lead submissions and persists them.
+ *
+ * <p>Behavior summary:
+ * - Incoming payload is validated by Spring's bean validation (the request DTO is annotated with
+ *   validation constraints). Note: validation is triggered before this method executes, so the
+ *   request must already conform to constraints (for example, a trimmed and well-formed email).
+ * - This controller performs application-level sanitization and normalization on fields before
+ *   persisting: it strips HTML from the name via {@link SanitizationUtils#sanitizeText(String)},
+ *   trims the email, and normalizes the phone via {@link SanitizationUtils#sanitizePhone(String)}.
+ * - After saving the lead, a {@link LeadCreatedEvent} is published so background listeners (email,
+ *   HubSpot sync, etc.) can react asynchronously.
+ *
+ * <p>Testing notes:
+ * - Tests that exercise this controller should send values that pass bean validation (trimmed
+ *   email, valid phone). The controller's sanitization is applied before persisting, and tests
+ *   typically assert on the saved entity or the repository interaction to verify normalization.
+ */
+@RestController
+@RequestMapping("/api/leads")
 public class LeadController {
 
     private final LeadRepository leadRepository;
@@ -24,6 +42,19 @@ public class LeadController {
         this.eventPublisher = eventPublisher; // Initialize the event publisher
     }
     // LeadRequest is now a separate DTO class in the same package
+    /**
+     * Create a lead from the supplied request.
+     *
+     * @param req the validated lead request DTO (bean validation runs before this method)
+     * @return 201 with the created lead id and a success message
+     *
+     * Notes:
+     * - Sanitization/normalization (HTML stripping, trimming, phone normalization) is performed
+     *   here before saving. Because validation runs before this method, tests must provide
+     *   inputs that already satisfy validation rules (for example a well-formed email).
+     * - Publishes {@link LeadCreatedEvent} after successful persistence so downstream listeners
+     *   can handle email sending / external sync.
+     */
     @org.springframework.transaction.annotation.Transactional
     @PostMapping
     public ResponseEntity<Map<String, Object>> createLead(@Valid @RequestBody LeadRequest req) {

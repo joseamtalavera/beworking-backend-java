@@ -6,12 +6,23 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+
+/**
+ * Unit tests for {@link LeadRepository}.
+ * <p>
+ * Verifies that Lead entities can be persisted and retrieved correctly using JPA.
+ * <p>
+ * Additional tests may be needed if custom queries are added to the repository.
+ */
 @DataJpaTest
 class LeadRepositoryTest {
 
     @Autowired
     LeadRepository repo;
 
+    /**
+     * Verifies that a Lead can be saved and then retrieved with all important fields correctly persisted.
+     */
     @Test
     void saveAndRetrieveLead() {
         Lead l = new Lead();
