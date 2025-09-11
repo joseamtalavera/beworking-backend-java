@@ -1,3 +1,4 @@
+
 package com.beworking.integrations.hubspot; // Import for Hubspot integration service
 
 import com.beworking.leads.Lead; 
