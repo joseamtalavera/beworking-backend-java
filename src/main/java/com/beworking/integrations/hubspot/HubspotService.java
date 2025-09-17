@@ -17,7 +17,7 @@ public class HubspotService {
 
     private final LeadRepository leadRepository;
 
-    @Value("${hubspot.api.baseUrl: https://api.hubapi.com}")
+    @Value("${hubspot.api.baseUrl:https://api.hubapi.com}")
     private String hubspotBaseUrl;
     @Value ("${beworking.api.token:}")
     private String hubspotToken;
