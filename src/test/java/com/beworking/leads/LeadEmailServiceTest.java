@@ -35,13 +35,19 @@ class LeadEmailServiceTest {
         String name = "Bob";
         String email = "bob@example.com";
         String phone = "600123456";
-        String waLink = "https://wa.me/600123456";
-        String html = LeadEmailService.getAdminHtml(name, email, phone, waLink);
+        String waLink = "https://api.whatsapp.com/send/?phone=34600123456&text=&type=phone_number&app_absent=0";
+        String waWebLink = "https://web.whatsapp.com/send?phone=34600123456";
+        String gmailThreadLink = "https://mail.google.com/mail/u/0/#search/rfc822msgid%3A%3C2024-05-24T12-00-00%40beworking%3E";
+        String mailtoLink = "mailto:bob@example.com?subject=Re%3A%20%C2%A1Gracias%21%20Tu%20Oficina%20Virtual%20ya%20est%C3%A1%20en%20marcha%20%F0%9F%9A%80";
+        String html = LeadEmailService.getAdminHtml(name, email, phone, gmailThreadLink, mailtoLink, waLink, waWebLink);
         assertNotNull(html);
         assertTrue(html.contains(name), "Email should include the lead's name");
         assertTrue(html.contains(email), "Email should include the lead's email");
         assertTrue(html.contains(phone), "Email should include the lead's phone");
+        assertTrue(html.contains(gmailThreadLink), "Email should include the Gmail thread link");
+        assertTrue(html.contains(mailtoLink), "Email should include the reply mailto link");
         assertTrue(html.contains(waLink), "Email should include the WhatsApp link");
+        assertTrue(html.contains(waWebLink), "Email should include the WhatsApp Web link");
     }
 
     /**
@@ -60,7 +66,7 @@ class LeadEmailServiceTest {
      */
     @Test
     void getAdminHtml_handlesNullOrEmptyFieldsGracefully() {
-        String html = LeadEmailService.getAdminHtml(null, null, null, null);
+        String html = LeadEmailService.getAdminHtml(null, null, null, null, null, null, null);
         assertNotNull(html);
     }
 }

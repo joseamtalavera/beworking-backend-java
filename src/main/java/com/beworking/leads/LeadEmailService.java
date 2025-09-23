@@ -14,8 +14,12 @@ public class LeadEmailService {
               .container{width:100%%!important}
               .h1{font-size:28px!important;line-height:1.2!important}
               .h2{font-size:20px!important}
-              .btn{display:block!important;width:100%%!important}
+              .btn-table{width:100%%!important}
+              .btn-td{display:block!important;width:100%%!important;padding:0 0 12px!important}
+              .btn-td .btn{display:inline-block!important;margin:0 auto!important}
             }
+            .btn-table{margin:0 auto;text-align:center;border-collapse:separate;border-spacing:0}
+            .btn-td{padding:0;text-align:center}
             .btn{background:#009e5c;color:#fff !important;text-decoration:none;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-weight:700;padding:14px 22px;border-radius:12px;display:inline-block;}
           </style>
         </head>
@@ -42,9 +46,15 @@ public class LeadEmailService {
                         y te contactaremos muy pronto. Mientras, puedes dar el siguiente paso:
                       </p>
                       <div style=\"height:16px;\"></div>
-                      <a href=\"https://be-working.com/#contacto\" class=\"btn\">
-                        Activar mi Oficina Virtual
-                      </a>
+                      <table role=\"presentation\" class=\"btn-table\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\">
+                        <tr>
+                          <td class=\"btn-td\">
+                            <a href=\"https://be-working.com/#contacto\" class=\"btn\">
+                              Mas acerca de BeWorking
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
                     </td>
                   </tr>
                   <!-- Features -->
@@ -54,7 +64,7 @@ public class LeadEmailService {
                         <tr>
                           <td width=\"50%%\" style=\"vertical-align:top;padding:6px 8px;\">
                             <div style=\"font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:15px;line-height:1.5;\">
-                              ✨ <strong>Alta en 1 minuto</strong><br>
+                              ✨ <strong>Alta en minutos</strong><br>
                               Sin papeleo complicado.
                             </div>
                           </td>
@@ -83,11 +93,11 @@ public class LeadEmailService {
                       <div style=\"height:18px;\"></div>
                       <div style=\"font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;color:#555;line-height:1.6;\">
                         ¿Prefieres que te llamemos? Responde a este correo o escríbenos por WhatsApp:
-                        <a href=\"https://wa.me/34600000000\" style=\"color:#ff9800;text-decoration:none;\">+34 600 000 000</a>.
+                        <a href=\"https://wa.me/34640369759\" style=\"color:#ff9800;text-decoration:none;\">+34 600 000 000</a>.
                       </div>
                       <div style=\"height:22px;\"></div>
                       <div style=\"text-align:center;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:12px;color:#9aa0a6;\">
-                        © BeWorking • Málaga · Estonia
+                        © BeWorking • Málaga 
                       </div>
                     </td>
                   </tr>
@@ -100,7 +110,7 @@ public class LeadEmailService {
         """, name);
     }
 
-  public static String getAdminHtml(String name, String email, String phone, String waLink) {
+  public static String getAdminHtml(String name, String email, String phone, String gmailThreadLink, String mailtoLink, String waLink, String waWebLink) {
         return String.format("""
         <!doctype html>
         <html lang=\"es\">
@@ -108,13 +118,17 @@ public class LeadEmailService {
           <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">
           <title>Nuevo lead</title>
           <style>
-            @media (max-width:600px){.container{width:100%%!important}}
+            @media (max-width:600px){.container{width:100%%!important}.btn-row{padding-top:16px!important;text-align:center!important}.btn-group{width:100%%!important}.btn-td{display:block!important;width:100%%!important;padding:0 0 10px!important}.btn-td .btn{display:inline-block!important;margin:0 auto!important}.web-link{margin-top:6px}}
             .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#fff3e0;color:#e65100;font-weight:700;font-size:12px}
             .btn{background:#009e5c;color:#fff !important;text-decoration:none;padding:10px 14px;border-radius:10px;display:inline-block;font-weight:700}
             .row{padding:10px 0;border-bottom:1px dashed #eee}
             .label{color:#667085;font-size:12px;letter-spacing:.3px;text-transform:uppercase}
             .val{font-size:16px;font-weight:700;color:#111}
             .btn-row{padding-top:10px;text-align:center;}
+            .btn-group{margin:0 auto;text-align:center;border-collapse:separate;border-spacing:0}
+            .btn-td{padding:0 6px;text-align:center}
+            .web-link{margin-top:10px;text-align:center;font-size:12px;color:#009e5c}
+            .web-link a{color:#009e5c;text-decoration:none;font-weight:600}
           </style>
         </head>
         <body style=\"margin:0;padding:0;background:#f7f7f8;\">
@@ -146,11 +160,25 @@ public class LeadEmailService {
                         <div class=\"val\"><a href=\"tel:%s\" style=\"color:#111;text-decoration:none;\">%s</a></div>
                       </div>
                       <div class=\"row btn-row\" style=\"border-bottom:0;\">
-                        <a class=\"btn\" href=\"mailto:%s?subject=Hola%%20%s%%2C%%20sobre%%20tu%%20Oficina%%20Virtual\">Responder por email</a>
-                        <span style=\"display:inline-block;width:8px;\"></span>
-                        <a class=\"btn\" href=\"tel:%s\">Llamar ahora</a>
-                        <span style=\"display:inline-block;width:8px;\"></span>
-                        <a class=\"btn\" href=\"%s\">WhatsApp</a>
+                        <table role=\"presentation\" class=\"btn-group\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\">
+                          <tr>
+                            <td class=\"btn-td\">
+                              <a class=\"btn\" href=\"%s\">Responder en Gmail</a>
+                            </td>
+                            <td class=\"btn-td\">
+                              <a class=\"btn\" href=\"tel:%s\">Llamar ahora</a>
+                            </td>
+                            <td class=\"btn-td\">
+                              <a class=\"btn\" href=\"%s\">WhatsApp</a>
+                            </td>
+                          </tr>
+                        </table>
+                        <div class=\"web-link\" style=\"font-size:12px;color:#555;\">
+                          ¿No usas Gmail? <a href=\"%s\" style=\"color:#009e5c;text-decoration:none;font-weight:600;\">Responder por email</a>
+                        </div>
+                        <div class=\"web-link\">
+                          <a href=\"%s\">Abrir en WhatsApp Web</a>
+                        </div>
                       </div>
 
                       <div style=\"height:14px;\"></div>
@@ -169,9 +197,11 @@ public class LeadEmailService {
         name,
         email, email,
         phone, phone,
-        email, name,
+        gmailThreadLink,
         phone,
-        waLink
+        waLink,
+        mailtoLink,
+        waWebLink
         );
     }
 }

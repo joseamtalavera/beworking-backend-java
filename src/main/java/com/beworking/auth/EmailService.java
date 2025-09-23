@@ -58,6 +58,23 @@ public class EmailService {
 
     @Async
     public void sendHtml(String to, String subject, String htmlContent) {
+        sendHtml(to, subject, htmlContent, null);
+    }
+
+    @Async
+    public void sendHtml(String to, String subject, String htmlContent, String replyTo) {
+        sendHtmlInternal(to, subject, htmlContent, replyTo, false);
+    }
+
+    public String sendHtmlAndReturnMessageId(String to, String subject, String htmlContent) {
+        return sendHtmlInternal(to, subject, htmlContent, null, true);
+    }
+
+    public String sendHtmlAndReturnMessageId(String to, String subject, String htmlContent, String replyTo) {
+        return sendHtmlInternal(to, subject, htmlContent, replyTo, true);
+    }
+
+    private String sendHtmlInternal(String to, String subject, String htmlContent, String replyTo, boolean returnMessageId) {
         try {
             logger.info("Attempting to send HTML email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
@@ -65,11 +82,15 @@ public class EmailService {
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(htmlContent, true); // true = HTML
+            if (replyTo != null && !replyTo.isBlank()) {
+                helper.setReplyTo(replyTo);
+            }
             mailSender.send(message);
-            logger.info("HTML email sent successfully to {}",to);
-
+            logger.info("HTML email sent successfully to {}", to);
+            return returnMessageId ? message.getMessageID() : null;
         } catch (Exception e) {
-            logger.error("Failed to send HTML email to {}: {}", e.getMessage(), e);
+            logger.error("Failed to send HTML email to {}: {}", to, e.getMessage(), e);
+            return null;
         }
     }
 }
