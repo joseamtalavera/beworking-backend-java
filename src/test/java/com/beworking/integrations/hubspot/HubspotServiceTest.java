@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.*;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
@@ -23,6 +24,8 @@ class HubspotServiceTest {
     void setUp() {
         leadRepository = mock(LeadRepository.class);
         hubspotService = new HubspotService(leadRepository);
+        ReflectionTestUtils.setField(hubspotService, "hubspotToken", "test-token");
+        ReflectionTestUtils.setField(hubspotService, "hubspotBaseUrl", "https://api.hubapi.com");
         // You may need to set hubspotBaseUrl and hubspotToken via reflection if not set by Spring
     }
 
@@ -109,4 +112,3 @@ class HubspotServiceTest {
         // assertEquals("123456789", properties.get("phone"));
     }
 }
-
