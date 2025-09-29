@@ -3,6 +3,7 @@ package com.beworking.auth;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -14,11 +15,13 @@ public class AuthController {
     private final LoginService loginService;
     private final JwtUtil jwtUtil;
     private final RegisterService registerService;
+    private final UserRepository userRepository;
 
-    public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService) {
+    public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService, UserRepository userRepository) {
         this.loginService = loginService;
         this.jwtUtil = jwtUtil;
         this.registerService = registerService;
+        this.userRepository = userRepository;
     }
 
     @PostMapping("/login")
@@ -45,6 +48,24 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(new AuthResponse("User already exists", null, null));
         }
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> currentUser(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+
+        String email = authentication.getName();
+        return userRepository
+                .findByEmail(email)
+                .<ResponseEntity<?>>map(user -> ResponseEntity.ok(Map.of(
+                        "email", user.getEmail(),
+                        "role", user.getRole().name()
+                )))
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("message", "User not found")));
     }
 
     @GetMapping("/confirm")
