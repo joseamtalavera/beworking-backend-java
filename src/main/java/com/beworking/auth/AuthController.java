@@ -62,7 +62,8 @@ public class AuthController {
                 .findByEmail(email)
                 .<ResponseEntity<?>>map(user -> ResponseEntity.ok(Map.of(
                         "email", user.getEmail(),
-                        "role", user.getRole().name()
+                        "role", user.getRole().name(),
+                        "tenantId", user.getTenantId()
                 )))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(Map.of("message", "User not found")));
