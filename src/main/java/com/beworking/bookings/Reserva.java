@@ -7,9 +7,12 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "reservas", schema = "beworking")
@@ -93,6 +96,9 @@ public class Reserva {
 
     @Column(name = "usuario")
     private Integer usuarioId;
+
+    @OneToMany(mappedBy = "reserva", fetch = FetchType.LAZY)
+    private List<Bloqueo> bloqueos = new ArrayList<>();
 
     public Reserva() {
     }
@@ -295,5 +301,13 @@ public class Reserva {
 
     public void setUsuarioId(Integer usuarioId) {
         this.usuarioId = usuarioId;
+    }
+
+    public List<Bloqueo> getBloqueos() {
+        return bloqueos;
+    }
+
+    public void setBloqueos(List<Bloqueo> bloqueos) {
+        this.bloqueos = bloqueos;
     }
 }

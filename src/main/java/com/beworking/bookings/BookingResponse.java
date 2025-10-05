@@ -9,6 +9,7 @@ public record BookingResponse(
     Long clientId,
     String clientName,
     String clientEmail,
+    String clientTenantType,
     Long centerId,
     String centerCode,
     String centerName,

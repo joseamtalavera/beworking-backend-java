@@ -10,17 +10,24 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ReservaRepository extends JpaRepository<Reserva, Long> {
 
-    @Query(value = """
-        SELECT r.*
-        FROM beworking.reservas r
-        WHERE (r.reserva_hasta IS NULL OR r.reserva_hasta >= CAST(:from AS date))
-          AND (r.reserva_desde IS NULL OR r.reserva_desde <= CAST(:to AS date))
-          AND (:tenantId IS NULL OR r.id_cliente = CAST(:tenantId AS bigint))
-          AND (:centerId IS NULL OR r.id_centro = CAST(:centerId AS bigint))
-        ORDER BY r.reserva_desde DESC, r.reserva_hora_desde ASC, r.id DESC
-    """, nativeQuery = true)
+    @Query("""
+        SELECT DISTINCT r
+        FROM Reserva r
+        LEFT JOIN FETCH r.cliente c
+        LEFT JOIN FETCH r.centro cen
+        LEFT JOIN FETCH r.producto prod
+        LEFT JOIN FETCH r.bloqueos b
+        LEFT JOIN FETCH b.centro bloqueCentro
+        LEFT JOIN FETCH b.producto bloqueProducto
+        WHERE (:applyFrom = false OR r.reservaHasta IS NULL OR r.reservaHasta >= :from)
+          AND (:applyTo = false OR r.reservaDesde IS NULL OR r.reservaDesde <= :to)
+          AND (:tenantId IS NULL OR (c IS NOT NULL AND c.id = :tenantId))
+          AND (:centerId IS NULL OR (cen IS NOT NULL AND cen.id = :centerId))
+    """)
     List<Reserva> findBookings(@Param("from") LocalDate from,
                                @Param("to") LocalDate to,
                                @Param("tenantId") Long tenantId,
-                               @Param("centerId") Long centerId);
+                               @Param("centerId") Long centerId,
+                               @Param("applyFrom") boolean applyFrom,
+                               @Param("applyTo") boolean applyTo);
 }
