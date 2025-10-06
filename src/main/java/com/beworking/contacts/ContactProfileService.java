@@ -27,11 +27,11 @@ public class ContactProfileService {
     }
 
     @Transactional(readOnly = true)
-    public ContactProfilesPageResponse getContactProfiles(int page, int size, String search, String status, String plan) {
+    public ContactProfilesPageResponse getContactProfiles(int page, int size, String search, String status, String plan, String tenantType, String email) {
         int pageIndex = Math.max(page, 0);
         int pageSize = Math.max(1, Math.min(size, 100));
 
-        Specification<ContactProfile> specification = buildSpecification(search, status, plan);
+        Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
         Page<ContactProfile> profiles = repository.findAll(
             specification,
             PageRequest.of(pageIndex, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"))
@@ -53,7 +53,7 @@ public class ContactProfileService {
         );
     }
 
-    private Specification<ContactProfile> buildSpecification(String search, String status, String plan) {
+    private Specification<ContactProfile> buildSpecification(String search, String status, String plan, String tenantType, String email) {
         Specification<ContactProfile> specification = Specification.where(null);
 
         if (search != null && !search.isBlank()) {
@@ -94,6 +94,25 @@ public class ContactProfileService {
                 criteriaBuilder.equal(criteriaBuilder.lower(root.get("category")), normalizedPlan),
                 criteriaBuilder.equal(criteriaBuilder.lower(root.get("tenantType")), normalizedPlan)
             ));
+        }
+
+        if (tenantType != null && !tenantType.isBlank()) {
+            String normalizedTenantType = tenantType.trim();
+            specification = specification.and((root, query, criteriaBuilder) -> 
+                criteriaBuilder.equal(root.get("tenantType"), normalizedTenantType)
+            );
+        }
+
+        if (email != null && !email.isBlank()) {
+            String normalizedEmail = email.trim().toLowerCase();
+            specification = specification.and((root, query, criteriaBuilder) -> 
+                criteriaBuilder.or(
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("emailPrimary")), "%" + normalizedEmail + "%"),
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("emailSecondary")), "%" + normalizedEmail + "%"),
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("emailTertiary")), "%" + normalizedEmail + "%"),
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("representativeEmail")), "%" + normalizedEmail + "%")
+                )
+            );
         }
 
         return specification;

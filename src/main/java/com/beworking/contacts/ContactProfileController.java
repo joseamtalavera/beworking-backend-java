@@ -22,9 +22,11 @@ public class ContactProfileController {
         @RequestParam(value = "size", defaultValue = "25") int size,
         @RequestParam(value = "search", required = false) String search,
         @RequestParam(value = "status", required = false) String status,
-        @RequestParam(value = "plan", required = false) String plan
+        @RequestParam(value = "plan", required = false) String plan,
+        @RequestParam(value = "tenantType", required = false) String tenantType,
+        @RequestParam(value = "email", required = false) String email
     ) {
-        ContactProfilesPageResponse profiles = contactProfileService.getContactProfiles(page, size, search, status, plan);
+        ContactProfilesPageResponse profiles = contactProfileService.getContactProfiles(page, size, search, status, plan, tenantType, email);
         return ResponseEntity.ok(profiles);
     }
 }
