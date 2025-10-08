@@ -14,10 +14,16 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
 @Service
 public class ContactProfileService {
 
     private static final DateTimeFormatter CREATED_AT_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+
+    @PersistenceContext
+    private EntityManager entityManager;
     private static final DateTimeFormatter LAST_ACTIVE_DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM dd yyyy");
 
     private final ContactProfileRepository repository;
@@ -249,5 +255,87 @@ public class ContactProfileService {
             return firstName;
         }
         return firstName + " " + lastName;
+    }
+
+    @Transactional
+    public ContactProfile createContactProfile(ContactProfileRequest request) {
+        ContactProfile profile = new ContactProfile();
+        
+        // Generate a new ID (using current timestamp as base)
+        Long newId = System.currentTimeMillis();
+        profile.setId(newId);
+        
+        // Set basic information
+        profile.setName(request.getName());
+        profile.setEmailPrimary(request.getEmail());
+        profile.setContactName(request.getPrimaryContact());
+        profile.setPhonePrimary(request.getPhone());
+        profile.setStatus(request.getStatus() != null ? request.getStatus() : "Potencial");
+        profile.setTenantType(request.getUserType());
+        profile.setCenterId(request.getCenter() != null ? Long.parseLong(request.getCenter()) : null);
+        profile.setChannel(request.getChannel());
+        
+        // Set billing information
+        profile.setBillingName(request.getBillingCompany());
+        profile.setEmailSecondary(request.getBillingEmail());
+        profile.setBillingAddress(request.getBillingAddress());
+        profile.setBillingPostalCode(request.getBillingPostalCode());
+        profile.setBillingProvince(request.getBillingCounty());
+        profile.setBillingCountry(request.getBillingCountry());
+        
+        // Set default values
+        profile.setActive(true);
+        profile.setCreatedAt(LocalDateTime.now());
+        profile.setStatusChangedAt(LocalDateTime.now());
+        
+        // Save the profile
+        ContactProfile savedProfile = repository.save(profile);
+        
+        return savedProfile;
+    }
+
+    @Transactional
+    public boolean deleteContactProfile(Long id) {
+        try {
+            // Check if the profile exists
+            if (!repository.existsById(id)) {
+                return false;
+            }
+            
+            // Delete related records first to avoid foreign key constraints
+            // Delete from bloqueos table first (if it exists)
+            try {
+                entityManager.createNativeQuery("DELETE FROM beworking.bloqueos WHERE id_cliente = ?")
+                    .setParameter(1, id)
+                    .executeUpdate();
+            } catch (Exception e) {
+                // Table might not exist or no records, continue
+            }
+            
+            // Delete from reservas table
+            try {
+                entityManager.createNativeQuery("DELETE FROM beworking.reservas WHERE id_cliente = ?")
+                    .setParameter(1, id)
+                    .executeUpdate();
+            } catch (Exception e) {
+                // Table might not exist or no records, continue
+            }
+            
+            // Delete from facturasdesglose table (if it exists)
+            try {
+                entityManager.createNativeQuery("DELETE FROM beworking.facturasdesglose WHERE idbloqueovinculado IN (SELECT id FROM beworking.bloqueos WHERE id_cliente = ?)")
+                    .setParameter(1, id)
+                    .executeUpdate();
+            } catch (Exception e) {
+                // Table might not exist or no records, continue
+            }
+            
+            // Now delete the profile
+            repository.deleteById(id);
+            return true;
+        } catch (Exception e) {
+            // Log the error if needed
+            return false;
+        }
     }
 }

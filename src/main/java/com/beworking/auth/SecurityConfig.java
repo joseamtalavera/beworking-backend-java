@@ -48,15 +48,30 @@ public class SecurityConfig {
     }
 
     @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(Arrays.asList("http://localhost:5173", "http://localhost:5174", "http://localhost:3020"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowCredentials(true);
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration);
+        return source;
+    }
+
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .cors(withDefaults())
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/").permitAll()
                 .requestMatchers("/api/health","/api/auth/login", "/api/auth/admin/login", "/api/auth/register", "/api/auth/confirm", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/leads", "/api/mailroom/**", "/api/invoices/*/pdf").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/contact-profiles/**").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/contact-profiles/**").permitAll()
+            .requestMatchers(HttpMethod.POST, "/api/contact-profiles").permitAll()
+            .requestMatchers(HttpMethod.DELETE, "/api/contact-profiles/**").permitAll()
                 .requestMatchers("/dashboard/admin/**").hasRole("ADMIN")
                 .requestMatchers("/dashboard/user/**").hasRole("USER")
                 .anyRequest().authenticated()
@@ -80,19 +95,6 @@ public class SecurityConfig {
         return authenticationConfiguration.getAuthenticationManager();
     }
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowCredentials(true);
-        configuration.setAllowedOrigins(parseAllowedOrigins());
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setExposedHeaders(List.of("Content-Disposition"));
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
-    }
 
     private List<String> parseAllowedOrigins() {
         return Arrays.stream(corsAllowedOrigins.split(","))
