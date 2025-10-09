@@ -71,6 +71,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/health","/api/auth/login", "/api/auth/admin/login", "/api/auth/register", "/api/auth/confirm", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/leads", "/api/mailroom/**", "/api/invoices/*/pdf").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/contact-profiles/**").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/contact-profiles").permitAll()
+            .requestMatchers(HttpMethod.PUT, "/api/contact-profiles/**").permitAll()
             .requestMatchers(HttpMethod.DELETE, "/api/contact-profiles/**").permitAll()
                 .requestMatchers("/dashboard/admin/**").hasRole("ADMIN")
                 .requestMatchers("/dashboard/user/**").hasRole("USER")

@@ -20,6 +20,12 @@ import jakarta.persistence.PersistenceContext;
 @Service
 public class ContactProfileService {
 
+    public static class ContactProfileNotFoundException extends RuntimeException {
+        public ContactProfileNotFoundException(Long id) {
+            super("Contact profile not found: " + id);
+        }
+    }
+
     private static final DateTimeFormatter CREATED_AT_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     @PersistenceContext
@@ -257,6 +263,26 @@ public class ContactProfileService {
         return firstName + " " + lastName;
     }
 
+    private String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private Long parseCenterId(String value) {
+        String trimmed = blankToNull(value);
+        if (trimmed == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(trimmed);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
     @Transactional
     public ContactProfile createContactProfile(ContactProfileRequest request) {
         ContactProfile profile = new ContactProfile();
@@ -292,6 +318,73 @@ public class ContactProfileService {
         ContactProfile savedProfile = repository.save(profile);
         
         return savedProfile;
+    }
+
+    @Transactional
+    public ContactProfile updateContactProfile(Long id, ContactProfileRequest request) {
+        ContactProfile profile = repository.findById(id)
+            .orElseThrow(() -> new ContactProfileNotFoundException(id));
+
+        // Track original status to update timestamp if needed
+        String originalStatus = profile.getStatus();
+
+        if (request.getName() != null && !request.getName().isBlank()) {
+            profile.setName(request.getName().trim());
+        }
+
+        if (request.getEmail() != null && !request.getEmail().isBlank()) {
+            profile.setEmailPrimary(request.getEmail().trim());
+        }
+
+        if (request.getPrimaryContact() != null) {
+            profile.setContactName(blankToNull(request.getPrimaryContact()));
+        }
+
+        if (request.getPhone() != null) {
+            profile.setPhonePrimary(blankToNull(request.getPhone()));
+        }
+
+        if (request.getStatus() != null) {
+            String normalizedStatus = blankToNull(request.getStatus());
+            profile.setStatus(normalizedStatus);
+            if (!Objects.equals(originalStatus, normalizedStatus)) {
+                profile.setStatusChangedAt(LocalDateTime.now());
+            }
+        }
+
+        if (request.getUserType() != null) {
+            profile.setTenantType(blankToNull(request.getUserType()));
+        }
+
+        if (request.getCenter() != null) {
+            profile.setCenterId(parseCenterId(request.getCenter()));
+        }
+
+        if (request.getChannel() != null) {
+            profile.setChannel(blankToNull(request.getChannel()));
+        }
+
+        // Billing block
+        if (request.getBillingCompany() != null) {
+            profile.setBillingName(blankToNull(request.getBillingCompany()));
+        }
+        if (request.getBillingEmail() != null) {
+            profile.setEmailSecondary(blankToNull(request.getBillingEmail()));
+        }
+        if (request.getBillingAddress() != null) {
+            profile.setBillingAddress(blankToNull(request.getBillingAddress()));
+        }
+        if (request.getBillingPostalCode() != null) {
+            profile.setBillingPostalCode(blankToNull(request.getBillingPostalCode()));
+        }
+        if (request.getBillingCounty() != null) {
+            profile.setBillingProvince(blankToNull(request.getBillingCounty()));
+        }
+        if (request.getBillingCountry() != null) {
+            profile.setBillingCountry(blankToNull(request.getBillingCountry()));
+        }
+
+        return repository.save(profile);
     }
 
     @Transactional

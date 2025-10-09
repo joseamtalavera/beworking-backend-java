@@ -39,6 +39,21 @@ public class ContactProfileController {
         }
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<ContactProfile> updateContactProfile(
+        @PathVariable Long id,
+        @RequestBody ContactProfileRequest request
+    ) {
+        try {
+            ContactProfile updatedProfile = contactProfileService.updateContactProfile(id, request);
+            return ResponseEntity.ok(updatedProfile);
+        } catch (ContactProfileService.ContactProfileNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteContactProfile(@PathVariable Long id) {
         try {
