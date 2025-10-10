@@ -2,6 +2,7 @@ package com.beworking.bookings;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -9,6 +10,8 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
+    @Query("select max(b.id) from Bloqueo b")
+    Optional<Long> findMaxId();
 
     @Query("""
         SELECT DISTINCT b
@@ -34,5 +37,15 @@ public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
                                @Param("tenantId") Long tenantId,
                                @Param("applyFrom") boolean applyFrom,
                                @Param("applyTo") boolean applyTo);
-}
 
+    @Query("""
+        SELECT b
+        FROM Bloqueo b
+        WHERE b.producto.id = :productId
+          AND b.fechaFin > :start
+          AND b.fechaIni < :end
+    """)
+    List<Bloqueo> findOverlapping(@Param("productId") Long productId,
+                                  @Param("start") LocalDateTime start,
+                                  @Param("end") LocalDateTime end);
+}

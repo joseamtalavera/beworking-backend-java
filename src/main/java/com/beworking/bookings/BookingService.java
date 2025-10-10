@@ -1,13 +1,21 @@
 package com.beworking.bookings;
 
+import com.beworking.auth.User;
 import com.beworking.contacts.ContactProfile;
+import com.beworking.contacts.ContactProfileRepository;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -20,9 +28,21 @@ class BookingService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingService.class);
 
     private final ReservaRepository reservaRepository;
+    private final BloqueoRepository bloqueoRepository;
+    private final ContactProfileRepository contactRepository;
+    private final CentroRepository centroRepository;
+    private final ProductoRepository productoRepository;
 
-    BookingService(ReservaRepository reservaRepository) {
+    BookingService(ReservaRepository reservaRepository,
+                   BloqueoRepository bloqueoRepository,
+                   ContactProfileRepository contactRepository,
+                   CentroRepository centroRepository,
+                   ProductoRepository productoRepository) {
         this.reservaRepository = reservaRepository;
+        this.bloqueoRepository = bloqueoRepository;
+        this.contactRepository = contactRepository;
+        this.centroRepository = centroRepository;
+        this.productoRepository = productoRepository;
     }
 
     @Transactional(readOnly = true)
@@ -62,6 +82,139 @@ class BookingService {
             LOGGER.warn("Failed to load bookings", ex);
             return List.of();
         }
+    }
+
+    @Transactional
+    CreateReservaResponse createReserva(CreateReservaRequest request, User user) {
+        if (request.getDateFrom().isAfter(request.getDateTo())) {
+            throw new IllegalArgumentException("dateFrom must be on or before dateTo");
+        }
+        if (request.getTimeSlots() == null || request.getTimeSlots().isEmpty()) {
+            throw new IllegalArgumentException("At least one time slot is required");
+        }
+
+        ContactProfile cliente = contactRepository.findById(request.getContactId())
+            .orElseThrow(() -> new IllegalArgumentException("Contact not found: " + request.getContactId()));
+        Centro centro = centroRepository.findById(request.getCentroId())
+            .orElseThrow(() -> new IllegalArgumentException("Centro not found: " + request.getCentroId()));
+        Producto producto = productoRepository.findById(request.getProductoId())
+            .orElseThrow(() -> new IllegalArgumentException("Producto not found: " + request.getProductoId()));
+
+        Set<DayOfWeek> weekdays = normalizeWeekdays(request.getWeekdays());
+        LocalDate startDate = request.getDateFrom();
+        LocalDate endDate = request.getDateTo();
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Bloqueo> bloqueosToPersist = new ArrayList<>();
+        List<BookingConflictException.ConflictSlot> conflicts = new ArrayList<>();
+
+        LocalDate cursor = startDate;
+        while (!cursor.isAfter(endDate)) {
+            if (weekdays == null || weekdays.contains(cursor.getDayOfWeek())) {
+                for (CreateReservaRequest.TimeSlot slot : request.getTimeSlots()) {
+                    LocalTime startTime = parseTime(slot.getFrom());
+                    LocalTime endTime = parseTime(slot.getTo());
+                    LocalDateTime slotStart = cursor.atTime(startTime);
+                    LocalDateTime slotEnd = cursor.atTime(endTime);
+                    if (!slotEnd.isAfter(slotStart)) {
+                        throw new IllegalArgumentException("Time slot end must be after start");
+                    }
+
+                    List<Bloqueo> overlaps = bloqueoRepository.findOverlapping(producto.getId(), slotStart, slotEnd);
+                    if (!overlaps.isEmpty()) {
+                        overlaps.stream()
+                            .map(existing -> BookingConflictException.conflict(existing.getFechaIni(), existing.getFechaFin()))
+                            .forEach(conflicts::add);
+                    } else {
+                        Bloqueo bloqueo = new Bloqueo();
+                        bloqueo.setCliente(cliente);
+                        bloqueo.setCentro(centro);
+                        bloqueo.setProducto(producto);
+                        bloqueo.setFechaIni(slotStart);
+                        bloqueo.setFechaFin(slotEnd);
+                        bloqueo.setFinIndefinido(Boolean.TRUE.equals(request.getOpenEnded()) ? 1 : 0);
+                        bloqueo.setTarifa(request.getTarifa());
+                        bloqueo.setAsistentes(request.getAttendees());
+                        bloqueo.setConfiguracion(request.getConfiguracion());
+                        bloqueo.setNota(request.getNote());
+                        bloqueo.setEstado(request.getStatus());
+                        bloqueo.setCreacionFecha(now);
+                        bloqueo.setEdicionFecha(now);
+                        bloqueosToPersist.add(bloqueo);
+                    }
+                }
+            }
+            cursor = cursor.plusDays(1);
+        }
+
+        if (!conflicts.isEmpty()) {
+            String conflictSummary = conflicts.stream()
+                .map(slot -> String.format("[%s - %s]", slot.start(), slot.end()))
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("");
+            LOGGER.warn("Reserva conflict for contact {} (centro {}, producto {}) between {} and {}. Conflicts: {}",
+                cliente.getId(),
+                centro.getId(),
+                producto.getId(),
+                startDate,
+                endDate,
+                conflictSummary
+            );
+            throw new BookingConflictException("Requested schedule overlaps with existing bloqueos", conflicts);
+        }
+
+        if (bloqueosToPersist.isEmpty()) {
+            throw new IllegalArgumentException("Unable to derive bloqueos for the supplied schedule");
+        }
+
+        Reserva reserva = new Reserva();
+        reserva.setCliente(cliente);
+        reserva.setCentro(centro);
+        reserva.setProducto(producto);
+        reserva.setTipoReserva(request.getReservationType());
+        reserva.setReservaDesde(startDate);
+        reserva.setReservaHasta(endDate);
+        reserva.setFinIndefinido(Boolean.TRUE.equals(request.getOpenEnded()) ? 1 : 0);
+        applyWeekdayFlags(reserva, weekdays);
+
+        LocalTime primaryStart = parseTime(request.getTimeSlots().get(0).getFrom());
+        LocalTime primaryEnd = parseTime(request.getTimeSlots().get(0).getTo());
+        reserva.setReservaHoraDesde(formatHour(primaryStart));
+        reserva.setReservaHoraHasta(formatHour(primaryEnd));
+        reserva.setTarifa(request.getTarifa());
+        reserva.setAsistentes(request.getAttendees());
+        reserva.setConfiguracion(request.getConfiguracion());
+        reserva.setNotas(request.getNote());
+        reserva.setEstado(request.getStatus());
+        reserva.setCreacionFecha(now);
+        reserva.setEdicionFecha(now);
+        if (user != null && user.getId() != null) {
+            reserva.setUsuarioId(Math.toIntExact(user.getId()));
+        }
+
+        Long nextReservaId = reservaRepository.findMaxId().map(value -> value + 1L).orElse(1L);
+        reserva.setId(nextReservaId);
+
+        Reserva savedReserva = reservaRepository.save(reserva);
+
+        long[] nextBloqueoId = {bloqueoRepository.findMaxId().map(value -> value + 1L).orElse(1L)};
+
+        bloqueosToPersist.forEach(bloqueo -> {
+            bloqueo.setId(nextBloqueoId[0]++);
+            bloqueo.setReserva(savedReserva);
+            bloqueo.setCliente(cliente);
+            bloqueo.setCentro(centro);
+            bloqueo.setProducto(producto);
+        });
+
+        List<Bloqueo> savedBloqueos = bloqueoRepository.saveAll(bloqueosToPersist);
+        savedReserva.setBloqueos(savedBloqueos);
+
+        List<BloqueoResponse> bloqueoResponses = savedBloqueos.stream()
+            .map(BloqueoMapper::toResponse)
+            .toList();
+
+        return new CreateReservaResponse(savedReserva.getId(), bloqueoResponses);
     }
 
     private static boolean includeBlock(Bloqueo bloqueo,
@@ -250,5 +403,73 @@ class BookingService {
         } catch (NumberFormatException ex) {
             return trimmed;
         }
+    }
+
+    private static Set<DayOfWeek> normalizeWeekdays(List<String> days) {
+        if (days == null || days.isEmpty()) {
+            return null;
+        }
+        EnumSet<DayOfWeek> set = EnumSet.noneOf(DayOfWeek.class);
+        for (String value : days) {
+            if (value == null) {
+                continue;
+            }
+            String normalized = value.trim().toUpperCase();
+            switch (normalized) {
+                case "MONDAY", "LUNES" -> set.add(DayOfWeek.MONDAY);
+                case "TUESDAY", "MARTES" -> set.add(DayOfWeek.TUESDAY);
+                case "WEDNESDAY", "MIERCOLES", "MIÉRCOLES" -> set.add(DayOfWeek.WEDNESDAY);
+                case "THURSDAY", "JUEVES" -> set.add(DayOfWeek.THURSDAY);
+                case "FRIDAY", "VIERNES" -> set.add(DayOfWeek.FRIDAY);
+                case "SATURDAY", "SABADO", "SÁBADO" -> set.add(DayOfWeek.SATURDAY);
+                case "SUNDAY", "DOMINGO" -> set.add(DayOfWeek.SUNDAY);
+                default -> LOGGER.debug("Ignoring unknown weekday token: {}", value);
+            }
+        }
+        return set.isEmpty() ? null : set;
+    }
+
+    private static void applyWeekdayFlags(Reserva reserva, Set<DayOfWeek> days) {
+        boolean includeAll = days == null || days.isEmpty();
+        reserva.setLunes(includeAll || days.contains(DayOfWeek.MONDAY) ? 1 : 0);
+        reserva.setMartes(includeAll || days.contains(DayOfWeek.TUESDAY) ? 1 : 0);
+        reserva.setMiercoles(includeAll || days.contains(DayOfWeek.WEDNESDAY) ? 1 : 0);
+        reserva.setJueves(includeAll || days.contains(DayOfWeek.THURSDAY) ? 1 : 0);
+        reserva.setViernes(includeAll || days.contains(DayOfWeek.FRIDAY) ? 1 : 0);
+        reserva.setSabado(includeAll || days.contains(DayOfWeek.SATURDAY) ? 1 : 0);
+        reserva.setDomingo(includeAll || days.contains(DayOfWeek.SUNDAY) ? 1 : 0);
+    }
+
+    private static LocalTime parseTime(String value) {
+        if (value == null) {
+            throw new IllegalArgumentException("Time value is required");
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException("Time value is required");
+        }
+        try {
+            return LocalTime.parse(trimmed);
+        } catch (DateTimeParseException ignored) {
+            // continue
+        }
+        try {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("H:mm");
+            return LocalTime.parse(trimmed, formatter);
+        } catch (DateTimeParseException ignored) {
+            // continue
+        }
+        if (trimmed.matches("\\d{1,2}")) {
+            int hour = Integer.parseInt(trimmed);
+            return LocalTime.of(hour, 0);
+        }
+        throw new IllegalArgumentException("Invalid time value: " + value);
+    }
+
+    private static String formatHour(LocalTime time) {
+        if (time == null) {
+            return null;
+        }
+        return String.format("%02d:%02d", time.getHour(), time.getMinute());
     }
 }
