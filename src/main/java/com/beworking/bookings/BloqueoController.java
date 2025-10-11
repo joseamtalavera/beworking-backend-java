@@ -2,14 +2,20 @@ package com.beworking.bookings;
 
 import com.beworking.auth.User;
 import com.beworking.auth.UserRepository;
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.Valid;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -82,6 +88,41 @@ public class BloqueoController {
         );
 
         return ResponseEntity.ok(bloqueos);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateBloqueo(Authentication authentication,
+                                           @PathVariable Long id,
+                                           @Valid @RequestBody UpdateBloqueoRequest request) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(401).build();
+        }
+
+        Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(401).build();
+        }
+
+        User user = userOpt.get();
+        if (user.getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(403).build();
+        }
+
+        try {
+            BloqueoResponse response = bloqueoService.updateBloqueo(id, request);
+            return ResponseEntity.ok(response);
+        } catch (BookingConflictException conflictException) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("message", conflictException.getMessage());
+            body.put("conflicts", conflictException.getConflicts());
+            return ResponseEntity.status(409).body(body);
+        } catch (EntityNotFoundException ex) {
+            return ResponseEntity.status(404).build();
+        } catch (IllegalArgumentException ex) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("message", ex.getMessage());
+            return ResponseEntity.badRequest().body(body);
+        }
     }
 
     @DeleteMapping("/{id}")
