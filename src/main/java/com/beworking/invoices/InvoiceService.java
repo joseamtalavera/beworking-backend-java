@@ -292,23 +292,27 @@ public class InvoiceService {
             null
         );
 
+        long nextDesgloseId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+
         for (Map.Entry<Bloqueo, LineComputation> entry : computedLines.entrySet()) {
             Bloqueo bloqueo = entry.getKey();
             LineComputation line = entry.getValue();
             jdbcTemplate.update(
                 """
                 INSERT INTO beworking.facturasdesglose
-                (idfacturadesglose, conceptodesglose, cantidaddesglose, precioundesglose, totaldesglose, idbloqueovinculado, id_reserva)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
+                nextDesgloseId,
                 nextLegacy,
                 line.concept(),
-                line.quantity(),
                 line.unitPrice(),
+                line.quantity(),
                 line.total(),
-                bloqueo.getId(),
-                bloqueo.getReserva() != null ? bloqueo.getReserva().getId() : null
+                1,
+                bloqueo.getId()
             );
+            nextDesgloseId++;
 
             bloqueo.setEstado("Invoiced");
             bloqueo.setEdicionFecha(now);
