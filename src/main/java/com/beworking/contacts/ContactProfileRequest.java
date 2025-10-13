@@ -4,6 +4,7 @@ public class ContactProfileRequest {
     
     private String name;
     private String email;
+    private String avatar;
     
     private String primaryContact;
     private String phone;
@@ -43,6 +44,14 @@ public class ContactProfileRequest {
     
     public void setEmail(String email) {
         this.email = email;
+    }
+    
+    public String getAvatar() {
+        return avatar;
+    }
+    
+    public void setAvatar(String avatar) {
+        this.avatar = avatar;
     }
     
     public String getPrimaryContact() {

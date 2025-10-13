@@ -300,6 +300,7 @@ public class ContactProfileService {
         profile.setTenantType(request.getUserType());
         profile.setCenterId(request.getCenter() != null ? Long.parseLong(request.getCenter()) : null);
         profile.setChannel(request.getChannel());
+        profile.setAvatar(request.getAvatar());
         
         // Set billing information
         profile.setBillingName(request.getBillingCompany());
@@ -342,6 +343,10 @@ public class ContactProfileService {
 
         if (request.getPhone() != null) {
             profile.setPhonePrimary(blankToNull(request.getPhone()));
+        }
+
+        if (request.getAvatar() != null) {
+            profile.setAvatar(blankToNull(request.getAvatar()));
         }
 
         if (request.getStatus() != null) {

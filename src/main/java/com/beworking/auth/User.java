@@ -41,6 +41,9 @@ public class User {
     @Column(name = "reset_token_expiry")
     private java.time.Instant resetTokenExpiry;
 
+    @Column(name = "avatar")
+    private String avatar;
+
     public enum Role {
         ADMIN, USER;
         // For future extensibility, you can add more roles here
@@ -150,4 +153,7 @@ public class User {
 
     public java.time.Instant getResetTokenExpiry() { return resetTokenExpiry; }
     public void setResetTokenExpiry(java.time.Instant resetTokenExpiry) { this.resetTokenExpiry = resetTokenExpiry; }
+
+    public String getAvatar() { return avatar; }
+    public void setAvatar(String avatar) { this.avatar = avatar; }
 }

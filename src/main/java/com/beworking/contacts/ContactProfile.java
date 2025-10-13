@@ -98,6 +98,9 @@ public class ContactProfile {
     @Column(name = "onboarded_at")
     private LocalDateTime onboardedAt;
 
+    @Column(name = "avatar")
+    private String avatar;
+
     public ContactProfile() {
     }
 
@@ -347,5 +350,13 @@ public class ContactProfile {
 
     public void setOnboardedAt(LocalDateTime onboardedAt) {
         this.onboardedAt = onboardedAt;
+    }
+
+    public String getAvatar() {
+        return avatar;
+    }
+
+    public void setAvatar(String avatar) {
+        this.avatar = avatar;
     }
 }

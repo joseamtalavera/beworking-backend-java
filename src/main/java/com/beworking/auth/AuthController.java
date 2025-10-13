@@ -60,11 +60,35 @@ public class AuthController {
         String email = authentication.getName();
         return userRepository
                 .findByEmail(email)
-                .<ResponseEntity<?>>map(user -> ResponseEntity.ok(Map.of(
-                        "email", user.getEmail(),
-                        "role", user.getRole().name(),
-                        "tenantId", user.getTenantId()
-                )))
+                .<ResponseEntity<?>>map(user -> {
+                    Map<String, Object> userData = new java.util.HashMap<>();
+                    userData.put("email", user.getEmail());
+                    userData.put("role", user.getRole().name());
+                    userData.put("tenantId", user.getTenantId()); // This can be null
+                    userData.put("avatar", user.getAvatar()); // This can be null
+                    return ResponseEntity.ok(userData);
+                })
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("message", "User not found")));
+    }
+
+    @PutMapping("/me/avatar")
+    public ResponseEntity<?> updateAvatar(Authentication authentication, @RequestBody Map<String, String> request) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+
+        String email = authentication.getName();
+        String avatarUrl = request.get("avatar");
+        
+        return userRepository
+                .findByEmail(email)
+                .<ResponseEntity<?>>map(user -> {
+                    user.setAvatar(avatarUrl);
+                    userRepository.save(user);
+                    return ResponseEntity.ok(Map.of("message", "Avatar updated successfully", "avatar", avatarUrl));
+                })
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(Map.of("message", "User not found")));
     }

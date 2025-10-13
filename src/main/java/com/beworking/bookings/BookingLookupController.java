@@ -140,11 +140,12 @@ public class BookingLookupController {
             contact.getId(),
             Optional.ofNullable(contact.getName()).orElse(contact.getContactName()),
             contact.getEmailPrimary(),
-            contact.getTenantType()
+            contact.getTenantType(),
+            contact.getAvatar()
         );
     }
 
-    public record ContactLookupResponse(Long id, String name, String email, String tenantType) { }
+    public record ContactLookupResponse(Long id, String name, String email, String tenantType, String avatar) { }
 
     public record CentroLookupResponse(Long id, String name, String code) { }
 
