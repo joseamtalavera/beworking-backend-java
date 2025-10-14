@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import com.beworking.auth.UserRepository;
 
 @Service
 public class ContactProfileService {
@@ -33,9 +34,11 @@ public class ContactProfileService {
     private static final DateTimeFormatter LAST_ACTIVE_DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM dd yyyy");
 
     private final ContactProfileRepository repository;
+    private final UserRepository userRepository;
 
-    public ContactProfileService(ContactProfileRepository repository) {
+    public ContactProfileService(ContactProfileRepository repository, UserRepository userRepository) {
         this.repository = repository;
+        this.userRepository = userRepository;
     }
 
     @Transactional(readOnly = true)
@@ -44,6 +47,71 @@ public class ContactProfileService {
         int pageSize = Math.max(1, Math.min(size, 100));
 
         Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
+        Page<ContactProfile> profiles = repository.findAll(
+            specification,
+            PageRequest.of(pageIndex, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"))
+        );
+
+        List<ContactProfileResponse> responses = new ArrayList<>(profiles.getNumberOfElements());
+        for (ContactProfile profile : profiles.getContent()) {
+            responses.add(mapToResponse(profile));
+        }
+
+        return new ContactProfilesPageResponse(
+            responses,
+            profiles.getNumber(),
+            profiles.getSize(),
+            profiles.getTotalElements(),
+            profiles.getTotalPages(),
+            profiles.hasNext(),
+            profiles.hasPrevious()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public ContactProfilesPageResponse getContactProfilesByTenantId(Long tenantId, int page, int size, String search, String status, String plan, String tenantType, String email) {
+        System.out.println("getContactProfilesByTenantId called with tenantId: " + tenantId);
+        int pageIndex = Math.max(page, 0);
+        int pageSize = Math.max(1, Math.min(size, 100));
+
+        Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
+        // Add tenantId filter - the user's tenantId should match the contact's id
+        specification = specification.and((root, query, criteriaBuilder) -> 
+            criteriaBuilder.equal(root.get("id"), tenantId)
+        );
+        
+        Page<ContactProfile> profiles = repository.findAll(
+            specification,
+            PageRequest.of(pageIndex, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"))
+        );
+
+        List<ContactProfileResponse> responses = new ArrayList<>(profiles.getNumberOfElements());
+        for (ContactProfile profile : profiles.getContent()) {
+            responses.add(mapToResponse(profile));
+        }
+
+        return new ContactProfilesPageResponse(
+            responses,
+            profiles.getNumber(),
+            profiles.getSize(),
+            profiles.getTotalElements(),
+            profiles.getTotalPages(),
+            profiles.hasNext(),
+            profiles.hasPrevious()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public ContactProfilesPageResponse getContactProfilesByEmail(String userEmail, int page, int size, String search, String status, String plan, String tenantType, String email) {
+        int pageIndex = Math.max(page, 0);
+        int pageSize = Math.max(1, Math.min(size, 100));
+
+        Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
+        // Add email filter - find contact by user's email
+        specification = specification.and((root, query, criteriaBuilder) -> 
+            criteriaBuilder.equal(root.get("emailPrimary"), userEmail)
+        );
+        
         Page<ContactProfile> profiles = repository.findAll(
             specification,
             PageRequest.of(pageIndex, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"))
@@ -188,6 +256,7 @@ public class ContactProfileService {
             channel,
             createdAt,
             phone,
+            profile.getAvatar(),
             billing
         );
     }
@@ -318,6 +387,18 @@ public class ContactProfileService {
         // Save the profile
         ContactProfile savedProfile = repository.save(profile);
         
+        // Sync avatar to user table if this contact profile belongs to a user
+        if (savedProfile.getAvatar() != null && savedProfile.getEmailPrimary() != null) {
+            System.out.println("DEBUG: Creating contact profile, syncing avatar for email: " + savedProfile.getEmailPrimary());
+            userRepository.findByEmail(savedProfile.getEmailPrimary())
+                .ifPresent(user -> {
+                    System.out.println("DEBUG: Found user during creation, updating avatar from: " + user.getAvatar() + " to: " + savedProfile.getAvatar());
+                    user.setAvatar(savedProfile.getAvatar());
+                    userRepository.save(user);
+                    System.out.println("DEBUG: User avatar updated successfully during creation");
+                });
+        }
+        
         return savedProfile;
     }
 
@@ -345,8 +426,28 @@ public class ContactProfileService {
             profile.setPhonePrimary(blankToNull(request.getPhone()));
         }
 
+        System.out.println("DEBUG: Avatar request value: " + request.getAvatar());
+        System.out.println("DEBUG: Avatar request is null: " + (request.getAvatar() == null));
+        
         if (request.getAvatar() != null) {
+            System.out.println("DEBUG: Avatar is not null, updating profile avatar");
             profile.setAvatar(blankToNull(request.getAvatar()));
+            
+            // Sync avatar to user table if this contact profile belongs to a user
+            if (profile.getEmailPrimary() != null) {
+                System.out.println("DEBUG: Syncing avatar for email: " + profile.getEmailPrimary());
+                userRepository.findByEmail(profile.getEmailPrimary())
+                    .ifPresent(user -> {
+                        System.out.println("DEBUG: Found user, updating avatar from: " + user.getAvatar() + " to: " + profile.getAvatar());
+                        user.setAvatar(profile.getAvatar());
+                        userRepository.save(user);
+                        System.out.println("DEBUG: User avatar updated successfully");
+                    });
+            } else {
+                System.out.println("DEBUG: No email found for contact profile, skipping avatar sync");
+            }
+        } else {
+            System.out.println("DEBUG: Avatar is null, skipping avatar update");
         }
 
         if (request.getStatus() != null) {

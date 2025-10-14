@@ -16,6 +16,7 @@ public record ContactProfileResponse(
     String channel,
     @JsonProperty("created_at") String createdAt,
     @JsonProperty("phone_primary") String phonePrimary,
+    String avatar,
     Billing billing
 ) {
     public record Contact(String name, String email) {}
