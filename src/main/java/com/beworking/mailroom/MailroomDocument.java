@@ -31,6 +31,9 @@ public class MailroomDocument {
     @Column(name = "sender", length = 255)
     private String sender;
 
+    @Column(name = "contact_email", length = 255)
+    private String contactEmail;
+
     @Column(name = "received_at")
     private Instant receivedAt;
 
@@ -107,6 +110,14 @@ public class MailroomDocument {
 
     public void setSender(String sender) {
         this.sender = sender;
+    }
+
+    public String getContactEmail() {
+        return contactEmail;
+    }
+
+    public void setContactEmail(String contactEmail) {
+        this.contactEmail = contactEmail;
     }
 
     public Instant getReceivedAt() {

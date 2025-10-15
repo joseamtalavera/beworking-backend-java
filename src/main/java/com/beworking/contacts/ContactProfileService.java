@@ -44,7 +44,7 @@ public class ContactProfileService {
     @Transactional(readOnly = true)
     public ContactProfilesPageResponse getContactProfiles(int page, int size, String search, String status, String plan, String tenantType, String email) {
         int pageIndex = Math.max(page, 0);
-        int pageSize = Math.max(1, Math.min(size, 100));
+        int pageSize = Math.max(1, size);
 
         Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
         Page<ContactProfile> profiles = repository.findAll(
@@ -72,7 +72,7 @@ public class ContactProfileService {
     public ContactProfilesPageResponse getContactProfilesByTenantId(Long tenantId, int page, int size, String search, String status, String plan, String tenantType, String email) {
         System.out.println("getContactProfilesByTenantId called with tenantId: " + tenantId);
         int pageIndex = Math.max(page, 0);
-        int pageSize = Math.max(1, Math.min(size, 100));
+        int pageSize = Math.max(1, size);
 
         Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
         // Add tenantId filter - the user's tenantId should match the contact's id
@@ -104,7 +104,7 @@ public class ContactProfileService {
     @Transactional(readOnly = true)
     public ContactProfilesPageResponse getContactProfilesByEmail(String userEmail, int page, int size, String search, String status, String plan, String tenantType, String email) {
         int pageIndex = Math.max(page, 0);
-        int pageSize = Math.max(1, Math.min(size, 100));
+        int pageSize = Math.max(1, size);
 
         Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
         // Add email filter - find contact by user's email

@@ -45,6 +45,7 @@ public class MailroomDocumentController {
             @RequestParam(value = "tenantId", required = false) String tenantId,
             @RequestParam(value = "pages", required = false) Integer pages,
             @RequestParam(value = "avatarColor", required = false) String avatarColor,
+            @RequestParam(value = "contactEmail", required = false) String contactEmail,
             Authentication authentication
     ) {
         MailroomDocumentResponse created = service.createDocument(
@@ -54,7 +55,8 @@ public class MailroomDocumentController {
                 parseInstant(receivedAt),
                 tenantId,
                 pages,
-                StringUtils.hasText(avatarColor) ? avatarColor : null
+                StringUtils.hasText(avatarColor) ? avatarColor : null,
+                contactEmail
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }

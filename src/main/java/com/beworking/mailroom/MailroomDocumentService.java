@@ -1,5 +1,6 @@
 package com.beworking.mailroom;
 
+import com.beworking.auth.EmailService;
 import com.beworking.storage.FileStorageService;
 import com.beworking.storage.StoredFile;
 import java.time.Instant;
@@ -27,10 +28,12 @@ public class MailroomDocumentService {
 
     private final MailroomDocumentRepository repository;
     private final FileStorageService fileStorageService;
+    private final EmailService emailService;
 
-    public MailroomDocumentService(MailroomDocumentRepository repository, FileStorageService fileStorageService) {
+    public MailroomDocumentService(MailroomDocumentRepository repository, FileStorageService fileStorageService, EmailService emailService) {
         this.repository = repository;
         this.fileStorageService = fileStorageService;
+        this.emailService = emailService;
     }
 
     public List<MailroomDocumentResponse> listRecentDocuments() {
@@ -47,13 +50,15 @@ public class MailroomDocumentService {
             Instant receivedAt,
             String tenantId,
             Integer pages,
-            String avatarColor
+            String avatarColor,
+            String contactEmail
     ) {
         StoredFile storedFile = fileStorageService.store(file);
 
         MailroomDocument document = new MailroomDocument();
         document.setTitle(resolveTitle(title, storedFile.originalFileName()));
         document.setSender(StringUtils.hasText(sender) ? sender : null);
+        document.setContactEmail(StringUtils.hasText(contactEmail) ? contactEmail : null);
         document.setReceivedAt(Optional.ofNullable(receivedAt).orElse(Instant.now()));
         document.setStatus(MailroomDocumentStatus.SCANNED);
         document.setPages(pages);
@@ -81,6 +86,10 @@ public class MailroomDocumentService {
         document.setStatus(MailroomDocumentStatus.NOTIFIED);
         document.setLastNotifiedAt(Instant.now());
         MailroomDocument saved = repository.save(document);
+        
+        // Send email notification
+        sendDocumentNotificationEmail(document);
+        
         return MailroomDocumentResponse.fromEntity(saved);
     }
 
@@ -125,5 +134,97 @@ public class MailroomDocumentService {
                 ? document.getOriginalFileName()
                 : document.getTitle();
         return new MailroomDocumentDownload(resource, originalName, contentType);
+    }
+
+    private void sendDocumentNotificationEmail(MailroomDocument document) {
+        // Extract contact email from the document
+        String contactEmail = extractContactEmail(document);
+        
+        if (!StringUtils.hasText(contactEmail)) {
+            // Log warning but don't fail the operation
+            System.err.println("Warning: No contact email found for document " + document.getId() + ", skipping email notification");
+            return;
+        }
+
+        String subject = "New Document Available - " + document.getTitle();
+        String htmlContent = createDocumentNotificationEmailHtml(document);
+        
+        try {
+            emailService.sendHtml(contactEmail, subject, htmlContent);
+            System.out.println("Document notification email sent successfully to: " + contactEmail);
+        } catch (Exception e) {
+            System.err.println("Failed to send document notification email to " + contactEmail + ": " + e.getMessage());
+            // Don't rethrow - we don't want email failures to break the notification process
+        }
+    }
+
+    private String extractContactEmail(MailroomDocument document) {
+        // Use the contactEmail field which contains the actual contact's email address
+        String contactEmail = document.getContactEmail();
+        
+        if (StringUtils.hasText(contactEmail)) {
+            return contactEmail;
+        }
+        
+        // Fallback: if no contactEmail, try to use sender if it looks like an email
+        String sender = document.getSender();
+        if (StringUtils.hasText(sender) && sender.contains("@")) {
+            return sender;
+        }
+        
+        // No valid email found
+        return null;
+    }
+
+    private String createDocumentNotificationEmailHtml(MailroomDocument document) {
+        return String.format("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>New Document Available</title>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background-color: #22c55e; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+                    .content { background-color: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px; }
+                    .document-info { background-color: white; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #22c55e; }
+                    .button { display: inline-block; background-color: #22c55e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+                    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>📄 New Document Available</h1>
+                    </div>
+                    <div class="content">
+                        <p>Hello,</p>
+                        <p>A new document has been uploaded to your virtual office mailbox and is ready for review.</p>
+                        
+                        <div class="document-info">
+                            <h3>Document Details:</h3>
+                            <p><strong>Title:</strong> %s</p>
+                            <p><strong>Uploaded:</strong> %s</p>
+                            <p><strong>File Type:</strong> %s</p>
+                            %s
+                        </div>
+                        
+                        <p>You can access your virtual office mailbox to view and download this document.</p>
+                        
+                        <p>Best regards,<br>BeWorking Team</p>
+                    </div>
+                    <div class="footer">
+                        <p>This is an automated notification from BeWorking Virtual Office</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """,
+            document.getTitle() != null ? document.getTitle() : "Untitled Document",
+            document.getCreatedAt() != null ? document.getCreatedAt().toString() : "Unknown",
+            document.getContentType() != null ? document.getContentType() : "Unknown",
+            document.getSender() != null ? "<p><strong>From:</strong> " + document.getSender() + "</p>" : ""
+        );
     }
 }
