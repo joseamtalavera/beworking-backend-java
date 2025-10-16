@@ -44,6 +44,39 @@ public class User {
     @Column(name = "avatar")
     private String avatar;
 
+    @Column(name = "name")
+    private String name;
+
+    @Column(name = "phone")
+    private String phone;
+
+    @Column(name = "address_line1")
+    private String addressLine1;
+
+    @Column(name = "address_city")
+    private String addressCity;
+
+    @Column(name = "address_country")
+    private String addressCountry;
+
+    @Column(name = "address_postal")
+    private String addressPostal;
+
+    @Column(name = "billing_brand")
+    private String billingBrand;
+
+    @Column(name = "billing_last4")
+    private String billingLast4;
+
+    @Column(name = "billing_exp_month")
+    private Integer billingExpMonth;
+
+    @Column(name = "billing_exp_year")
+    private Integer billingExpYear;
+
+    @Column(name = "stripe_customer_id")
+    private String stripeCustomerId;
+
     public enum Role {
         ADMIN, USER;
         // For future extensibility, you can add more roles here
@@ -156,4 +189,37 @@ public class User {
 
     public String getAvatar() { return avatar; }
     public void setAvatar(String avatar) { this.avatar = avatar; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+
+    public String getAddressLine1() { return addressLine1; }
+    public void setAddressLine1(String addressLine1) { this.addressLine1 = addressLine1; }
+
+    public String getAddressCity() { return addressCity; }
+    public void setAddressCity(String addressCity) { this.addressCity = addressCity; }
+
+    public String getAddressCountry() { return addressCountry; }
+    public void setAddressCountry(String addressCountry) { this.addressCountry = addressCountry; }
+
+    public String getAddressPostal() { return addressPostal; }
+    public void setAddressPostal(String addressPostal) { this.addressPostal = addressPostal; }
+
+    public String getBillingBrand() { return billingBrand; }
+    public void setBillingBrand(String billingBrand) { this.billingBrand = billingBrand; }
+
+    public String getBillingLast4() { return billingLast4; }
+    public void setBillingLast4(String billingLast4) { this.billingLast4 = billingLast4; }
+
+    public Integer getBillingExpMonth() { return billingExpMonth; }
+    public void setBillingExpMonth(Integer billingExpMonth) { this.billingExpMonth = billingExpMonth; }
+
+    public Integer getBillingExpYear() { return billingExpYear; }
+    public void setBillingExpYear(Integer billingExpYear) { this.billingExpYear = billingExpYear; }
+
+    public String getStripeCustomerId() { return stripeCustomerId; }
+    public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
 }

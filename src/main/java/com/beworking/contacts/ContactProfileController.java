@@ -68,6 +68,40 @@ public class ContactProfileController {
         }
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<ContactProfile> getContactProfileById(
+        @PathVariable Long id,
+        Authentication authentication
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        String userEmail = authentication.getName();
+        User user = userRepository.findByEmail(userEmail).orElse(null);
+        
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        try {
+            ContactProfile profile = contactProfileService.getContactProfileById(id);
+            
+            // For users, only allow access to their own contact
+            if (user.getRole() == User.Role.USER) {
+                if (user.getTenantId() != null && !user.getTenantId().equals(profile.getId())) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+                }
+            }
+            
+            return ResponseEntity.ok(profile);
+        } catch (ContactProfileService.ContactProfileNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     @PostMapping
     public ResponseEntity<ContactProfile> createContactProfile(@RequestBody ContactProfileRequest request) {
         try {

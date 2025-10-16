@@ -63,9 +63,24 @@ public class AuthController {
                 .<ResponseEntity<?>>map(user -> {
                     Map<String, Object> userData = new java.util.HashMap<>();
                     userData.put("email", user.getEmail());
+                    userData.put("name", user.getName());
+                    userData.put("phone", user.getPhone());
                     userData.put("role", user.getRole().name());
                     userData.put("tenantId", user.getTenantId()); // This can be null
                     userData.put("avatar", user.getAvatar()); // This can be null
+                    userData.put("address", Map.of(
+                        "line1", user.getAddressLine1() != null ? user.getAddressLine1() : "",
+                        "city", user.getAddressCity() != null ? user.getAddressCity() : "",
+                        "country", user.getAddressCountry() != null ? user.getAddressCountry() : "",
+                        "postal", user.getAddressPostal() != null ? user.getAddressPostal() : ""
+                    ));
+                    userData.put("billing", Map.of(
+                        "brand", user.getBillingBrand() != null ? user.getBillingBrand() : "",
+                        "last4", user.getBillingLast4() != null ? user.getBillingLast4() : "",
+                        "expMonth", user.getBillingExpMonth() != null ? user.getBillingExpMonth() : 0,
+                        "expYear", user.getBillingExpYear() != null ? user.getBillingExpYear() : 0,
+                        "stripeCustomerId", user.getStripeCustomerId() != null ? user.getStripeCustomerId() : ""
+                    ));
                     return ResponseEntity.ok(userData);
                 })
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -88,6 +103,101 @@ public class AuthController {
                     user.setAvatar(avatarUrl);
                     userRepository.save(user);
                     return ResponseEntity.ok(Map.of("message", "Avatar updated successfully", "avatar", avatarUrl));
+                })
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("message", "User not found")));
+    }
+
+    @PutMapping("/me")
+    public ResponseEntity<?> updateProfile(Authentication authentication, @RequestBody Map<String, Object> request) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+
+        String email = authentication.getName();
+        
+        return userRepository
+                .findByEmail(email)
+                .<ResponseEntity<?>>map(user -> {
+                    // Update user fields if provided
+                    if (request.containsKey("name")) {
+                        user.setName((String) request.get("name"));
+                    }
+                    if (request.containsKey("email")) {
+                        user.setEmail((String) request.get("email"));
+                    }
+                    if (request.containsKey("phone")) {
+                        user.setPhone((String) request.get("phone"));
+                    }
+                    if (request.containsKey("avatar")) {
+                        user.setAvatar((String) request.get("avatar"));
+                    }
+                    
+                    // Update billing if provided
+                    if (request.containsKey("billing")) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> billing = (Map<String, Object>) request.get("billing");
+                        if (billing.containsKey("brand")) {
+                            user.setBillingBrand((String) billing.get("brand"));
+                        }
+                        if (billing.containsKey("last4")) {
+                            user.setBillingLast4((String) billing.get("last4"));
+                        }
+                        if (billing.containsKey("expMonth")) {
+                            user.setBillingExpMonth((Integer) billing.get("expMonth"));
+                        }
+                        if (billing.containsKey("expYear")) {
+                            user.setBillingExpYear((Integer) billing.get("expYear"));
+                        }
+                        if (billing.containsKey("stripeCustomerId")) {
+                            user.setStripeCustomerId((String) billing.get("stripeCustomerId"));
+                        }
+                    }
+                    
+                    // Update address if provided
+                    if (request.containsKey("address")) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, String> address = (Map<String, String>) request.get("address");
+                        if (address.containsKey("line1")) {
+                            user.setAddressLine1(address.get("line1"));
+                        }
+                        if (address.containsKey("city")) {
+                            user.setAddressCity(address.get("city"));
+                        }
+                        if (address.containsKey("country")) {
+                            user.setAddressCountry(address.get("country"));
+                        }
+                        if (address.containsKey("postal")) {
+                            user.setAddressPostal(address.get("postal"));
+                        }
+                    }
+                    
+                    userRepository.save(user);
+                    
+                    // Return updated user data
+                    Map<String, Object> userData = new java.util.HashMap<>();
+                    userData.put("email", user.getEmail());
+                    userData.put("name", user.getName());
+                    userData.put("phone", user.getPhone());
+                    userData.put("role", user.getRole().name());
+                    userData.put("tenantId", user.getTenantId());
+                    userData.put("avatar", user.getAvatar());
+                    userData.put("address", Map.of(
+                        "line1", user.getAddressLine1() != null ? user.getAddressLine1() : "",
+                        "city", user.getAddressCity() != null ? user.getAddressCity() : "",
+                        "country", user.getAddressCountry() != null ? user.getAddressCountry() : "",
+                        "postal", user.getAddressPostal() != null ? user.getAddressPostal() : ""
+                    ));
+                    userData.put("billing", Map.of(
+                        "brand", user.getBillingBrand() != null ? user.getBillingBrand() : "",
+                        "last4", user.getBillingLast4() != null ? user.getBillingLast4() : "",
+                        "expMonth", user.getBillingExpMonth() != null ? user.getBillingExpMonth() : 0,
+                        "expYear", user.getBillingExpYear() != null ? user.getBillingExpYear() : 0,
+                        "stripeCustomerId", user.getStripeCustomerId() != null ? user.getStripeCustomerId() : ""
+                    ));
+                    
+                    return ResponseEntity.ok(Map.of("message", "Profile updated successfully", "user", userData));
                 })
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(Map.of("message", "User not found")));

@@ -122,6 +122,17 @@ public class InvoiceService {
             args.add(like);
         }
 
+        // Date filtering - use creacionfecha (creation date) for filtering
+        if (hasText(filters.startDate())) {
+            where.append(" AND f.creacionfecha >= ?::timestamp");
+            args.add(filters.startDate().trim());
+        }
+        
+        if (hasText(filters.endDate())) {
+            where.append(" AND f.creacionfecha < ?::date + INTERVAL '1 day'");
+            args.add(filters.endDate().trim());
+        }
+
         List<Object> countArgs = new ArrayList<>(args);
         String countSql = "SELECT COUNT(DISTINCT f.id) " + baseFrom + where;
         long total;
@@ -157,8 +168,8 @@ public class InvoiceService {
                     )
                 ) AS client_email,
                 MAX(c.tenant_type) AS tenant_type,
-                STRING_AGG(DISTINCT p.nombre, ', ' ORDER BY p.nombre) AS products
-            """ + baseFrom + where + """
+                LEFT(STRING_AGG(DISTINCT p.nombre, ', ' ORDER BY p.nombre), 500) AS products
+            """ + baseFrom + where + " " + """
             GROUP BY
                 f.id,
                 f.idfactura,
@@ -212,6 +223,114 @@ public class InvoiceService {
         );
 
         return new PageImpl<>(items, PageRequest.of(pageIndex, pageSize), total);
+    }
+
+    public BigDecimal calculateTotalRevenue(InvoiceFilters filters) {
+        String baseFrom = """
+            FROM beworking.facturas f
+            LEFT JOIN beworking.contact_profiles c ON c.id = f.idcliente
+            LEFT JOIN beworking.facturasdesglose fd ON fd.idfacturadesglose = f.idfactura
+            LEFT JOIN beworking.bloqueos b ON b.id = fd.idbloqueovinculado
+            LEFT JOIN beworking.productos p ON p.id = b.id_producto
+            """;
+
+        StringBuilder where = new StringBuilder(" WHERE 1=1");
+        List<Object> args = new ArrayList<>();
+
+        if (hasText(filters.name())) {
+            String like = "%" + filters.name().trim().toLowerCase() + "%";
+            where.append("""
+                AND (
+                    LOWER(COALESCE(c.name, '')) LIKE ?
+                    OR LOWER(COALESCE(c.contact_name, '')) LIKE ?
+                    OR LOWER(COALESCE(c.billing_name, '')) LIKE ?
+                )
+                """);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+        }
+
+        if (hasText(filters.email())) {
+            String like = "%" + filters.email().trim().toLowerCase() + "%";
+            where.append("""
+                AND (
+                    LOWER(COALESCE(c.email_primary, '')) LIKE ?
+                    OR LOWER(COALESCE(c.email_secondary, '')) LIKE ?
+                    OR LOWER(COALESCE(c.email_tertiary, '')) LIKE ?
+                    OR LOWER(COALESCE(c.representative_email, '')) LIKE ?
+                )
+                """);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+        }
+
+        if (hasText(filters.idFactura())) {
+            String like = "%" + filters.idFactura().trim().toLowerCase() + "%";
+            where.append(" AND (CAST(f.idfactura AS TEXT) ILIKE ? OR CAST(f.id AS TEXT) ILIKE ?)");
+            args.add(like);
+            args.add(like);
+        }
+
+        if (hasText(filters.status())) {
+            String like = "%" + filters.status().trim().toLowerCase() + "%";
+            where.append(" AND LOWER(COALESCE(f.estado, '')) LIKE ?");
+            args.add(like);
+        }
+
+        if (hasText(filters.tenantType())) {
+            String like = "%" + filters.tenantType().trim().toLowerCase() + "%";
+            where.append(" AND LOWER(COALESCE(c.tenant_type, '')) LIKE ?");
+            args.add(like);
+        }
+
+        if (hasText(filters.product())) {
+            String like = "%" + filters.product().trim().toLowerCase() + "%";
+            where.append("""
+                AND (
+                    LOWER(COALESCE(p.nombre, '')) LIKE ?
+                    OR LOWER(COALESCE(fd.conceptodesglose, '')) LIKE ?
+                )
+                """);
+            args.add(like);
+            args.add(like);
+        }
+
+        // Date filtering - use creacionfecha (creation date) for filtering
+        if (hasText(filters.startDate())) {
+            where.append(" AND f.creacionfecha >= ?::timestamp");
+            args.add(filters.startDate().trim());
+        }
+        
+        if (hasText(filters.endDate())) {
+            where.append(" AND f.creacionfecha < ?::date + INTERVAL '1 day'");
+            args.add(filters.endDate().trim());
+        }
+
+        String revenueSql = """
+            SELECT COALESCE(SUM(f.total), 0) 
+            FROM (
+                SELECT DISTINCT f.id, f.total
+                FROM beworking.facturas f
+                LEFT JOIN beworking.contact_profiles c ON c.id = f.idcliente
+                LEFT JOIN beworking.facturasdesglose fd ON fd.idfacturadesglose = f.idfactura
+                LEFT JOIN beworking.bloqueos b ON b.id = fd.idbloqueovinculado
+                LEFT JOIN beworking.productos p ON p.id = b.id_producto
+            """;
+        
+        // Append the WHERE conditions to the subquery
+        revenueSql += where.toString() + ") f";
+        
+        try {
+            BigDecimal totalRevenue = args.isEmpty()
+                ? jdbcTemplate.queryForObject(revenueSql, BigDecimal.class)
+                : jdbcTemplate.queryForObject(revenueSql, args.toArray(), BigDecimal.class);
+            return totalRevenue != null ? totalRevenue : BigDecimal.ZERO;
+        } catch (EmptyResultDataAccessException e) {
+            return BigDecimal.ZERO;
+        }
     }
 
     @Transactional
@@ -491,8 +610,15 @@ public class InvoiceService {
         String idFactura,
         String status,
         String tenantType,
-        String product
+        String product,
+        String startDate,
+        String endDate
     ) { }
 
     private record LineComputation(String concept, BigDecimal quantity, BigDecimal unitPrice, BigDecimal total) { }
+
+    public String getNextInvoiceNumber() {
+        Integer nextNumber = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
+        return "F" + String.format("%03d", nextNumber);
+    }
 }

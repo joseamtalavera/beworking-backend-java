@@ -537,4 +537,10 @@ public class ContactProfileService {
             return false;
         }
     }
+
+    @Transactional(readOnly = true)
+    public ContactProfile getContactProfileById(Long id) {
+        return repository.findById(id)
+            .orElseThrow(() -> new ContactProfileNotFoundException(id));
+    }
 }
