@@ -138,7 +138,7 @@ public class BookingLookupController {
     private ContactLookupResponse mapToContact(ContactProfile contact) {
         return new ContactLookupResponse(
             contact.getId(),
-            Optional.ofNullable(contact.getName()).orElse(contact.getContactName()),
+            Optional.ofNullable(contact.getContactName()).orElse(contact.getName()),
             contact.getEmailPrimary(),
             contact.getTenantType(),
             contact.getAvatar()

@@ -36,8 +36,20 @@ public class MailroomDocumentService {
         this.emailService = emailService;
     }
 
-    public List<MailroomDocumentResponse> listRecentDocuments() {
-        return repository.findRecentDocuments().stream()
+    public List<MailroomDocumentResponse> listRecentDocuments(UUID tenantId, String contactEmail) {
+        return repository.findRecentDocuments(tenantId).stream()
+                .filter(doc -> {
+                    if (tenantId == null && contactEmail == null) {
+                        return true;
+                    }
+                    if (tenantId != null && tenantId.equals(doc.getTenantId())) {
+                        return true;
+                    }
+                    if (contactEmail != null && doc.getContactEmail() != null) {
+                        return contactEmail.equalsIgnoreCase(doc.getContactEmail());
+                    }
+                    return false;
+                })
                 .map(MailroomDocumentResponse::fromEntity)
                 .toList();
     }

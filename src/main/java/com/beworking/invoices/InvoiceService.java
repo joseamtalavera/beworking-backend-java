@@ -2,6 +2,7 @@ package com.beworking.invoices;
 
 import com.beworking.bookings.Bloqueo;
 import com.beworking.bookings.BloqueoRepository;
+import com.beworking.cuentas.CuentaService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
@@ -11,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,11 +40,13 @@ public class InvoiceService {
     private final JdbcTemplate jdbcTemplate;
     private final RestClient http;
     private final BloqueoRepository bloqueoRepository;
+    private final CuentaService cuentaService;
 
-    public InvoiceService(JdbcTemplate jdbcTemplate, BloqueoRepository bloqueoRepository) {
+    public InvoiceService(JdbcTemplate jdbcTemplate, BloqueoRepository bloqueoRepository, CuentaService cuentaService) {
         this.jdbcTemplate = jdbcTemplate;
         this.http = RestClient.create();
         this.bloqueoRepository = bloqueoRepository;
+        this.cuentaService = cuentaService;
     }
 
     public Page<InvoiceListItem> findInvoices(int page, int size, InvoiceFilters filters) {
@@ -108,6 +112,11 @@ public class InvoiceService {
             String like = "%" + filters.tenantType().trim().toLowerCase() + "%";
             where.append(" AND LOWER(COALESCE(c.tenant_type, '')) LIKE ?");
             args.add(like);
+        }
+
+        if (filters.contactId() != null) {
+            where.append(" AND f.idcliente = ?");
+            args.add(filters.contactId());
         }
 
         if (hasText(filters.product())) {
@@ -286,6 +295,11 @@ public class InvoiceService {
             args.add(like);
         }
 
+        if (filters.contactId() != null) {
+            where.append(" AND f.idcliente = ?");
+            args.add(filters.contactId());
+        }
+
         if (hasText(filters.product())) {
             String like = "%" + filters.product().trim().toLowerCase() + "%";
             where.append("""
@@ -405,7 +419,7 @@ public class InvoiceService {
             subtotal,
             vatPercent != null ? vatPercent.intValue() : null,
             total,
-            "Invoiced",
+            "Pendiente",
             Timestamp.valueOf(now),
             request.getReference(),
             null
@@ -459,7 +473,7 @@ public class InvoiceService {
             vatPercent,
             vatAmount,
             total,
-            "Invoiced",
+            "Pendiente",
             now,
             responseLines
         );
@@ -514,7 +528,18 @@ public class InvoiceService {
             return false;
         }
         String value = estado.trim().toLowerCase();
-        return value.contains("invoice") || value.contains("factura");
+        return value.contains("invoice") || value.contains("factura") || value.contains("pend") || value.contains("pag");
+    }
+
+    private static String normalizeInvoiceStatus(String status) {
+        if (status == null) {
+            return "Pendiente";
+        }
+        String value = status.trim().toLowerCase();
+        if (value.contains("pag")) {
+            return "Pagado";
+        }
+        return "Pendiente";
     }
 
     private LineComputation computeLine(Bloqueo bloqueo) {
@@ -612,13 +637,169 @@ public class InvoiceService {
         String tenantType,
         String product,
         String startDate,
-        String endDate
+        String endDate,
+        Long contactId
     ) { }
+
+    public Optional<Long> findContactIdByEmail(String email) {
+        if (!hasText(email)) {
+            return Optional.empty();
+        }
+        String sql = """
+            SELECT id
+            FROM beworking.contact_profiles
+            WHERE LOWER(email_primary) = LOWER(?)
+               OR LOWER(email_secondary) = LOWER(?)
+               OR LOWER(email_tertiary) = LOWER(?)
+               OR LOWER(representative_email) = LOWER(?)
+            LIMIT 1
+            """;
+        try {
+            Long id = jdbcTemplate.queryForObject(sql, Long.class, email, email, email, email);
+            return Optional.ofNullable(id);
+        } catch (EmptyResultDataAccessException ex) {
+            return Optional.empty();
+        }
+    }
 
     private record LineComputation(String concept, BigDecimal quantity, BigDecimal unitPrice, BigDecimal total) { }
 
     public String getNextInvoiceNumber() {
-        Integer nextNumber = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
-        return "F" + String.format("%03d", nextNumber);
+        // Default to Partners cuenta (ID 3) for backward compatibility
+        return cuentaService.generateNextInvoiceNumber(3);
+    }
+    
+    public String getNextInvoiceNumber(Integer cuentaId) {
+        return cuentaService.generateNextInvoiceNumber(cuentaId);
+    }
+    
+    public String getNextInvoiceNumber(String cuentaCodigo) {
+        return cuentaService.generateNextInvoiceNumber(cuentaCodigo);
+    }
+
+    @Transactional
+    public Map<String, Object> createManualInvoice(CreateManualInvoiceRequest request) {
+        try {
+            // Get the cuenta ID from the codigo
+            Integer cuentaId = null;
+            if (request.getCuenta() != null && !request.getCuenta().isEmpty()) {
+                Optional<com.beworking.cuentas.Cuenta> cuentaOpt = cuentaService.getCuentaByCodigo(request.getCuenta());
+                if (cuentaOpt.isPresent()) {
+                    cuentaId = cuentaOpt.get().getId();
+                }
+            }
+
+            // Generate invoice number if not provided
+            String invoiceNumber = request.getInvoiceNum();
+            if (invoiceNumber == null || invoiceNumber.isEmpty()) {
+                if (cuentaId != null) {
+                    invoiceNumber = cuentaService.generateNextInvoiceNumber(cuentaId);
+                } else {
+                    invoiceNumber = getNextInvoiceNumber(); // Default to Partners
+                }
+            }
+
+            // Generate internal primary key for facturas.id
+            Long nextInternalId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas",
+                Long.class
+            );
+
+            // Insert the invoice into the database
+            String insertSql = """
+                INSERT INTO beworking.facturas (
+                    id, idfactura, idcliente, holdedcuenta, id_cuenta, 
+                    fechacreacionreal, fechacobro1, estado, 
+                    total, iva, totaliva, notas, creacionfecha
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                RETURNING idfactura
+                """;
+
+            // Convert invoice number to integer (remove prefix)
+            Integer invoiceId;
+            if (invoiceNumber != null && !invoiceNumber.isEmpty()) {
+                String numericPart = invoiceNumber.replaceAll("[^0-9]", "");
+                if (!numericPart.isEmpty()) {
+                    invoiceId = Integer.parseInt(numericPart);
+                } else {
+                    // Fallback: generate a simple sequential number
+                    invoiceId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
+                }
+            } else {
+                // Fallback: generate a simple sequential number
+                invoiceId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
+            }
+
+            // Debugging: Print the resolved invoiceId
+            System.out.println("Resolved invoiceId before insert: " + invoiceId);
+
+            String normalizedStatus = normalizeInvoiceStatus(request.getStatus());
+
+            Integer facturaId = jdbcTemplate.queryForObject(insertSql, Integer.class,
+                nextInternalId,
+                invoiceId,
+                request.getClientId(),
+                request.getCuenta(),
+                cuentaId,
+                request.getDate(),
+                request.getDueDate(),
+                normalizedStatus,
+                request.getComputed().getTotal(),
+                request.getComputed().getTotalVat().intValue(), // Convert BigDecimal to Integer for iva column
+                request.getComputed().getTotalVat(),
+                request.getNote()
+            );
+
+            // Insert line items
+            if (request.getLineItems() != null && !request.getLineItems().isEmpty()) {
+                Long nextDesgloseId = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose",
+                    Long.class
+                );
+
+                String lineItemSql = """
+                    INSERT INTO beworking.facturasdesglose (
+                        id, idfacturadesglose, conceptodesglose, precioundesglose,
+                        cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+
+                for (int i = 0; i < request.getLineItems().size(); i++) {
+                    CreateManualInvoiceRequest.LineItem item = request.getLineItems().get(i);
+                    BigDecimal unitPrice = item.getPrice().setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal lineTotal = unitPrice.multiply(item.getQuantity())
+                        .multiply(BigDecimal.ONE.add(item.getVatPercent().divide(BigDecimal.valueOf(100))))
+                        .setScale(2, RoundingMode.HALF_UP);
+
+                    String description = item.getDescription();
+                    if (description == null || description.isBlank()) {
+                        description = "Manual line item";
+                    }
+
+                    jdbcTemplate.update(lineItemSql,
+                        nextDesgloseId + i,
+                        facturaId,
+                        description,
+                        unitPrice,
+                        item.getQuantity(),
+                        lineTotal,
+                        1,
+                        null
+                    );
+                }
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("id", nextInternalId);
+            response.put("idFactura", facturaId);
+            response.put("invoiceNumber", invoiceNumber);
+            response.put("message", "Manual invoice created successfully");
+            response.put("status", normalizedStatus);
+
+            return response;
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create manual invoice: " + e.getMessage(), e);
+        }
     }
 }

@@ -1,9 +1,14 @@
 package com.beworking.mailroom;
 
+import com.beworking.auth.User;
+import com.beworking.auth.UserRepository;
+import com.beworking.contacts.ContactProfile;
+import com.beworking.contacts.ContactProfileService;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
@@ -27,14 +32,46 @@ import org.springframework.web.multipart.MultipartFile;
 public class MailroomDocumentController {
 
     private final MailroomDocumentService service;
+    private final UserRepository userRepository;
+    private final ContactProfileService contactService;
 
-    public MailroomDocumentController(MailroomDocumentService service) {
+    public MailroomDocumentController(MailroomDocumentService service, UserRepository userRepository, ContactProfileService contactService) {
         this.service = service;
+        this.userRepository = userRepository;
+        this.contactService = contactService;
     }
 
     @GetMapping
-    public ResponseEntity<List<MailroomDocumentResponse>> listDocuments() {
-        return ResponseEntity.ok(service.listRecentDocuments());
+    public ResponseEntity<List<MailroomDocumentResponse>> listDocuments(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        String userEmail = authentication.getName();
+        User user = userRepository.findByEmail(userEmail).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        UUID tenantFilter = null;
+        String contactEmail = null;
+        if (user.getRole() == User.Role.USER) {
+            if (user.getTenantId() != null) {
+                contactEmail = user.getEmail();
+            } else {
+                final String[] emailHolder = {null};
+                contactService.findContactByEmail(user.getEmail()).ifPresent(contact -> {
+                    emailHolder[0] = firstNonBlank(
+                        contact.getEmailPrimary(),
+                        contact.getEmailSecondary(),
+                        contact.getEmailTertiary(),
+                        contact.getRepresentativeEmail()
+                    );
+                });
+                contactEmail = emailHolder[0];
+            }
+        }
+
+        return ResponseEntity.ok(service.listRecentDocuments(tenantFilter, contactEmail));
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -85,6 +122,18 @@ public class MailroomDocumentController {
                 .contentType(mediaType)
                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
                 .body(download.resource());
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private Instant parseInstant(String value) {

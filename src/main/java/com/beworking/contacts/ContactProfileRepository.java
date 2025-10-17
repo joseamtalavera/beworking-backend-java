@@ -1,6 +1,7 @@
 package com.beworking.contacts;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
@@ -15,5 +16,12 @@ public interface ContactProfileRepository extends JpaRepository<ContactProfile, 
         String name,
         String contactName,
         String email
+    );
+
+    Optional<ContactProfile> findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+        String emailPrimary,
+        String emailSecondary,
+        String emailTertiary,
+        String representativeEmail
     );
 }

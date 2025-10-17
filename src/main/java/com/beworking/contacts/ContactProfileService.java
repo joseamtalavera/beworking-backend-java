@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -102,6 +103,17 @@ public class ContactProfileService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<ContactProfile> findContactByEmail(String userEmail) {
+        if (userEmail == null || userEmail.isBlank()) {
+            return Optional.empty();
+        }
+        String normalizedEmail = userEmail.trim().toLowerCase();
+        return repository.findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+            normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail
+        );
+
+    }
+
     public ContactProfilesPageResponse getContactProfilesByEmail(String userEmail, int page, int size, String search, String status, String plan, String tenantType, String email) {
         int pageIndex = Math.max(page, 0);
         int pageSize = Math.max(1, size);

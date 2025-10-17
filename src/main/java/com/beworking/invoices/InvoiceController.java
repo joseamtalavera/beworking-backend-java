@@ -32,6 +32,7 @@ public class InvoiceController {
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> list(
+        Authentication authentication,
         @RequestParam(value = "page", defaultValue = "0") int page,
         @RequestParam(value = "size", defaultValue = "25") int size,
         @RequestParam(value = "name", required = false) String name,
@@ -45,19 +46,39 @@ public class InvoiceController {
         @RequestParam(value = "from", required = false) String from,
         @RequestParam(value = "to", required = false) String to
     ) {
+        Optional<User> userOpt = resolveUser(authentication);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        User user = userOpt.get();
+
         // Support both startDate/endDate and from/to parameter names
         String actualStartDate = startDate != null ? startDate : from;
         String actualEndDate = endDate != null ? endDate : to;
-        
+
+        Long restrictedContactId = null;
+        String effectiveEmail = email;
+        if (user.getRole() == User.Role.USER) {
+            if (user.getTenantId() != null) {
+                restrictedContactId = user.getTenantId();
+            } else {
+                restrictedContactId = invoiceService.findContactIdByEmail(user.getEmail()).orElse(null);
+            }
+            if (effectiveEmail == null || effectiveEmail.trim().isEmpty()) {
+                effectiveEmail = user.getEmail();
+            }
+        }
+
         InvoiceService.InvoiceFilters filters = new InvoiceService.InvoiceFilters(
             name,
-            email,
+            effectiveEmail,
             idFactura,
             status,
             tenantType,
             product,
             actualStartDate,
-            actualEndDate
+            actualEndDate,
+            restrictedContactId
         );
         Page<InvoiceListItem> invoices = invoiceService.findInvoices(page, size, filters);
         BigDecimal totalRevenue = invoiceService.calculateTotalRevenue(filters);
@@ -94,6 +115,30 @@ public class InvoiceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @PostMapping("/manual")
+    public ResponseEntity<Map<String, Object>> createManualInvoice(
+        Authentication authentication,
+        @Valid @RequestBody CreateManualInvoiceRequest request
+    ) {
+        Optional<User> userOpt = resolveUser(authentication);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        User user = userOpt.get();
+        if (user.getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        try {
+            Map<String, Object> response = invoiceService.createManualInvoice(request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Failed to create manual invoice: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
     @GetMapping("/pdf-url")
     public ResponseEntity<String> pdfUrl(@RequestParam("id") Long id) {
         return invoiceService.resolvePdfUrl(id)
@@ -102,15 +147,29 @@ public class InvoiceController {
     }
 
     @GetMapping("/next-number")
-    public ResponseEntity<Map<String, Object>> getNextInvoiceNumber() {
+    public ResponseEntity<Map<String, Object>> getNextInvoiceNumber(
+        @RequestParam(value = "cuentaId", required = false) Integer cuentaId,
+        @RequestParam(value = "cuentaCodigo", required = false) String cuentaCodigo
+    ) {
         try {
-            String nextNumber = invoiceService.getNextInvoiceNumber();
+            String nextNumber;
+            if (cuentaId != null) {
+                nextNumber = invoiceService.getNextInvoiceNumber(cuentaId);
+            } else if (cuentaCodigo != null) {
+                nextNumber = invoiceService.getNextInvoiceNumber(cuentaCodigo);
+            } else {
+                // Default to Partners cuenta for backward compatibility
+                nextNumber = invoiceService.getNextInvoiceNumber();
+            }
+            
             Map<String, Object> response = new HashMap<>();
             response.put("nextNumber", nextNumber);
+            if (cuentaId != null) response.put("cuentaId", cuentaId);
+            if (cuentaCodigo != null) response.put("cuentaCodigo", cuentaCodigo);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "Failed to get next invoice number");
+            error.put("error", "Failed to get next invoice number: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
