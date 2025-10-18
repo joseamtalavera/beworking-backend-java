@@ -48,4 +48,22 @@ public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
     List<Bloqueo> findOverlapping(@Param("productId") Long productId,
                                   @Param("start") LocalDateTime start,
                                   @Param("end") LocalDateTime end);
+
+    @Query("""
+        SELECT DISTINCT b
+        FROM Bloqueo b
+        LEFT JOIN FETCH b.cliente c
+        LEFT JOIN FETCH b.centro centro
+        LEFT JOIN FETCH b.producto producto
+        WHERE (:productNamesEmpty = true OR LOWER(producto.nombre) IN :productNames)
+          AND (:centerCodesEmpty = true OR LOWER(producto.centroCodigo) IN :centerCodes)
+          AND b.fechaIni < :end
+          AND (b.fechaFin IS NULL OR b.fechaFin > :start)
+    """)
+    List<Bloqueo> findPublicAvailability(@Param("productNames") List<String> productNames,
+                                         @Param("productNamesEmpty") boolean productNamesEmpty,
+                                         @Param("centerCodes") List<String> centerCodes,
+                                         @Param("centerCodesEmpty") boolean centerCodesEmpty,
+                                         @Param("start") LocalDateTime start,
+                                         @Param("end") LocalDateTime end);
 }
