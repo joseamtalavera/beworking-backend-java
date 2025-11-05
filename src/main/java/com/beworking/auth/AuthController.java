@@ -26,6 +26,9 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        System.out.printf("[AuthController] Login payload received → email=%s password=%s\n",
+                request.getEmail(),
+                request.getPassword());
         var userOpt = loginService.authenticate(request.getEmail(), request.getPassword());
         if (userOpt.isPresent()) {
             User user = userOpt.get();
