@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,11 +49,17 @@ public class Room {
     @Column(length = 64)
     private String region;
 
+    @Column(name = "centro_code", length = 32)
+    private String centroCode;
+
     @Column(nullable = false, length = 32)
     private String type;
 
     @Column(nullable = false, length = 24)
     private String status;
+
+    @Column(name = "creation_date")
+    private LocalDate creationDate;
 
     @Column(name = "size_sqm")
     private Integer sizeSqm;
@@ -62,6 +69,9 @@ public class Room {
 
     @Column(name = "price_from", precision = 10, scale = 2)
     private BigDecimal priceFrom;
+
+    @Column(name = "price_unit", length = 16)
+    private String priceUnit;
 
     @Column(name = "price_hour_min", precision = 10, scale = 2)
     private BigDecimal priceHourMin;
@@ -92,6 +102,15 @@ public class Room {
 
     @Column(name = "rating_count")
     private Integer ratingCount;
+
+    @Column(name = "instant_booking")
+    private boolean instantBooking;
+
+    @Column(length = 255)
+    private String tags;
+
+    @Column(name = "hero_image", length = 512)
+    private String heroImage;
 
     @OneToMany(
         mappedBy = "room",
@@ -189,6 +208,14 @@ public class Room {
         this.region = region;
     }
 
+    public String getCentroCode() {
+        return centroCode;
+    }
+
+    public void setCentroCode(String centroCode) {
+        this.centroCode = centroCode;
+    }
+
     public String getType() {
         return type;
     }
@@ -203,6 +230,14 @@ public class Room {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public LocalDate getCreationDate() {
+        return creationDate;
+    }
+
+    public void setCreationDate(LocalDate creationDate) {
+        this.creationDate = creationDate;
     }
 
     public Integer getSizeSqm() {
@@ -227,6 +262,14 @@ public class Room {
 
     public void setPriceFrom(BigDecimal priceFrom) {
         this.priceFrom = priceFrom;
+    }
+
+    public String getPriceUnit() {
+        return priceUnit;
+    }
+
+    public void setPriceUnit(String priceUnit) {
+        this.priceUnit = priceUnit;
     }
 
     public BigDecimal getPriceHourMin() {
@@ -307,6 +350,30 @@ public class Room {
 
     public void setRatingCount(Integer ratingCount) {
         this.ratingCount = ratingCount;
+    }
+
+    public boolean isInstantBooking() {
+        return instantBooking;
+    }
+
+    public void setInstantBooking(boolean instantBooking) {
+        this.instantBooking = instantBooking;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
+    }
+
+    public String getHeroImage() {
+        return heroImage;
+    }
+
+    public void setHeroImage(String heroImage) {
+        this.heroImage = heroImage;
     }
 
     public List<RoomImage> getImages() {
