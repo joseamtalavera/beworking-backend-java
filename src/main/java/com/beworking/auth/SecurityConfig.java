@@ -28,7 +28,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RateLimitingFilter rateLimitingFilter;
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173}")
+    @Value("${app.cors.allowed-origins:}")
     private String corsAllowedOrigins;
 
     @Autowired
@@ -39,7 +39,7 @@ public class SecurityConfig {
 
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
-        return web -> web.ignoring().requestMatchers("/api/health");
+        return web -> web.ignoring().requestMatchers("/api/health", "/uploads/**");
     }
 
     @Bean
@@ -50,12 +50,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(Arrays.asList(
-            "http://localhost:5173",
-            "http://localhost:5174",
-            "http://localhost:4173",
-            "http://localhost:3020"
-        ));
+        configuration.setAllowedOriginPatterns(parseAllowedOrigins());
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
@@ -74,6 +69,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/").permitAll()
                 .requestMatchers("/api/health","/api/auth/login", "/api/auth/admin/login", "/api/auth/register", "/api/auth/confirm", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/leads", "/api/mailroom/**", "/api/invoices/*/pdf").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/uploads").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/contact-profiles/**").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/contact-profiles").permitAll()
             .requestMatchers(HttpMethod.PUT, "/api/contact-profiles/**").permitAll()
@@ -105,8 +101,8 @@ public class SecurityConfig {
 
     private List<String> parseAllowedOrigins() {
         return Arrays.stream(corsAllowedOrigins.split(","))
-                .map(String::trim)
-                .filter(origin -> !origin.isEmpty())
-                .toList();
+            .map(String::trim)
+            .filter(origin -> !origin.isEmpty())
+            .toList();
     }
 }

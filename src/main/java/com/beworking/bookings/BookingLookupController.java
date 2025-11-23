@@ -115,7 +115,14 @@ public class BookingLookupController {
                 producto.getId(),
                 producto.getNombre(),
                 producto.getTipo(),
-                producto.getCentroCodigo()
+                producto.getCentroCodigo(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
             ))
             .collect(Collectors.toList());
 
@@ -149,5 +156,7 @@ public class BookingLookupController {
 
     public record CentroLookupResponse(Long id, String name, String code) { }
 
-    public record ProductoLookupResponse(Long id, String name, String type, String centerCode) { }
+    public record ProductoLookupResponse(Long id, String name, String type, String centerCode, String heroImage,
+                                         Integer capacity, java.math.BigDecimal priceFrom, String priceUnit,
+                                         java.math.BigDecimal ratingAverage, Integer ratingCount, Boolean instantBooking) { }
 }
