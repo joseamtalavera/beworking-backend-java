@@ -122,7 +122,12 @@ public class BookingLookupController {
                 null,
                 null,
                 null,
-                null
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of()
             ))
             .collect(Collectors.toList());
 
@@ -157,6 +162,8 @@ public class BookingLookupController {
     public record CentroLookupResponse(Long id, String name, String code) { }
 
     public record ProductoLookupResponse(Long id, String name, String type, String centerCode, String heroImage,
+                                         String subtitle,
                                          Integer capacity, java.math.BigDecimal priceFrom, String priceUnit,
-                                         java.math.BigDecimal ratingAverage, Integer ratingCount, Boolean instantBooking) { }
+                                         java.math.BigDecimal ratingAverage, Integer ratingCount, Boolean instantBooking,
+                                         String description, java.util.List<String> amenities, java.util.List<String> tags, java.util.List<String> images) { }
 }

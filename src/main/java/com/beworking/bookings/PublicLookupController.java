@@ -58,12 +58,19 @@ public class PublicLookupController {
                 room.getType(),
                 room.getCentroCode(),
                 room.getHeroImage(),
+                room.getSubtitle(),
                 room.getCapacity(),
                 room.getPriceFrom(),
                 room.getPriceUnit(),
                 room.getRatingAverage(),
                 room.getRatingCount(),
-                room.isInstantBooking()
+                room.isInstantBooking(),
+                room.getDescription(),
+                room.getAmenities().stream().map(a -> a.getAmenityCode()).toList(),
+                room.getTags() == null || room.getTags().isBlank()
+                    ? List.of()
+                    : List.of(room.getTags().split("\\s*,\\s*")),
+                room.getImages().stream().map(img -> img.getUrl()).toList()
             ))
             .collect(Collectors.toList());
 
@@ -80,19 +87,26 @@ public class PublicLookupController {
                 producto.getNombre(),
                 producto.getTipo(),
                 producto.getCentroCodigo(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
+                null,      // heroImage
+                null,      // subtitle
+                null,      // capacity
+                null,      // priceFrom
+                null,      // priceUnit
+                null,      // ratingAverage
+                null,      // ratingCount
+                null,      // instantBooking
+                null,      // description
+                List.of(), // amenities
+                List.of(), // tags
+                List.of()  // images
             ))
             .collect(Collectors.toList());
     }
 
     public record CentroLookupResponse(Long id, String name, String code, String city) {}
     public record ProductoLookupResponse(Long id, String name, String type, String centerCode, String heroImage,
+                                         String subtitle,
                                          Integer capacity, java.math.BigDecimal priceFrom, String priceUnit,
-                                         java.math.BigDecimal ratingAverage, Integer ratingCount, Boolean instantBooking) {}
+                                         java.math.BigDecimal ratingAverage, Integer ratingCount, Boolean instantBooking,
+                                         String description, List<String> amenities, List<String> tags, List<String> images) {}
 }
