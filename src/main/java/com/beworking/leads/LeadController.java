@@ -5,6 +5,7 @@ import jakarta.validation.Valid;  // Import for validation annotations
 import org.springframework.http.HttpStatus; // Import for HttpStatus which is used to define HTTP status codes
 import org.springframework.http.ResponseEntity; // Import for ResponseEntity which is used to return HTTP responses
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.ApplicationEventPublisher;
 import java.util.HashMap; // Import for HashMap to store leads in memory
 import java.util.Map; // Import for Map interface which is used to define the structure of the response
@@ -34,12 +35,14 @@ public class LeadController {
 
     private final LeadRepository leadRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final TurnstileService turnstileService;
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LeadController.class);
    
 
-    public LeadController(LeadRepository leadRepository, ApplicationEventPublisher eventPublisher) {
+    public LeadController(LeadRepository leadRepository, ApplicationEventPublisher eventPublisher, TurnstileService turnstileService) {
         this.leadRepository = leadRepository;
         this.eventPublisher = eventPublisher; // Initialize the event publisher
+        this.turnstileService = turnstileService;
     }
     // LeadRequest is now a separate DTO class in the same package
     /**
@@ -57,7 +60,28 @@ public class LeadController {
      */
     @org.springframework.transaction.annotation.Transactional
     @PostMapping
-    public ResponseEntity<Map<String, Object>> createLead(@Valid @RequestBody LeadRequest req) {
+    public ResponseEntity<Map<String, Object>> createLead(@Valid @RequestBody LeadRequest req, HttpServletRequest request) {
+        if (req.getCompany() != null && !req.getCompany().isBlank()) {
+            logger.warn("Honeypot triggered on /api/leads");
+            Map<String, Object> body = new HashMap<>();
+            body.put("message", "ok");
+            return ResponseEntity.ok(body);
+        }
+
+        TurnstileService.VerificationResult verification = turnstileService.verify(
+            req.getTurnstileToken(),
+            extractClientIp(request)
+        );
+        if (!verification.isSuccess()) {
+            logger.warn("Turnstile verification failed: {}", verification.getMessage());
+            Map<String, Object> body = new HashMap<>();
+            body.put("error", "Turnstile failed");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+        }
+        if (verification.isSkipped()) {
+            logger.warn("Turnstile verification skipped: {}", verification.getMessage());
+        }
+
         Lead lead = new Lead();
         logger.info("Received lead request: name={}, email={}, phone={}", req.getName(), req.getEmail(), req.getPhone());
     lead.setName(SanitizationUtils.sanitizeText(req.getName()));
@@ -75,6 +99,14 @@ public class LeadController {
         body.put("message", "Lead created successfully");
         body.put("id", lead.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
     
     
