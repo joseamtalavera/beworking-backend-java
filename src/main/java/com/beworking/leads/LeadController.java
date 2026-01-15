@@ -68,25 +68,28 @@ public class LeadController {
             return ResponseEntity.ok(body);
         }
 
+        logger.info("🔐 Starting Turnstile verification for lead request");
         TurnstileService.VerificationResult verification = turnstileService.verify(
             req.getTurnstileToken(),
             extractClientIp(request)
         );
         if (!verification.isSuccess()) {
-            logger.warn("Turnstile verification failed: {}", verification.getMessage());
+            logger.warn("❌ Turnstile verification failed: {}", verification.getMessage());
             Map<String, Object> body = new HashMap<>();
             body.put("error", "Turnstile failed");
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
         }
         if (verification.isSkipped()) {
-            logger.warn("Turnstile verification skipped: {}", verification.getMessage());
+            logger.warn("⚠️ Turnstile verification skipped: {}", verification.getMessage());
+        } else {
+            logger.info("✅ Turnstile verification passed - proceeding with lead creation");
         }
 
         Lead lead = new Lead();
         logger.info("Received lead request: name={}, email={}, phone={}", req.getName(), req.getEmail(), req.getPhone());
-    lead.setName(SanitizationUtils.sanitizeText(req.getName()));
-    lead.setEmail(req.getEmail().trim());
-    lead.setPhone(SanitizationUtils.sanitizePhone(req.getPhone()));
+        lead.setName(SanitizationUtils.sanitizeText(req.getName()));
+        lead.setEmail(req.getEmail().trim());
+        lead.setPhone(SanitizationUtils.sanitizePhone(req.getPhone()));
         leadRepository.save(lead);
         
         // Publish event after saving lead. From it goes to LeadEmailListener where the email is sent

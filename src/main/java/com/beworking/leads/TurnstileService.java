@@ -17,19 +17,38 @@ import java.util.List;
 public class TurnstileService {
 
     private static final String VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(TurnstileService.class);
 
+    /**
+     * Service for verifying Cloudflare Turnstile tokens.
+     *
+     * <p>Expects {@code turnstile.secret} to be configured via environment or secrets.
+     */
     // TURNSTILE: secret loaded from environment
     @Value("${turnstile.secret:}")
     private String secret;
 
+    /**
+     * Verify a Turnstile token with Cloudflare.
+     *
+     * @param token    the client-provided Turnstile token.
+     * @param remoteIp optional client IP address for verification context.
+     * @return the verification result, including success/skip flags and message.
+     */
     public VerificationResult verify(String token, String remoteIp) {
+        logger.info("🔍 Starting Turnstile verification - Secret configured: {}", secret != null && !secret.isBlank());
+        
         // If secret missing, skip verification (so dev still works)
         if (secret == null || secret.isBlank()) {
+            logger.warn("⚠️ Turnstile secret not configured - skipping verification");
             return VerificationResult.skip("Turnstile secret not configured");
         }
         if (token == null || token.isBlank()) {
+            logger.warn("⚠️ Turnstile token is missing");
             return VerificationResult.fail("Missing token");
         }
+        
+        logger.info("📤 Sending verification request to Cloudflare (token length: {})", token.length());
 
         RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
@@ -48,13 +67,22 @@ public class TurnstileService {
 
         TurnstileResponse payload = response.getBody();
         if (payload == null) {
+            logger.error("❌ Cloudflare returned empty response");
             return VerificationResult.fail("Empty response");
         }
+        
+        logger.info("📥 Cloudflare verification response - Success: {}", payload.success);
+        if (payload.errorCodes != null && !payload.errorCodes.isEmpty()) {
+            logger.warn("⚠️ Cloudflare error codes: {}", payload.errorCodes);
+        }
+        
         if (payload.success) {
+            logger.info("✅ Turnstile verification successful");
             return VerificationResult.success();
         }
 
         String errors = payload.errorCodes == null ? "" : String.join(",", payload.errorCodes);
+        logger.error("❌ Turnstile verification failed: {}", errors);
         return VerificationResult.fail(errors);
     }
 

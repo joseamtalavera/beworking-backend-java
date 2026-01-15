@@ -22,6 +22,11 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import static org.springframework.security.config.Customizer.withDefaults;
 
+/**
+ * Spring Security configuration for the BeWorking backend.
+ *
+ * <p>Defines CORS, stateless auth, public routes, and request filters.
+ */
 @Configuration
 public class SecurityConfig {
 
@@ -37,16 +42,31 @@ public class SecurityConfig {
         this.rateLimitingFilter = rateLimitingFilter;
     }
 
+    /**
+     * Configure endpoints that bypass Spring Security filters entirely.
+     *
+     * @return the web security customizer.
+     */
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
         return web -> web.ignoring().requestMatchers("/api/health", "/uploads/**");
     }
 
+    /**
+     * Password encoder for credential hashing.
+     *
+     * @return a BCrypt password encoder.
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * CORS configuration for API routes.
+     *
+     * @return the CORS configuration source bound to /api/**.
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
@@ -65,6 +85,13 @@ public class SecurityConfig {
         return source;
     }
 
+    /**
+     * Main Spring Security filter chain configuration.
+     *
+     * @param http the security builder.
+     * @return the configured security filter chain.
+     * @throws Exception if the configuration fails.
+     */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -100,6 +127,13 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Authentication manager wiring for Spring Security.
+     *
+     * @param authenticationConfiguration the auth configuration.
+     * @return the authentication manager.
+     * @throws Exception if resolution fails.
+     */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
         return authenticationConfiguration.getAuthenticationManager();
