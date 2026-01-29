@@ -1,11 +1,14 @@
 package com.beworking.auth;
 
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.Map;
 
 @RestController
@@ -16,6 +19,10 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final RegisterService registerService;
     private final UserRepository userRepository;
+    @Value("${app.security.cookie-secure:true}")
+    private boolean cookieSecure;
+    private static final String ACCESS_COOKIE = "beworking_access";
+    private static final String REFRESH_COOKIE = "beworking_refresh";
 
     public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService, UserRepository userRepository) {
         this.loginService = loginService;
@@ -26,24 +33,88 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        System.out.printf("[AuthController] Login payload received → email=%s password=%s\n",
-                request.getEmail(),
-                request.getPassword());
         var userOpt = loginService.authenticate(request.getEmail(), request.getPassword());
         if (userOpt.isPresent()) {
             User user = userOpt.get();
-            String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
-            System.out.println("[AuthController] Generated token for user " + user.getEmail() + ": " + token); // Log the token
-            return ResponseEntity.ok(new AuthResponse("Login successful", token, user.getRole().name()));
+            if (!user.isEmailConfirmed()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(new AuthResponse("Please confirm your email before logging in", null, null));
+            }
+            String access = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getTenantId());
+            String refresh = jwtUtil.generateRefreshToken(user.getEmail(), user.getRole().name(), user.getTenantId());
+
+            ResponseCookie accessCookie = ResponseCookie.from(ACCESS_COOKIE, access)
+                    .httpOnly(true)
+                    .secure(cookieSecure)
+                    .sameSite("Lax")
+                    .path("/")
+                    .maxAge(Duration.ofMinutes(15))
+                    .build();
+
+            ResponseCookie refreshCookie = ResponseCookie.from(REFRESH_COOKIE, refresh)
+                    .httpOnly(true)
+                    .secure(cookieSecure)
+                    .sameSite("Lax")
+                    .path("/api/auth/refresh")
+                    .maxAge(Duration.ofDays(7))
+                    .build();
+
+            return ResponseEntity.ok()
+                    .header("Set-Cookie", accessCookie.toString())
+                    .header("Set-Cookie", refreshCookie.toString())
+                    .body(new AuthResponse("Login successful", null, user.getRole().name()));
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new AuthResponse("Invalid credentials", null, null));
         }
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new AuthResponse("Missing refresh token", null, null));
+        }
+        try {
+            var claims = jwtUtil.parseToken(refreshToken);
+            if (!"refresh".equals(claims.get("tokenType", String.class))) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new AuthResponse("Invalid token type", null, null));
+            }
+            String email = claims.getSubject();
+            String role = claims.get("role", String.class);
+            Long tenantId = claims.get("tenantId", Long.class);
+
+            String newAccess = jwtUtil.generateAccessToken(email, role, tenantId);
+            String newRefresh = jwtUtil.generateRefreshToken(email, role, tenantId);
+            ResponseCookie accessCookie = ResponseCookie.from(ACCESS_COOKIE, newAccess)
+                    .httpOnly(true)
+                    .secure(cookieSecure)
+                    .sameSite("Lax")
+                    .path("/")
+                    .maxAge(Duration.ofMinutes(15))
+                    .build();
+
+            ResponseCookie refreshCookie = ResponseCookie.from(REFRESH_COOKIE, newRefresh)
+                    .httpOnly(true)
+                    .secure(cookieSecure)
+                    .sameSite("Lax")
+                    .path("/api/auth/refresh")
+                    .maxAge(Duration.ofDays(7))
+                    .build();
+
+            return ResponseEntity.ok()
+                    .header("Set-Cookie", accessCookie.toString())
+                    .header("Set-Cookie", refreshCookie.toString())
+                    .body(new AuthResponse("Token refreshed", null, role));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new AuthResponse("Invalid or expired refresh token", null, null));
+        }
+    }
+
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        System.out.println("Recibido register request: name=" + request.getName() + ", email=" + request.getEmail() + ", password=" + request.getPassword());
         boolean created = registerService.registerUser(request.getName(), request.getEmail(), request.getPassword());
         if (created) {
             return ResponseEntity.ok(new AuthResponse("User registered successfully", null, "USER"));

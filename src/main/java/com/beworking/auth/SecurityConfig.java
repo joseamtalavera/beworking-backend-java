@@ -101,7 +101,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
                 .requestMatchers("/").permitAll()
-                .requestMatchers("/api/health","/api/auth/login", "/api/auth/admin/login", "/api/auth/register", "/api/auth/confirm", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/leads", "/api/mailroom/**", "/api/invoices/*/pdf").permitAll()
+                .requestMatchers("/api/health","/api/auth/login", "/api/auth/admin/login", "/api/auth/register", "/api/auth/confirm", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/refresh", "/api/leads", "/api/mailroom/**", "/api/invoices/*/pdf").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/uploads").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/contact-profiles/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/contact-profiles").permitAll()

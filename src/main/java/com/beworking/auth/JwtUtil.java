@@ -20,7 +20,8 @@ import java.util.Date;
 public class JwtUtil {
     @Value("${jwt.secret}")
     private String jwtSecret; // Step 1: Secret injected here
-    private final long EXPIRATION_TIME = 1000 * 60 * 60; // 1 hour
+    private final long ACCESS_EXPIRATION_MS = 1000 * 60 * 15; // 15 minutes
+    private final long REFRESH_EXPIRATION_MS = 1000L * 60 * 60 * 24 * 7; // 7 days
 
     private Key getSigningKey() {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes()); // Step 3: Used for signing/verifying
@@ -33,14 +34,24 @@ public class JwtUtil {
     // 3. Signs the token with the secret key and HS256 algorithm.
     // 4. Returns the compact JWT string to the client.
     // ---
-    public String generateToken(String email, String role) {
+    private String generateToken(String email, String role, Long tenantId, String tokenType, long expirationMs) {
         return Jwts.builder()
                 .setSubject(email)
                 .claim("role", role)
+                .claim("tenantId", tenantId)
+                .claim("tokenType", tokenType)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
+                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    public String generateAccessToken(String email, String role, Long tenantId) {
+        return generateToken(email, role, tenantId, "access", ACCESS_EXPIRATION_MS);
+    }
+
+    public String generateRefreshToken(String email, String role, Long tenantId) {
+        return generateToken(email, role, tenantId, "refresh", REFRESH_EXPIRATION_MS);
     }
 
     // ---
