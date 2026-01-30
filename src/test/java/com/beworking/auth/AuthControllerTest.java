@@ -81,7 +81,8 @@ public class AuthControllerTest {
         // Mock loginService.authenticate to return the user
         when(loginService.authenticate("user@example.com", "password")).thenReturn(Optional.of(user));
         // Mock jwtUtil.generateToken to return a dummy token
-        when(jwtUtil.generateToken("user@example.com", "USER")).thenReturn("dummy-jwt-token");
+        when(jwtUtil.generateAccessToken("user@example.com", "USER", null)).thenReturn("dummy-jwt-token");
+        when(jwtUtil.generateRefreshToken("user@example.com", "USER", null)).thenReturn("dummy-refresh-token");
 
         String json = "{\"email\":\"user@example.com\",\"password\":\"password\"}";
 
@@ -112,7 +113,8 @@ public class AuthControllerTest {
         // Mock loginService.authenticate to return the admin user
         when(loginService.authenticate("admin@example.com", "adminpass")).thenReturn(Optional.of(admin));
         // Mock jwtUtil.generateToken to return a dummy token
-        when(jwtUtil.generateToken("admin@example.com", "ADMIN")).thenReturn("dummy-admin-jwt-token");
+        when(jwtUtil.generateAccessToken("admin@example.com", "ADMIN", null)).thenReturn("dummy-admin-jwt-token");
+        when(jwtUtil.generateRefreshToken("admin@example.com", "ADMIN", null)).thenReturn("dummy-admin-refresh-token");
 
         String json = "{\"email\":\"admin@example.com\",\"password\":\"adminpass\"}";
 

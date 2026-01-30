@@ -7,6 +7,8 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.beworking.leads.TurnstileService;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.Duration;
 import java.util.Map;
@@ -19,20 +21,27 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final RegisterService registerService;
     private final UserRepository userRepository;
+    private final TurnstileService turnstileService;
     @Value("${app.security.cookie-secure:true}")
     private boolean cookieSecure;
     private static final String ACCESS_COOKIE = "beworking_access";
     private static final String REFRESH_COOKIE = "beworking_refresh";
 
-    public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService, UserRepository userRepository) {
+    public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService, UserRepository userRepository, TurnstileService turnstileService) {
         this.loginService = loginService;
         this.jwtUtil = jwtUtil;
         this.registerService = registerService;
         this.userRepository = userRepository;
+        this.turnstileService = turnstileService;
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        var turnstileResult = turnstileService.verify(request.getTurnstileToken(), httpRequest.getRemoteAddr());
+        if (!turnstileResult.isSuccess()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new AuthResponse("Turnstile verification failed", null, null));
+        }
         var userOpt = loginService.authenticate(request.getEmail(), request.getPassword());
         if (userOpt.isPresent()) {
             User user = userOpt.get();
@@ -114,7 +123,12 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
+        var turnstileResult = turnstileService.verify(request.getTurnstileToken(), httpRequest.getRemoteAddr());
+        if (!turnstileResult.isSuccess()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new AuthResponse("Turnstile verification failed", null, null));
+        }
         boolean created = registerService.registerUser(request.getName(), request.getEmail(), request.getPassword());
         if (created) {
             return ResponseEntity.ok(new AuthResponse("User registered successfully", null, "USER"));

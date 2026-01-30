@@ -28,12 +28,13 @@ class JwtUtilTest {
         String email = "user@example.com";
         String role = "USER";
 
-        String token = jwtUtil.generateToken(email, role);
+        String token = jwtUtil.generateAccessToken(email, role, null);
         assertNotNull(token);
 
         Claims claims = jwtUtil.parseToken(token);
         assertEquals(email, claims.getSubject());
         assertEquals(role, claims.get("role"));
+        assertEquals("access", claims.get("tokenType"));
         assertNotNull(claims.getIssuedAt());
         assertNotNull(claims.getExpiration());
     }

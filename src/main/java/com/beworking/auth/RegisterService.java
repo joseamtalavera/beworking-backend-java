@@ -3,6 +3,8 @@ package com.beworking.auth;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -30,20 +32,24 @@ public class RegisterService {
         if (!isNonBlank(name) || !isNonBlank(email) || !isPasswordValid(password)) {
             return false;
         }
+
+        String normalizedEmail = email.toLowerCase().trim();
+
         // Enforce unique email address.
-        if (userRepository.findByEmail(email).isPresent()) {
+        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
             return false;
         }
 
-        User user = new User(email, passwordEncoder.encode(password), User.Role.USER);
+        User user = new User(normalizedEmail, passwordEncoder.encode(password), User.Role.USER);
         user.setName(name.trim());
         user.setEmailConfirmed(false);
-        user.setConfirmationToken(UUID.randomUUID().toString());
+        String rawToken = UUID.randomUUID().toString();
+        user.setConfirmationToken(hashToken(rawToken));
         user.setConfirmationTokenExpiry(Instant.now().plus(24, ChronoUnit.HOURS));
         userRepository.save(user);
 
         // Fire-and-forget confirmation email after persistence.
-        emailService.sendConfirmationEmail(email, user.getConfirmationToken());
+        emailService.sendConfirmationEmail(email, rawToken);
         return true;
     }
 
@@ -51,7 +57,7 @@ public class RegisterService {
      * Retrieves a user awaiting confirmation by a one-time token.
      */
     public java.util.Optional<User> findByConfirmationToken(String token) {
-        return token == null ? java.util.Optional.empty() : userRepository.findByConfirmationToken(token);
+        return token == null ? java.util.Optional.empty() : userRepository.findByConfirmationToken(hashToken(token));
     }
 
     public void saveUser(User user) {
@@ -59,13 +65,16 @@ public class RegisterService {
     }
 
     public boolean sendPasswordResetEmail(String email) {
+        if (email != null) {
+            email = email.toLowerCase().trim();
+        }
         var userOpt = userRepository.findByEmail(email);
         if (userOpt.isEmpty()) {
             return false;
         }
         User user = userOpt.get();
         String token = UUID.randomUUID().toString();
-        user.setConfirmationToken(token);
+        user.setConfirmationToken(hashToken(token));
         user.setConfirmationTokenExpiry(Instant.now().plus(1, ChronoUnit.HOURS));
         userRepository.save(user);
         emailService.sendPasswordResetEmail(email, token);
@@ -79,7 +88,7 @@ public class RegisterService {
         if (!isPasswordValid(newPassword)) {
             return false;
         }
-        var userOpt = token == null ? java.util.Optional.<User>empty() : userRepository.findByConfirmationToken(token);
+        var userOpt = token == null ? java.util.Optional.<User>empty() : userRepository.findByConfirmationToken(hashToken(token));
         if (userOpt.isEmpty()) {
             return false;
         }
@@ -107,5 +116,19 @@ public class RegisterService {
                 && password.matches(".*[A-Z].*")
                 && password.matches(".*\\d.*")
                 && password.matches(".*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?].*");
+    }
+
+    private String hashToken(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashed = digest.digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hashed) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }

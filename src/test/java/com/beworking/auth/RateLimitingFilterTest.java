@@ -55,7 +55,8 @@ class RateLimitingFilterTest {
         User user = new User("a@b.com", "hashedPassword", User.Role.USER);
         when(userRepository.findByEmail("a@b.com")).thenReturn(Optional.of(user));
         when(loginService.authenticate("a@b.com", "password")).thenReturn(Optional.of(user));
-        when(jwtUtil.generateToken("a@b.com", "USER")).thenReturn("dummyToken");
+        when(jwtUtil.generateAccessToken("a@b.com", "USER", null)).thenReturn("dummyToken");
+        when(jwtUtil.generateRefreshToken("a@b.com", "USER", null)).thenReturn("dummyRefreshToken");
 
         String endpoint = "/api/auth/login";
         for (int i = 1; i <= 5; i++) {

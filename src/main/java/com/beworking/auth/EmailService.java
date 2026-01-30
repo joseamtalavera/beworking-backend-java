@@ -1,6 +1,7 @@
 package com.beworking.auth;
 
-import org.springframework.mail.javamail.JavaMailSender; // 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -10,16 +11,22 @@ import org.slf4j.LoggerFactory;
 
 @Service
 public class EmailService {
-    // This field is used to send emails via Spring's JavaMailSender
     private final JavaMailSender mailSender;
     private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
+
+    @Value("${app.base-url}")
+    private String baseUrl;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
 
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
     }
+
     public void sendConfirmationEmail(String to, String token) {
         String subject = "Confirm your email address";
-        String confirmation = "http://localhost:8080/api/auth/confirm?token=" + token;
+        String confirmation = baseUrl + "/api/auth/confirm?token=" + token;
         String content = "<p>Thank you for registering!</p>"
                 + "<p>Please confirm your email address by clicking the link below:</p>"
                 + "<a href=\"" + confirmation + "\">Confirm Email</a>";
@@ -36,9 +43,10 @@ public class EmailService {
             logger.error("Failed to send confirmation email to {}: {}", to, e.getMessage(), e);
         }
     }
+
     public void sendPasswordResetEmail(String to, String token) {
         String subject = "Reset your password";
-        String resetLink = "http://localhost:3020/main/reset-password?token=" + token;
+        String resetLink = frontendUrl + "/main/reset-password?token=" + token;
         String content = "<p>You requested a password reset.</p>"
                 + "<p>Click the link below to reset your password. This link will expire in 1 hour.</p>"
                 + "<a href='" + resetLink + "'>Reset Password</a>";
@@ -81,7 +89,7 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setTo(to);
             helper.setSubject(subject);
-            helper.setText(htmlContent, true); // true = HTML
+            helper.setText(htmlContent, true);
             if (replyTo != null && !replyTo.isBlank()) {
                 helper.setReplyTo(replyTo);
             }
