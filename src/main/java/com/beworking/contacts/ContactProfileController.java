@@ -29,7 +29,9 @@ public class ContactProfileController {
         @RequestParam(value = "status", required = false) String status,
         @RequestParam(value = "plan", required = false) String plan,
         @RequestParam(value = "tenantType", required = false) String tenantType,
-        @RequestParam(value = "email", required = false) String email
+        @RequestParam(value = "email", required = false) String email,
+        @RequestParam(value = "startDate", required = false) String startDate,
+        @RequestParam(value = "endDate", required = false) String endDate
     ) {
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -51,19 +53,19 @@ public class ContactProfileController {
             if (user.getTenantId() != null) {
                 // Filter to only show the user's own contact
                 ContactProfilesPageResponse profiles = contactProfileService.getContactProfilesByTenantId(
-                    user.getTenantId(), page, size, search, status, plan, tenantType, email
+                    user.getTenantId(), page, size, search, status, plan, tenantType, email, startDate, endDate
                 );
                 return ResponseEntity.ok(profiles);
             } else {
                 // User has no tenantId, try to find their contact by email
                 ContactProfilesPageResponse profiles = contactProfileService.getContactProfilesByEmail(
-                    user.getEmail(), page, size, search, status, plan, tenantType, email
+                    user.getEmail(), page, size, search, status, plan, tenantType, email, startDate, endDate
                 );
                 return ResponseEntity.ok(profiles);
             }
         } else {
             // Admins can see all contacts
-            ContactProfilesPageResponse profiles = contactProfileService.getContactProfiles(page, size, search, status, plan, tenantType, email);
+            ContactProfilesPageResponse profiles = contactProfileService.getContactProfiles(page, size, search, status, plan, tenantType, email, startDate, endDate);
             return ResponseEntity.ok(profiles);
         }
     }

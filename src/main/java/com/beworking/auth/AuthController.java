@@ -71,7 +71,7 @@ public class AuthController {
             return ResponseEntity.ok()
                     .header("Set-Cookie", accessCookie.toString())
                     .header("Set-Cookie", refreshCookie.toString())
-                    .body(new AuthResponse("Login successful", null, user.getRole().name()));
+                    .body(new AuthResponse("Login successful", access, user.getRole().name()));
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new AuthResponse("Invalid credentials", null, null));
@@ -115,7 +115,7 @@ public class AuthController {
             return ResponseEntity.ok()
                     .header("Set-Cookie", accessCookie.toString())
                     .header("Set-Cookie", refreshCookie.toString())
-                    .body(new AuthResponse("Token refreshed", null, role));
+                    .body(new AuthResponse("Token refreshed", newAccess, role));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new AuthResponse("Invalid or expired refresh token", null, null));

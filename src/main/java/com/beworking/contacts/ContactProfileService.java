@@ -43,11 +43,11 @@ public class ContactProfileService {
     }
 
     @Transactional(readOnly = true)
-    public ContactProfilesPageResponse getContactProfiles(int page, int size, String search, String status, String plan, String tenantType, String email) {
+    public ContactProfilesPageResponse getContactProfiles(int page, int size, String search, String status, String plan, String tenantType, String email, String startDate, String endDate) {
         int pageIndex = Math.max(page, 0);
         int pageSize = Math.max(1, size);
 
-        Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
+        Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email, startDate, endDate);
         Page<ContactProfile> profiles = repository.findAll(
             specification,
             PageRequest.of(pageIndex, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"))
@@ -70,12 +70,12 @@ public class ContactProfileService {
     }
 
     @Transactional(readOnly = true)
-    public ContactProfilesPageResponse getContactProfilesByTenantId(Long tenantId, int page, int size, String search, String status, String plan, String tenantType, String email) {
+    public ContactProfilesPageResponse getContactProfilesByTenantId(Long tenantId, int page, int size, String search, String status, String plan, String tenantType, String email, String startDate, String endDate) {
         System.out.println("getContactProfilesByTenantId called with tenantId: " + tenantId);
         int pageIndex = Math.max(page, 0);
         int pageSize = Math.max(1, size);
 
-        Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
+        Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email, startDate, endDate);
         // Add tenantId filter - the user's tenantId should match the contact's id
         specification = specification.and((root, query, criteriaBuilder) -> 
             criteriaBuilder.equal(root.get("id"), tenantId)
@@ -114,11 +114,11 @@ public class ContactProfileService {
 
     }
 
-    public ContactProfilesPageResponse getContactProfilesByEmail(String userEmail, int page, int size, String search, String status, String plan, String tenantType, String email) {
+    public ContactProfilesPageResponse getContactProfilesByEmail(String userEmail, int page, int size, String search, String status, String plan, String tenantType, String email, String startDate, String endDate) {
         int pageIndex = Math.max(page, 0);
         int pageSize = Math.max(1, size);
 
-        Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email);
+        Specification<ContactProfile> specification = buildSpecification(search, status, plan, tenantType, email, startDate, endDate);
         // Add email filter - find contact by user's email
         specification = specification.and((root, query, criteriaBuilder) -> 
             criteriaBuilder.equal(root.get("emailPrimary"), userEmail)
@@ -145,8 +145,24 @@ public class ContactProfileService {
         );
     }
 
-    private Specification<ContactProfile> buildSpecification(String search, String status, String plan, String tenantType, String email) {
-        Specification<ContactProfile> specification = Specification.where(null);
+    private Specification<ContactProfile> buildSpecification(String search, String status, String plan, String tenantType, String email, String startDate, String endDate) {
+        // Baseline: exclude contacts that have no real name or no email at all
+        Specification<ContactProfile> specification = Specification.where((root, query, cb) -> {
+            // Name must be non-null, non-blank, and not an auto-generated placeholder like "Cliente 12345"
+            var hasRealName = cb.and(
+                cb.isNotNull(root.get("name")),
+                cb.notEqual(cb.trim(root.get("name")), ""),
+                cb.not(cb.like(root.get("name"), "Cliente %"))
+            );
+            // At least one email field must be populated
+            var hasEmail = cb.or(
+                cb.and(cb.isNotNull(root.get("emailPrimary")), cb.notEqual(cb.trim(root.get("emailPrimary")), "")),
+                cb.and(cb.isNotNull(root.get("emailSecondary")), cb.notEqual(cb.trim(root.get("emailSecondary")), "")),
+                cb.and(cb.isNotNull(root.get("emailTertiary")), cb.notEqual(cb.trim(root.get("emailTertiary")), "")),
+                cb.and(cb.isNotNull(root.get("representativeEmail")), cb.notEqual(cb.trim(root.get("representativeEmail")), ""))
+            );
+            return cb.and(hasRealName, hasEmail);
+        });
 
         if (search != null && !search.isBlank()) {
             String likePattern = "%" + search.trim().toLowerCase() + "%";
@@ -197,7 +213,7 @@ public class ContactProfileService {
 
         if (email != null && !email.isBlank()) {
             String normalizedEmail = email.trim().toLowerCase();
-            specification = specification.and((root, query, criteriaBuilder) -> 
+            specification = specification.and((root, query, criteriaBuilder) ->
                 criteriaBuilder.or(
                     criteriaBuilder.like(criteriaBuilder.lower(root.get("emailPrimary")), "%" + normalizedEmail + "%"),
                     criteriaBuilder.like(criteriaBuilder.lower(root.get("emailSecondary")), "%" + normalizedEmail + "%"),
@@ -205,6 +221,28 @@ public class ContactProfileService {
                     criteriaBuilder.like(criteriaBuilder.lower(root.get("representativeEmail")), "%" + normalizedEmail + "%")
                 )
             );
+        }
+
+        if (startDate != null && !startDate.isBlank()) {
+            try {
+                LocalDateTime start = java.time.LocalDate.parse(startDate.trim()).atStartOfDay();
+                specification = specification.and((root, query, cb) ->
+                    cb.greaterThanOrEqualTo(root.get("createdAt"), start)
+                );
+            } catch (Exception ignored) {
+                // Invalid date format, skip filter
+            }
+        }
+
+        if (endDate != null && !endDate.isBlank()) {
+            try {
+                LocalDateTime end = java.time.LocalDate.parse(endDate.trim()).atTime(23, 59, 59);
+                specification = specification.and((root, query, cb) ->
+                    cb.lessThanOrEqualTo(root.get("createdAt"), end)
+                );
+            } catch (Exception ignored) {
+                // Invalid date format, skip filter
+            }
         }
 
         return specification;
