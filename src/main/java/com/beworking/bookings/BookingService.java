@@ -85,6 +85,70 @@ class BookingService {
     }
 
     @Transactional
+    CreateReservaResponse createPublicBooking(PublicBookingRequest request) {
+        Producto producto = productoRepository.findByNombreIgnoreCase(request.getProductName())
+            .orElseThrow(() -> new IllegalArgumentException("Product not found: " + request.getProductName()));
+
+        Centro centro = centroRepository.findByCodigoIgnoreCase(producto.getCentroCodigo())
+            .orElseThrow(() -> new IllegalArgumentException("Centro not found for product: " + request.getProductName()));
+
+        String email = request.getEmail().trim().toLowerCase();
+        ContactProfile contact = contactRepository
+            .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                email, email, email, email)
+            .orElseGet(() -> {
+                ContactProfile newContact = new ContactProfile();
+                Long nextId = contactRepository.findMaxId().map(v -> v + 1L).orElse(1L);
+                newContact.setId(nextId);
+                newContact.setName(request.getCompany() != null && !request.getCompany().isBlank()
+                    ? request.getCompany()
+                    : request.getFirstName() + " " + request.getLastName());
+                newContact.setContactName(request.getFirstName() + " " + request.getLastName());
+                newContact.setEmailPrimary(email);
+                newContact.setPhonePrimary(request.getPhone());
+                newContact.setRepresentativeFirstName(request.getFirstName());
+                newContact.setRepresentativeLastName(request.getLastName());
+                newContact.setRepresentativeEmail(email);
+                newContact.setRepresentativePhone(request.getPhone());
+                newContact.setBillingName(request.getCompany());
+                newContact.setBillingTaxId(request.getTaxId());
+                newContact.setBillingAddress(request.getBillingAddress());
+                newContact.setBillingCity(request.getBillingCity());
+                newContact.setBillingProvince(request.getBillingProvince());
+                newContact.setBillingCountry(request.getBillingCountry());
+                newContact.setBillingPostalCode(request.getBillingPostalCode());
+                newContact.setTenantType("Por Horas");
+                newContact.setStatus("Activo");
+                newContact.setActive(true);
+                newContact.setChannel("Web");
+                newContact.setCreatedAt(java.time.LocalDateTime.now());
+                return contactRepository.save(newContact);
+            });
+
+        CreateReservaRequest reservaRequest = new CreateReservaRequest();
+        reservaRequest.setContactId(contact.getId());
+        reservaRequest.setCentroId(centro.getId());
+        reservaRequest.setProductoId(producto.getId());
+        reservaRequest.setReservationType("Por Horas");
+        reservaRequest.setDateFrom(request.getDate());
+        reservaRequest.setDateTo(request.getDate());
+        reservaRequest.setStatus("Pendiente");
+        reservaRequest.setAttendees(request.getAttendees());
+
+        CreateReservaRequest.TimeSlot slot = new CreateReservaRequest.TimeSlot();
+        slot.setFrom(request.getStartTime());
+        slot.setTo(request.getEndTime());
+        reservaRequest.setTimeSlots(List.of(slot));
+
+        String note = request.getStripePaymentIntentId() != null
+            ? "Stripe PI: " + request.getStripePaymentIntentId()
+            : null;
+        reservaRequest.setNote(note);
+
+        return createReserva(reservaRequest, null);
+    }
+
+    @Transactional
     CreateReservaResponse createReserva(CreateReservaRequest request, User user) {
         if (request.getDateFrom().isAfter(request.getDateTo())) {
             throw new IllegalArgumentException("dateFrom must be on or before dateTo");

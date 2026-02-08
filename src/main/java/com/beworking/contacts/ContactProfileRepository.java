@@ -24,4 +24,7 @@ public interface ContactProfileRepository extends JpaRepository<ContactProfile, 
         String emailTertiary,
         String representativeEmail
     );
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(c.id) FROM ContactProfile c")
+    Optional<Long> findMaxId();
 }
