@@ -56,7 +56,7 @@ INSERT INTO beworking.rooms (
     0,
     true,
     'Coworking,Mesa individual,Acceso 24h',
-    'https://app.be-working.com/api/images/MA1O1-1-0-featured.jpg'
+    'https://app.be-working.com/img/MA1O1-1-0-featured-20220512103754.jpg'
 )
 ON CONFLICT (code) DO UPDATE SET
     name = EXCLUDED.name,
@@ -95,11 +95,11 @@ BEGIN
     DELETE FROM beworking.room_amenities WHERE room_id = v_room_id;
 
     INSERT INTO beworking.room_images (room_id, url, caption, is_featured, sort_order) VALUES
-        (v_room_id, 'https://app.be-working.com/api/images/MA1O1-1-0-featured.jpg', 'Puesto de trabajo coworking', true, 1),
-        (v_room_id, 'https://app.be-working.com/api/images/MA1O1-1-1.jpg', 'Espacio de coworking', false, 2),
-        (v_room_id, 'https://app.be-working.com/api/images/MA1O1-1-2.jpg', 'Zona de trabajo compartida', false, 3),
-        (v_room_id, 'https://app.be-working.com/api/images/MA1O1-1-3.jpg', 'Detalle del puesto', false, 4),
-        (v_room_id, 'https://app.be-working.com/api/images/MA1O1-1-4.jpg', 'Vista general', false, 5);
+        (v_room_id, 'https://app.be-working.com/img/MA1O1-1-0-featured-20220512103754.jpg', 'Puesto de trabajo coworking', true, 1),
+        (v_room_id, 'https://app.be-working.com/img/MA1O1-1-1-20220512103754.jpg', 'Espacio de coworking', false, 2),
+        (v_room_id, 'https://app.be-working.com/img/MA1O1-1-2-20220512103754.jpg', 'Zona de trabajo compartida', false, 3),
+        (v_room_id, 'https://app.be-working.com/img/MA1O1-1-3-20220512103754.jpg', 'Detalle del puesto', false, 4),
+        (v_room_id, 'https://app.be-working.com/img/MA1O1-1-4-20220512103754.jpg', 'Vista general', false, 5);
 
     INSERT INTO beworking.room_amenities (room_id, amenity_code) VALUES
         (v_room_id, 'Acceso 24h'),
