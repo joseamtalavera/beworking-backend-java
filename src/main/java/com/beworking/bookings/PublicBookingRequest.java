@@ -39,6 +39,8 @@ public class PublicBookingRequest {
     @NotNull
     private LocalDate date;
 
+    private LocalDate dateTo;
+
     @NotBlank
     private String startTime;
 
@@ -48,6 +50,8 @@ public class PublicBookingRequest {
     private Integer attendees;
 
     private String stripePaymentIntentId;
+
+    private String stripeSubscriptionId;
 
     public String getFirstName() {
         return firstName;
@@ -183,5 +187,21 @@ public class PublicBookingRequest {
 
     public void setStripePaymentIntentId(String stripePaymentIntentId) {
         this.stripePaymentIntentId = stripePaymentIntentId;
+    }
+
+    public LocalDate getDateTo() {
+        return dateTo;
+    }
+
+    public void setDateTo(LocalDate dateTo) {
+        this.dateTo = dateTo;
+    }
+
+    public String getStripeSubscriptionId() {
+        return stripeSubscriptionId;
+    }
+
+    public void setStripeSubscriptionId(String stripeSubscriptionId) {
+        this.stripeSubscriptionId = stripeSubscriptionId;
     }
 }

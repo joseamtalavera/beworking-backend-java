@@ -131,7 +131,7 @@ class BookingService {
         reservaRequest.setProductoId(producto.getId());
         reservaRequest.setReservationType("Por Horas");
         reservaRequest.setDateFrom(request.getDate());
-        reservaRequest.setDateTo(request.getDate());
+        reservaRequest.setDateTo(request.getDateTo() != null ? request.getDateTo() : request.getDate());
         reservaRequest.setStatus("Pendiente");
         reservaRequest.setAttendees(request.getAttendees());
 
@@ -140,9 +140,15 @@ class BookingService {
         slot.setTo(request.getEndTime());
         reservaRequest.setTimeSlots(List.of(slot));
 
-        String note = request.getStripePaymentIntentId() != null
-            ? "Stripe PI: " + request.getStripePaymentIntentId()
-            : null;
+        String note = null;
+        if (request.getStripeSubscriptionId() != null) {
+            note = "Stripe Sub: " + request.getStripeSubscriptionId();
+            if (request.getStripePaymentIntentId() != null) {
+                note += " | PI: " + request.getStripePaymentIntentId();
+            }
+        } else if (request.getStripePaymentIntentId() != null) {
+            note = "Stripe PI: " + request.getStripePaymentIntentId();
+        }
         reservaRequest.setNote(note);
 
         return createReserva(reservaRequest, null);
