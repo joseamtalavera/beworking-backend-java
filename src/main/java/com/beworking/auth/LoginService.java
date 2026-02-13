@@ -22,9 +22,6 @@ public class LoginService {
         Optional<User> userOpt = userRepository.findByEmail(email);
         if (userOpt.isPresent()) {
             User user = userOpt.get();
-            if (!user.isEmailConfirmed()) {
-                return Optional.empty();
-            }
             if (passwordEncoder.matches(password, user.getPassword())) {
                 return Optional.of(user);
             }

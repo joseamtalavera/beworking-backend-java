@@ -7,6 +7,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -26,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 class BookingService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingService.class);
+    private static final String FREE_PRODUCT_NAME = "MA1A1";
+    private static final int FREE_MONTHLY_LIMIT = 5;
 
     private final ReservaRepository reservaRepository;
     private final BloqueoRepository bloqueoRepository;
@@ -141,14 +144,33 @@ class BookingService {
         reservaRequest.setTimeSlots(List.of(slot));
 
         String note = null;
-        if (request.getStripeSubscriptionId() != null) {
-            note = "Stripe Sub: " + request.getStripeSubscriptionId();
-            if (request.getStripePaymentIntentId() != null) {
-                note += " | PI: " + request.getStripePaymentIntentId();
+        boolean isFreeEligible = false;
+
+        if (FREE_PRODUCT_NAME.equalsIgnoreCase(producto.getNombre())) {
+            YearMonth currentMonth = YearMonth.now();
+            LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
+            LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
+            long usedThisMonth = reservaRepository.countByContactAndProductInMonth(
+                contact.getId(), producto.getId(), monthStart, monthEnd);
+
+            if (usedThisMonth < FREE_MONTHLY_LIMIT) {
+                isFreeEligible = true;
+                note = "Free booking (" + (usedThisMonth + 1) + " of " + FREE_MONTHLY_LIMIT + ")";
+                reservaRequest.setStatus("Paid");
             }
-        } else if (request.getStripePaymentIntentId() != null) {
-            note = "Stripe PI: " + request.getStripePaymentIntentId();
         }
+
+        if (!isFreeEligible) {
+            if (request.getStripeSubscriptionId() != null) {
+                note = "Stripe Sub: " + request.getStripeSubscriptionId();
+                if (request.getStripePaymentIntentId() != null) {
+                    note += " | PI: " + request.getStripePaymentIntentId();
+                }
+            } else if (request.getStripePaymentIntentId() != null) {
+                note = "Stripe PI: " + request.getStripePaymentIntentId();
+            }
+        }
+
         reservaRequest.setNote(note);
 
         return createReserva(reservaRequest, null);

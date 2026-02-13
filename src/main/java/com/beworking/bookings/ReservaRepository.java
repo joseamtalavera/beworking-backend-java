@@ -1,6 +1,7 @@
 package com.beworking.bookings;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -33,4 +34,17 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
                                @Param("centerId") Long centerId,
                                @Param("applyFrom") boolean applyFrom,
                                @Param("applyTo") boolean applyTo);
+
+    @Query("""
+        SELECT COUNT(r)
+        FROM Reserva r
+        WHERE r.cliente.id = :contactId
+          AND r.producto.id = :productoId
+          AND r.creacionFecha >= :monthStart
+          AND r.creacionFecha < :monthEnd
+    """)
+    long countByContactAndProductInMonth(@Param("contactId") Long contactId,
+                                         @Param("productoId") Long productoId,
+                                         @Param("monthStart") LocalDateTime monthStart,
+                                         @Param("monthEnd") LocalDateTime monthEnd);
 }

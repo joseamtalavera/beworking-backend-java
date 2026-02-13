@@ -52,8 +52,12 @@ public class PublicLookupController {
             .filter(room -> typeFilter == null || (room.getType() != null && room.getType().toLowerCase().equals(typeFilter)))
             .filter(room -> centerFilter == null || (room.getCentroCode() != null && room.getCentroCode().toLowerCase().equals(centerFilter)))
             .sorted(Comparator.comparing(room -> Optional.ofNullable(room.getCode()).orElse("")))
-            .map(room -> new ProductoLookupResponse(
-                room.getId(),
+            .map(room -> {
+                Long productoId = productoRepository.findByNombreIgnoreCase(room.getCode())
+                    .map(Producto::getId)
+                    .orElse(room.getId());
+                return new ProductoLookupResponse(
+                productoId,
                 room.getCode(),
                 room.getType(),
                 room.getCentroCode(),
@@ -71,7 +75,8 @@ public class PublicLookupController {
                     ? List.of()
                     : List.of(room.getTags().split("\\s*,\\s*")),
                 room.getImages().stream().map(img -> img.getUrl()).toList()
-            ))
+                );
+            })
             .collect(Collectors.toList());
 
         if (!fromRooms.isEmpty()) {
