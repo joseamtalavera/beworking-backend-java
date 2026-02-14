@@ -35,6 +35,17 @@ public class InvoicePdfController {
     private static final Locale LOCALE_ES = new Locale("es", "ES");
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy", LOCALE_ES);
 
+    // Brand colors
+    private static final Color BRAND_GREEN = new Color(0, 150, 36);       // #009624
+    private static final Color BRAND_GREEN_DARK = new Color(0, 122, 29);  // #007a1d
+    private static final Color BRAND_GREEN_LIGHT = new Color(46, 204, 113); // #2ecc71
+    private static final Color INK = new Color(26, 26, 26);               // #1a1a1a
+    private static final Color MUTED = new Color(113, 113, 122);          // #71717a
+    private static final Color BORDER = new Color(229, 229, 229);         // #e5e5e5
+    private static final Color BG_LIGHT = new Color(250, 250, 250);       // #fafafa
+    private static final Color TABLE_HEADER_BG = new Color(245, 245, 245); // #f5f5f5
+    private static final Color WHITE = Color.WHITE;
+
     private final JdbcTemplate jdbcTemplate;
 
     public InvoicePdfController(JdbcTemplate jdbcTemplate) {
@@ -176,6 +187,8 @@ public class InvoicePdfController {
         }
     }
 
+    // ─── Drawing ────────────────────────────────────────────────────────
+
     private void drawInvoice(PDDocument doc,
                              PDPage page,
                              InvoiceHeader header,
@@ -197,34 +210,36 @@ public class InvoicePdfController {
         NumberFormat numberFormat = NumberFormat.getNumberInstance(LOCALE_ES);
         numberFormat.setMaximumFractionDigits(2);
 
-        Color primary = new Color(25, 25, 25);
-        Color mutedText = new Color(110, 118, 129);
-        Color lightLine = new Color(210, 214, 220);
-
         PDPage currentPage = page;
         PDPageContentStream cs = null;
         try {
             cs = new PDPageContentStream(doc, currentPage);
-            float cursorY = drawHeaderSection(cs, header, clientInfo, centerName, total, currencyFormat,
-                contentWidth, height, margin, primary, mutedText, lightLine, true);
 
+            // Green accent bar at top of page
+            drawTopBar(cs, width);
+
+            float cursorY = drawHeaderSection(cs, header, clientInfo, centerName, total, currencyFormat,
+                contentWidth, height, margin, true);
+
+            // Table
             float[] colWidths = new float[]{
-                contentWidth * 0.4f,
-                contentWidth * 0.1f,
-                contentWidth * 0.2f,
-                contentWidth * 0.3f
+                contentWidth * 0.42f,
+                contentWidth * 0.12f,
+                contentWidth * 0.20f,
+                contentWidth * 0.26f
             };
-            float headerRowHeight = 24f;
+            float headerRowHeight = 28f;
             float tableWidth = sum(colWidths);
 
-            float currentY = drawTableHeader(cs, margin, colWidths, headerRowHeight, cursorY, primary);
+            float currentY = drawTableHeader(cs, margin, colWidths, headerRowHeight, cursorY);
 
-            List<LineItem> rows = lines.isEmpty() ? List.of(new LineItem("—", null, null, null)) : lines;
-            float summaryReserve = 140f;
+            List<LineItem> rows = lines.isEmpty() ? List.of(new LineItem("\u2014", null, null, null)) : lines;
+            float summaryReserve = 160f;
+
             for (int i = 0; i < rows.size(); i++) {
                 LineItem line = rows.get(i);
-                List<String> descLines = wrapText(line.concept(), PDType1Font.HELVETICA, 10, colWidths[0] - 16);
-                float bodyHeight = Math.max(24f, descLines.size() * 12f + 12f);
+                List<String> descLines = wrapText(line.concept(), PDType1Font.HELVETICA, 9.5f, colWidths[0] - 20);
+                float bodyHeight = Math.max(28f, descLines.size() * 13f + 15f);
                 boolean isLastRow = (i == rows.size() - 1);
                 float reserve = isLastRow ? summaryReserve : 30f;
 
@@ -233,64 +248,119 @@ public class InvoicePdfController {
                     currentPage = new PDPage(PDRectangle.A4);
                     doc.addPage(currentPage);
                     cs = new PDPageContentStream(doc, currentPage);
+                    drawTopBar(cs, width);
                     cursorY = drawHeaderSection(cs, header, clientInfo, centerName, total, currencyFormat,
-                        contentWidth, height, margin, primary, mutedText, lightLine, false);
-                    currentY = drawTableHeader(cs, margin, colWidths, headerRowHeight, cursorY, primary);
+                        contentWidth, height, margin, false);
+                    currentY = drawTableHeader(cs, margin, colWidths, headerRowHeight, cursorY);
                 }
 
-                float cellY = currentY - 12;
-                float cellX = margin + 8;
-                cs.setNonStrokingColor(primary);
+                // Alternating row background
+                if (i % 2 == 0) {
+                    fillRect(cs, margin, currentY - bodyHeight, contentWidth, bodyHeight, BG_LIGHT);
+                }
+
+                // Row content
+                float cellY = currentY - 14;
+                float cellX = margin + 10;
+                cs.setNonStrokingColor(INK);
                 for (String desc : descLines) {
-                    addText(cs, PDType1Font.HELVETICA, 10, cellX, cellY, desc);
-                    cellY -= 12;
+                    addText(cs, PDType1Font.HELVETICA, 9.5f, cellX, cellY, desc);
+                    cellY -= 13;
                 }
 
-                String quantityText = line.quantity() != null ? numberFormat.format(line.quantity()) : "—";
-                String unitText = line.unitPrice() != null ? currencyFormat.format(line.unitPrice()) : "—";
-                String lineTotalText = line.total() != null ? currencyFormat.format(line.total()) : "—";
+                String quantityText = line.quantity() != null ? numberFormat.format(line.quantity()) : "\u2014";
+                String unitText = line.unitPrice() != null ? currencyFormat.format(line.unitPrice()) : "\u2014";
+                String lineTotalText = line.total() != null ? currencyFormat.format(line.total()) : "\u2014";
 
-                addText(cs, PDType1Font.HELVETICA, 10, margin + colWidths[0] + 8, currentY - 12, quantityText);
-                addTextRightAligned(cs, PDType1Font.HELVETICA, 10, margin + colWidths[0] + colWidths[1] + colWidths[2] - 8, currentY - 12, unitText);
-                addTextRightAligned(cs, PDType1Font.HELVETICA, 10, margin + tableWidth - 8, currentY - 12, lineTotalText);
+                cs.setNonStrokingColor(INK);
+                addText(cs, PDType1Font.HELVETICA, 9.5f, margin + colWidths[0] + 10, currentY - 14, quantityText);
+                addTextRightAligned(cs, PDType1Font.HELVETICA, 9.5f, margin + colWidths[0] + colWidths[1] + colWidths[2] - 10, currentY - 14, unitText);
+                addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 9.5f, margin + tableWidth - 10, currentY - 14, lineTotalText);
+
+                // Row separator line
+                cs.setStrokingColor(BORDER);
+                cs.setLineWidth(0.4f);
+                cs.moveTo(margin, currentY - bodyHeight);
+                cs.lineTo(margin + contentWidth, currentY - bodyHeight);
+                cs.stroke();
 
                 currentY -= bodyHeight;
             }
 
+            // Ensure space for summary
             if (currentY < margin + summaryReserve) {
                 cs.close();
                 currentPage = new PDPage(PDRectangle.A4);
                 doc.addPage(currentPage);
                 cs = new PDPageContentStream(doc, currentPage);
+                drawTopBar(cs, width);
                 cursorY = drawHeaderSection(cs, header, clientInfo, centerName, total, currencyFormat,
-                    contentWidth, height, margin, primary, mutedText, lightLine, false);
-                currentY = drawTableHeader(cs, margin, colWidths, headerRowHeight, cursorY, primary);
+                    contentWidth, height, margin, false);
+                currentY = drawTableHeader(cs, margin, colWidths, headerRowHeight, cursorY);
             }
 
-            float summaryLabelX = margin + contentWidth * 0.6f;
-            float summaryY = currentY - 12;
-            cs.setNonStrokingColor(primary);
-            addText(cs, PDType1Font.HELVETICA, 10, summaryLabelX, summaryY, "Base imponible");
+            // ─── Summary section ─────────────────────────────────────
+            float summaryWidth = contentWidth * 0.38f;
+            float summaryX = margin + contentWidth - summaryWidth;
+            float summaryY = currentY - 20;
+
+            // Subtotal row
+            cs.setNonStrokingColor(MUTED);
+            addText(cs, PDType1Font.HELVETICA, 10, summaryX, summaryY, "Base imponible");
+            cs.setNonStrokingColor(INK);
             addTextRightAligned(cs, PDType1Font.HELVETICA, 10, margin + contentWidth, summaryY, formatCurrency(subtotal, currencyFormat));
 
-            summaryY -= 16;
+            // VAT row
+            summaryY -= 20;
             String vatLabel = header.vatPercent() != null
                 ? "IVA " + header.vatPercent().stripTrailingZeros().toPlainString() + "%"
                 : "IVA";
-            addText(cs, PDType1Font.HELVETICA, 10, summaryLabelX, summaryY, vatLabel);
+            cs.setNonStrokingColor(MUTED);
+            addText(cs, PDType1Font.HELVETICA, 10, summaryX, summaryY, vatLabel);
+            cs.setNonStrokingColor(INK);
             addTextRightAligned(cs, PDType1Font.HELVETICA, 10, margin + contentWidth, summaryY, formatCurrency(taxAmount, currencyFormat));
 
-            summaryY -= 18;
-            addText(cs, PDType1Font.HELVETICA_BOLD, 12, summaryLabelX, summaryY, "TOTAL");
-            addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 12, margin + contentWidth, summaryY, formatCurrency(total, currencyFormat));
+            // Divider before total
+            summaryY -= 12;
+            cs.setStrokingColor(BRAND_GREEN);
+            cs.setLineWidth(1.2f);
+            cs.moveTo(summaryX, summaryY);
+            cs.lineTo(margin + contentWidth, summaryY);
+            cs.stroke();
 
-            summaryY -= 40;
-            addText(cs, PDType1Font.HELVETICA, 9, margin, summaryY, "Gracias por ser parte de la comunidad BeWorking.");
+            // Total row with green background pill
+            summaryY -= 6;
+            float totalBoxH = 28f;
+            fillRoundedRect(cs, summaryX - 4, summaryY - totalBoxH + 6, summaryWidth + 4, totalBoxH, 6f, BRAND_GREEN);
+
+            cs.setNonStrokingColor(WHITE);
+            addText(cs, PDType1Font.HELVETICA_BOLD, 11, summaryX + 8, summaryY - 12, "TOTAL");
+            addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 12, margin + contentWidth - 8, summaryY - 12, formatCurrency(total, currencyFormat));
+
+            // ─── Footer ──────────────────────────────────────────────
+            float footerY = margin + 16;
+            cs.setStrokingColor(BORDER);
+            cs.setLineWidth(0.5f);
+            cs.moveTo(margin, footerY + 12);
+            cs.lineTo(margin + contentWidth, footerY + 12);
+            cs.stroke();
+
+            cs.setNonStrokingColor(MUTED);
+            addText(cs, PDType1Font.HELVETICA, 8, margin, footerY, "Gracias por ser parte de la comunidad BeWorking.");
+            addTextRightAligned(cs, PDType1Font.HELVETICA, 8, margin + contentWidth, footerY, "be-working.com");
+
         } finally {
             if (cs != null) {
                 cs.close();
             }
         }
+    }
+
+    /**
+     * Draws a green accent bar across the top of the page.
+     */
+    private void drawTopBar(PDPageContentStream cs, float pageWidth) throws IOException {
+        fillRect(cs, 0, PDRectangle.A4.getHeight() - 6, pageWidth, 6, BRAND_GREEN);
     }
 
     private float drawHeaderSection(PDPageContentStream cs,
@@ -302,79 +372,100 @@ public class InvoicePdfController {
                                     float contentWidth,
                                     float height,
                                     float margin,
-                                    Color primary,
-                                    Color mutedText,
-                                    Color lightLine,
                                     boolean includeDetails) throws IOException {
-        float cursorY = height - margin;
+        float cursorY = height - margin - 10; // below the top bar
 
-        cs.setNonStrokingColor(primary);
-        addText(cs, PDType1Font.HELVETICA_BOLD, 20, margin, cursorY, "BeWorking");
+        // Brand name
+        cs.setNonStrokingColor(BRAND_GREEN);
+        addText(cs, PDType1Font.HELVETICA_BOLD, 22, margin, cursorY, "BeWorking");
 
-        List<String> companyLines = List.of(
-            "BeWorking Partners Offices SL",
-            "Calle Alejandro Dumas, 17 · Oficinas",
-            "Málaga (29004), Málaga, España",
-            "accounts@be-working.com",
-            "NIF: B09665258"
-        );
-        float companyY = cursorY - 14;
-        for (String line : companyLines) {
-            addText(cs, PDType1Font.HELVETICA, 10, margin, companyY, line);
-            companyY -= 12;
-        }
+        // Company info to the right
+        cs.setNonStrokingColor(MUTED);
+        float companyX = margin + contentWidth;
+        float companyY = cursorY;
+        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, "BeWorking Partners Offices SL");
+        companyY -= 11;
+        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, "Calle Alejandro Dumas, 17 \u00b7 Oficinas");
+        companyY -= 11;
+        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, "M\u00e1laga (29004), M\u00e1laga, Espa\u00f1a");
+        companyY -= 11;
+        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, "accounts@be-working.com \u00b7 NIF: B09665258");
 
-        cursorY = companyY - 16;
-        cs.setStrokingColor(lightLine);
-        cs.setLineWidth(0.8f);
+        cursorY = companyY - 18;
+
+        // Divider
+        cs.setStrokingColor(BORDER);
+        cs.setLineWidth(0.6f);
         cs.moveTo(margin, cursorY);
         cs.lineTo(margin + contentWidth, cursorY);
         cs.stroke();
 
-        cursorY -= 24;
+        cursorY -= 22;
+
+        // Invoice title badge
+        String invoiceLabel = "FACTURA";
+        String invoiceNumber = "#" + header.displayNumber();
+        cs.setNonStrokingColor(BRAND_GREEN);
+        addText(cs, PDType1Font.HELVETICA_BOLD, 9, margin, cursorY + 2, invoiceLabel);
+        cs.setNonStrokingColor(INK);
+        float labelWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(invoiceLabel) / 1000f * 9f;
+        addText(cs, PDType1Font.HELVETICA_BOLD, 14, margin + labelWidth + 6, cursorY, invoiceNumber);
+
+        // Date on the right
         String dateLabel = header.issuedAt() != null
             ? DATE_FORMAT.format(header.issuedAt().atZone(ZoneId.systemDefault()))
-            : "—";
-        addText(cs, PDType1Font.HELVETICA_BOLD, 13, margin, cursorY, "FACTURA #" + header.displayNumber());
-        addText(cs, PDType1Font.HELVETICA, 10, margin, cursorY - 14, "Fecha: " + dateLabel);
+            : "\u2014";
+        cs.setNonStrokingColor(MUTED);
+        addTextRightAligned(cs, PDType1Font.HELVETICA, 10, margin + contentWidth, cursorY, "Fecha: " + dateLabel);
 
-        String totalText = formatCurrency(total, currencyFormat);
-        addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 14, margin + contentWidth, cursorY, "TOTAL " + totalText);
-
-        cursorY -= 32;
+        cursorY -= 28;
 
         if (includeDetails) {
-            addText(cs, PDType1Font.HELVETICA_BOLD, 10, margin, cursorY, "Cliente");
-            addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 10, margin + contentWidth, cursorY, "Detalles de la factura");
+            // Two-column layout: Client info (left) | Invoice details (right)
+            float colLeft = margin;
+            float colRight = margin + contentWidth * 0.55f;
+
+            // Client card
+            cs.setNonStrokingColor(BRAND_GREEN);
+            addText(cs, PDType1Font.HELVETICA_BOLD, 8, colLeft, cursorY, "CLIENTE");
             cursorY -= 14;
 
             String clientBlock = buildClientBlock(clientInfo);
             String[] clientLines = clientBlock.split("\\r?\\n");
             float clientY = cursorY;
-            cs.setNonStrokingColor(primary);
+            cs.setNonStrokingColor(INK);
             for (String line : clientLines) {
-                addText(cs, PDType1Font.HELVETICA, 10, margin, clientY, line);
-                clientY -= 12;
+                addText(cs, PDType1Font.HELVETICA, 9.5f, colLeft, clientY, line);
+                clientY -= 13;
             }
 
-            String centerLabel = centerName != null ? centerName : "Centro no disponible";
+            // Details column
             float metaY = cursorY;
-            addTextRightAligned(cs, PDType1Font.HELVETICA, 10, margin + contentWidth, metaY, "Centro: " + centerLabel);
-            metaY -= 12;
-            String clientIdText = header.clientId() != null ? header.clientId().toString() : "—";
-            addTextRightAligned(cs, PDType1Font.HELVETICA, 10, margin + contentWidth, metaY, "ID Cliente: " + clientIdText);
+            cs.setNonStrokingColor(BRAND_GREEN);
+            addText(cs, PDType1Font.HELVETICA_BOLD, 8, colRight, metaY + 14, "DETALLES");
+            cs.setNonStrokingColor(MUTED);
+            addText(cs, PDType1Font.HELVETICA, 9.5f, colRight, metaY, "Centro:");
+            cs.setNonStrokingColor(INK);
+            addText(cs, PDType1Font.HELVETICA, 9.5f, colRight + 45, metaY, centerName != null ? centerName : "\u2014");
+            metaY -= 13;
+            cs.setNonStrokingColor(MUTED);
+            addText(cs, PDType1Font.HELVETICA, 9.5f, colRight, metaY, "ID Cliente:");
+            cs.setNonStrokingColor(INK);
+            String clientIdText = header.clientId() != null ? header.clientId().toString() : "\u2014";
+            addText(cs, PDType1Font.HELVETICA, 9.5f, colRight + 62, metaY, clientIdText);
 
             cursorY = Math.min(clientY, metaY) - 18;
         } else {
-            cursorY -= 18;
+            cursorY -= 10;
         }
 
-        cs.setStrokingColor(lightLine);
-        cs.setLineWidth(0.8f);
+        // Divider
+        cs.setStrokingColor(BORDER);
+        cs.setLineWidth(0.6f);
         cs.moveTo(margin, cursorY);
         cs.lineTo(margin + contentWidth, cursorY);
         cs.stroke();
-        cursorY -= 12;
+        cursorY -= 14;
 
         return cursorY;
     }
@@ -383,18 +474,70 @@ public class InvoicePdfController {
                                   float margin,
                                   float[] colWidths,
                                   float headerRowHeight,
-                                  float cursorY,
-                                  Color primary) throws IOException {
+                                  float cursorY) throws IOException {
         float tableWidth = sum(colWidths);
-        String[] headers = {"DESCRIPCIÓN", "CANT.", "PRECIO UNIT.", "IMPORTE"};
+        String[] headers = {"Descripci\u00f3n", "Cant.", "Precio unit.", "Importe"};
 
-        cs.setNonStrokingColor(primary);
-        addText(cs, PDType1Font.HELVETICA_BOLD, 10, margin + 8, cursorY - headerRowHeight + 12, headers[0]);
-        addText(cs, PDType1Font.HELVETICA_BOLD, 10, margin + colWidths[0] + 8, cursorY - headerRowHeight + 12, headers[1]);
-        addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 10, margin + colWidths[0] + colWidths[1] + colWidths[2] - 8, cursorY - headerRowHeight + 12, headers[2]);
-        addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 10, margin + tableWidth - 8, cursorY - headerRowHeight + 12, headers[3]);
+        // Table header background
+        fillRect(cs, margin, cursorY - headerRowHeight, tableWidth, headerRowHeight, TABLE_HEADER_BG);
+
+        // Green left accent on header
+        fillRect(cs, margin, cursorY - headerRowHeight, 3f, headerRowHeight, BRAND_GREEN);
+
+        float textY = cursorY - headerRowHeight + 10;
+        cs.setNonStrokingColor(INK);
+        addText(cs, PDType1Font.HELVETICA_BOLD, 9, margin + 10, textY, headers[0]);
+        addText(cs, PDType1Font.HELVETICA_BOLD, 9, margin + colWidths[0] + 10, textY, headers[1]);
+        addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 9, margin + colWidths[0] + colWidths[1] + colWidths[2] - 10, textY, headers[2]);
+        addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 9, margin + tableWidth - 10, textY, headers[3]);
+
+        // Bottom border of header
+        cs.setStrokingColor(BRAND_GREEN);
+        cs.setLineWidth(0.8f);
+        cs.moveTo(margin, cursorY - headerRowHeight);
+        cs.lineTo(margin + tableWidth, cursorY - headerRowHeight);
+        cs.stroke();
 
         return cursorY - headerRowHeight - 4;
+    }
+
+    // ─── Drawing helpers ────────────────────────────────────────────────
+
+    private static void fillRect(PDPageContentStream cs, float x, float y, float w, float h, Color color) throws IOException {
+        cs.setNonStrokingColor(color);
+        cs.addRect(x, y, w, h);
+        cs.fill();
+    }
+
+    private static void fillRoundedRect(PDPageContentStream cs, float x, float y, float w, float h, float r, Color color) throws IOException {
+        cs.setNonStrokingColor(color);
+        // Approximate rounded rect with straight rect (PDFBox 2.x lacks curveTo-based rounded rects easily)
+        // Use a simple approach: fill main body + small rects at corners for visual approximation
+        cs.addRect(x + r, y, w - 2 * r, h);
+        cs.fill();
+        cs.addRect(x, y + r, w, h - 2 * r);
+        cs.fill();
+        // Fill corner circles
+        float[][] corners = {
+            {x + r, y + r},
+            {x + w - r, y + r},
+            {x + r, y + h - r},
+            {x + w - r, y + h - r}
+        };
+        for (float[] c : corners) {
+            drawCircle(cs, c[0], c[1], r);
+        }
+    }
+
+    private static void drawCircle(PDPageContentStream cs, float cx, float cy, float r) throws IOException {
+        // Approximate circle with 4 bezier curves
+        float k = 0.5522848f * r;
+        cs.moveTo(cx - r, cy);
+        cs.curveTo(cx - r, cy + k, cx - k, cy + r, cx, cy + r);
+        cs.curveTo(cx + k, cy + r, cx + r, cy + k, cx + r, cy);
+        cs.curveTo(cx + r, cy - k, cx + k, cy - r, cx, cy - r);
+        cs.curveTo(cx - k, cy - r, cx - r, cy - k, cx - r, cy);
+        cs.fill();
     }
 
     private static void addTextRightAligned(PDPageContentStream cs,
@@ -408,13 +551,13 @@ public class InvoicePdfController {
     }
 
     private static String formatCurrency(BigDecimal value, NumberFormat currencyFormat) {
-        return value != null ? currencyFormat.format(value) : "—";
+        return value != null ? currencyFormat.format(value) : "\u2014";
     }
 
     private static List<String> wrapText(String text, PDType1Font font, float fontSize, float maxWidth) throws IOException {
         List<String> lines = new ArrayList<>();
         if (text == null || text.isBlank()) {
-            lines.add("—");
+            lines.add("\u2014");
             return lines;
         }
         String[] words = text.trim().split("\\s+");
@@ -468,7 +611,7 @@ public class InvoicePdfController {
 
     private static String buildClientBlock(ClientInfo info) {
         if (info == null) {
-            return "—";
+            return "\u2014";
         }
         List<String> parts = new ArrayList<>();
         if (info.name() != null && !info.name().isBlank()) {
@@ -492,7 +635,7 @@ public class InvoicePdfController {
             locality.add(info.province());
         }
         if (!locality.isEmpty()) {
-            addressPieces.add(String.join(" · ", locality));
+            addressPieces.add(String.join(" \u00b7 ", locality));
         }
         if (info.country() != null && !info.country().isBlank()) {
             addressPieces.add(info.country());
@@ -503,7 +646,7 @@ public class InvoicePdfController {
         if (info.taxId() != null && !info.taxId().isBlank()) {
             parts.add("VAT ID: " + info.taxId());
         }
-        return parts.isEmpty() ? "—" : String.join("\n", parts);
+        return parts.isEmpty() ? "\u2014" : String.join("\n", parts);
     }
 
     private static float sum(float[] values) {
