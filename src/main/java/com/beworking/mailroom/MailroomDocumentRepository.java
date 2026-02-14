@@ -1,6 +1,7 @@
 package com.beworking.mailroom;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -8,6 +9,10 @@ public interface MailroomDocumentRepository extends JpaRepository<MailroomDocume
     List<MailroomDocument> findTop100ByOrderByReceivedAtDescCreatedAtDesc();
 
     List<MailroomDocument> findTop100ByTenantIdOrderByReceivedAtDescCreatedAtDesc(UUID tenantId);
+
+    Optional<MailroomDocument> findByPickupCode(String pickupCode);
+
+    boolean existsByPickupCode(String pickupCode);
 
     default List<MailroomDocument> findRecentDocuments(UUID tenantId) {
         if (tenantId != null) {

@@ -38,8 +38,18 @@ public class MailroomDocument {
     private Instant receivedAt;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "document_type", nullable = false, length = 16)
+    private MailroomDocumentType documentType = MailroomDocumentType.MAIL;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 32)
     private MailroomDocumentStatus status = MailroomDocumentStatus.SCANNED;
+
+    @Column(name = "pickup_code", length = 16)
+    private String pickupCode;
+
+    @Column(name = "picked_up_at")
+    private Instant pickedUpAt;
 
     @Column(name = "last_notified_at")
     private Instant lastNotifiedAt;
@@ -118,6 +128,30 @@ public class MailroomDocument {
 
     public void setContactEmail(String contactEmail) {
         this.contactEmail = contactEmail;
+    }
+
+    public MailroomDocumentType getDocumentType() {
+        return documentType;
+    }
+
+    public void setDocumentType(MailroomDocumentType documentType) {
+        this.documentType = documentType;
+    }
+
+    public String getPickupCode() {
+        return pickupCode;
+    }
+
+    public void setPickupCode(String pickupCode) {
+        this.pickupCode = pickupCode;
+    }
+
+    public Instant getPickedUpAt() {
+        return pickedUpAt;
+    }
+
+    public void setPickedUpAt(Instant pickedUpAt) {
+        this.pickedUpAt = pickedUpAt;
     }
 
     public Instant getReceivedAt() {
