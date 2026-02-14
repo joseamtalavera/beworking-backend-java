@@ -6,7 +6,8 @@ package com.beworking.mailroom;
 public enum MailroomDocumentStatus {
     SCANNED,
     NOTIFIED,
-    VIEWED;
+    VIEWED,
+    PICKED_UP;
 
     public String toApiValue() {
         return name().toLowerCase();

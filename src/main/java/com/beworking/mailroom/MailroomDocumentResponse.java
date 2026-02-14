@@ -16,7 +16,10 @@ public record MailroomDocumentResponse(
         String avatarColor,
         String originalFileName,
         Long fileSizeBytes,
-        String contentType
+        String contentType,
+        String type,
+        String pickupCode,
+        Instant pickedUpAt
 ) {
     public static MailroomDocumentResponse fromEntity(MailroomDocument document) {
         return new MailroomDocumentResponse(
@@ -32,7 +35,10 @@ public record MailroomDocumentResponse(
                 document.getAvatarColor(),
                 document.getOriginalFileName(),
                 document.getFileSizeBytes(),
-                document.getContentType()
+                document.getContentType(),
+                document.getDocumentType() != null ? document.getDocumentType().toApiValue() : "mail",
+                document.getPickupCode(),
+                document.getPickedUpAt()
         );
     }
 }
