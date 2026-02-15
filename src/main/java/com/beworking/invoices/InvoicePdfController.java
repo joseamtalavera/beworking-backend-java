@@ -3,6 +3,7 @@ package com.beworking.invoices;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.text.NumberFormat;
@@ -12,12 +13,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -45,6 +48,40 @@ public class InvoicePdfController {
     private static final Color BG_LIGHT = new Color(250, 250, 250);       // #fafafa
     private static final Color TABLE_HEADER_BG = new Color(245, 245, 245); // #f5f5f5
     private static final Color WHITE = Color.WHITE;
+
+    // ─── Company info per cuenta ─────────────────────────────────────────
+    private record CompanyInfo(String name, String address, String cityLine, String email, String nif) { }
+
+    private static final CompanyInfo COMPANY_PT = new CompanyInfo(
+        "BeWorking Partners Offices SL",
+        "Calle Alejandro Dumas, 17 \u00b7 Oficinas",
+        "M\u00e1laga (29004), M\u00e1laga, Espa\u00f1a",
+        "accounts@be-working.com",
+        "NIF: B09665258"
+    );
+    private static final CompanyInfo COMPANY_GT = new CompanyInfo(
+        "GLOBALTECHNO O\u00dc",
+        "Sepapaja tn 6",
+        "Tallinn (15551), Estonia",
+        "info@globaltechno.io",
+        "VAT: EE102278691"
+    );
+    private static final Map<String, CompanyInfo> COMPANY_MAP = Map.of(
+        "PT", COMPANY_PT,
+        "OF", COMPANY_PT,
+        "GT", COMPANY_GT
+    );
+
+    private static CompanyInfo resolveCompany(String cuentaCodigo) {
+        if (cuentaCodigo == null) return COMPANY_PT;
+        String key = cuentaCodigo.trim().toUpperCase();
+        CompanyInfo info = COMPANY_MAP.get(key);
+        if (info != null) return info;
+        // Legacy holdedcuenta fallback (text values like "Globaltechno", "Partners", "Offices")
+        if (key.contains("GLOBAL")) return COMPANY_GT;
+        if (key.contains("PARTNER") || key.contains("OFFICE")) return COMPANY_PT;
+        return COMPANY_PT;
+    }
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -95,9 +132,11 @@ public class InvoicePdfController {
     private InvoiceHeader fetchHeader(Long id) {
         List<InvoiceHeader> headers = jdbcTemplate.query(
             """
-            SELECT id, idfactura, idcliente, idcentro, descripcion, total, iva, creacionfecha
-            FROM beworking.facturas
-            WHERE id = ?
+            SELECT f.id, f.idfactura, f.idcliente, f.idcentro, f.descripcion, f.total, f.iva, f.creacionfecha,
+                   COALESCE(c.codigo, f.holdedcuenta) AS cuenta_codigo
+            FROM beworking.facturas f
+            LEFT JOIN beworking.cuentas c ON c.id = f.id_cuenta
+            WHERE f.id = ?
             """,
             (rs, rowNum) -> new InvoiceHeader(
                 rs.getLong("id"),
@@ -107,7 +146,8 @@ public class InvoicePdfController {
                 rs.getString("descripcion"),
                 rs.getBigDecimal("total"),
                 toBigDecimal(rs.getObject("iva")),
-                toDateTime(rs.getTimestamp("creacionfecha"))
+                toDateTime(rs.getTimestamp("creacionfecha")),
+                rs.getString("cuenta_codigo")
             ),
             id
         );
@@ -210,6 +250,8 @@ public class InvoicePdfController {
         NumberFormat numberFormat = NumberFormat.getNumberInstance(LOCALE_ES);
         numberFormat.setMaximumFractionDigits(2);
 
+        CompanyInfo company = resolveCompany(header.cuentaCodigo());
+
         PDPage currentPage = page;
         PDPageContentStream cs = null;
         try {
@@ -218,8 +260,8 @@ public class InvoicePdfController {
             // Green accent bar at top of page
             drawTopBar(cs, width);
 
-            float cursorY = drawHeaderSection(cs, header, clientInfo, centerName, total, currencyFormat,
-                contentWidth, height, margin, true);
+            float cursorY = drawHeaderSection(cs, doc, header, clientInfo, centerName, total, currencyFormat,
+                contentWidth, height, margin, true, company);
 
             // Table
             float[] colWidths = new float[]{
@@ -249,8 +291,8 @@ public class InvoicePdfController {
                     doc.addPage(currentPage);
                     cs = new PDPageContentStream(doc, currentPage);
                     drawTopBar(cs, width);
-                    cursorY = drawHeaderSection(cs, header, clientInfo, centerName, total, currencyFormat,
-                        contentWidth, height, margin, false);
+                    cursorY = drawHeaderSection(cs, doc, header, clientInfo, centerName, total, currencyFormat,
+                        contentWidth, height, margin, false, company);
                     currentY = drawTableHeader(cs, margin, colWidths, headerRowHeight, cursorY);
                 }
 
@@ -294,8 +336,8 @@ public class InvoicePdfController {
                 doc.addPage(currentPage);
                 cs = new PDPageContentStream(doc, currentPage);
                 drawTopBar(cs, width);
-                cursorY = drawHeaderSection(cs, header, clientInfo, centerName, total, currencyFormat,
-                    contentWidth, height, margin, false);
+                cursorY = drawHeaderSection(cs, doc, header, clientInfo, centerName, total, currencyFormat,
+                    contentWidth, height, margin, false, company);
                 currentY = drawTableHeader(cs, margin, colWidths, headerRowHeight, cursorY);
             }
 
@@ -331,7 +373,7 @@ public class InvoicePdfController {
             // Total row with green background pill
             summaryY -= 6;
             float totalBoxH = 28f;
-            fillRoundedRect(cs, summaryX - 4, summaryY - totalBoxH + 6, summaryWidth + 4, totalBoxH, 6f, BRAND_GREEN);
+            fillRoundedRect(cs, summaryX - 4, summaryY - totalBoxH + 6, summaryWidth + 4, totalBoxH, 0f, BRAND_GREEN);
 
             cs.setNonStrokingColor(WHITE);
             addText(cs, PDType1Font.HELVETICA_BOLD, 11, summaryX + 8, summaryY - 12, "TOTAL");
@@ -364,6 +406,7 @@ public class InvoicePdfController {
     }
 
     private float drawHeaderSection(PDPageContentStream cs,
+                                    PDDocument doc,
                                     InvoiceHeader header,
                                     ClientInfo clientInfo,
                                     String centerName,
@@ -372,24 +415,37 @@ public class InvoicePdfController {
                                     float contentWidth,
                                     float height,
                                     float margin,
-                                    boolean includeDetails) throws IOException {
+                                    boolean includeDetails,
+                                    CompanyInfo company) throws IOException {
         float cursorY = height - margin - 10; // below the top bar
 
-        // Brand name
-        cs.setNonStrokingColor(BRAND_GREEN);
-        addText(cs, PDType1Font.HELVETICA_BOLD, 22, margin, cursorY, "BeWorking");
+        // Brand logo
+        try (InputStream logoStream = getClass().getResourceAsStream("/beworking_logo.png")) {
+            if (logoStream != null) {
+                byte[] logoBytes = logoStream.readAllBytes();
+                PDImageXObject logoImage = PDImageXObject.createFromByteArray(doc, logoBytes, "logo");
+                // Logo PNG is 577x120; render at ~130pt wide, height proportional
+                float logoW = 130f;
+                float logoH = logoW * logoImage.getHeight() / logoImage.getWidth();
+                cs.drawImage(logoImage, margin, cursorY - logoH + 8, logoW, logoH);
+            } else {
+                // Fallback to text if logo not found
+                cs.setNonStrokingColor(BRAND_GREEN);
+                addText(cs, PDType1Font.HELVETICA_BOLD, 22, margin, cursorY, "BeWorking");
+            }
+        }
 
         // Company info to the right
         cs.setNonStrokingColor(MUTED);
         float companyX = margin + contentWidth;
         float companyY = cursorY;
-        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, "BeWorking Partners Offices SL");
+        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, company.name());
         companyY -= 11;
-        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, "Calle Alejandro Dumas, 17 \u00b7 Oficinas");
+        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, company.address());
         companyY -= 11;
-        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, "M\u00e1laga (29004), M\u00e1laga, Espa\u00f1a");
+        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, company.cityLine());
         companyY -= 11;
-        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, "accounts@be-working.com \u00b7 NIF: B09665258");
+        addTextRightAligned(cs, PDType1Font.HELVETICA, 8.5f, companyX, companyY, company.email() + " \u00b7 " + company.nif());
 
         cursorY = companyY - 18;
 
@@ -664,7 +720,8 @@ public class InvoicePdfController {
                                  String description,
                                  BigDecimal total,
                                  BigDecimal vatPercent,
-                                 LocalDateTime issuedAt) {
+                                 LocalDateTime issuedAt,
+                                 String cuentaCodigo) {
         String displayNumber() {
             return legacyNumber != null ? legacyNumber.toString() : id.toString();
         }
