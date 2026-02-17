@@ -187,6 +187,34 @@ public class InvoiceController {
         }
     }
 
+    @PostMapping("/{id}/credit")
+    public ResponseEntity<Map<String, Object>> creditInvoice(
+        Authentication authentication,
+        @PathVariable Long id
+    ) {
+        Optional<User> userOpt = resolveUser(authentication);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (userOpt.get().getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        try {
+            Map<String, Object> result = invoiceService.creditInvoice(id);
+            return ResponseEntity.status(HttpStatus.CREATED).body(result);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            logger.error("Failed to credit invoice {}: {}", id, e.getMessage(), e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Failed to create credit note: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
     @PostMapping("/{id}/send-email")
     public ResponseEntity<Map<String, Object>> sendInvoiceEmail(
         Authentication authentication,
