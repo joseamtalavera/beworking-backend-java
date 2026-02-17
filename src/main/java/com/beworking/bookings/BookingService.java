@@ -28,7 +28,8 @@ class BookingService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingService.class);
     private static final String FREE_PRODUCT_NAME = "MA1A1";
-    private static final String FREE_TENANT_TYPE = "Oficina Virtual";
+    private static final String FREE_TENANT_TYPE_VIRTUAL = "Usuario Virtual";
+    private static final String FREE_TENANT_TYPE_DESK = "Usuario Mesa";
     private static final int FREE_MONTHLY_LIMIT = 5;
 
     private final ReservaRepository reservaRepository;
@@ -147,18 +148,24 @@ class BookingService {
         String note = null;
         boolean isFreeEligible = false;
 
-        if (FREE_PRODUCT_NAME.equalsIgnoreCase(producto.getNombre())
-                && FREE_TENANT_TYPE.equalsIgnoreCase(contact.getTenantType())) {
-            YearMonth currentMonth = YearMonth.now();
-            LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
-            LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
-            long usedThisMonth = reservaRepository.countByContactAndProductInMonth(
-                contact.getId(), producto.getId(), monthStart, monthEnd);
-
-            if (usedThisMonth < FREE_MONTHLY_LIMIT) {
+        if (FREE_PRODUCT_NAME.equalsIgnoreCase(producto.getNombre())) {
+            String tenantType = contact.getTenantType();
+            if (FREE_TENANT_TYPE_DESK.equalsIgnoreCase(tenantType)) {
                 isFreeEligible = true;
-                note = "Free booking (" + (usedThisMonth + 1) + " of " + FREE_MONTHLY_LIMIT + ")";
+                note = "Free booking (desk user)";
                 reservaRequest.setStatus("Paid");
+            } else if (FREE_TENANT_TYPE_VIRTUAL.equalsIgnoreCase(tenantType)) {
+                YearMonth currentMonth = YearMonth.now();
+                LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
+                LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
+                long usedThisMonth = reservaRepository.countByContactAndProductInMonth(
+                    contact.getId(), producto.getId(), monthStart, monthEnd);
+
+                if (usedThisMonth < FREE_MONTHLY_LIMIT) {
+                    isFreeEligible = true;
+                    note = "Free booking (" + (usedThisMonth + 1) + " of " + FREE_MONTHLY_LIMIT + ")";
+                    reservaRequest.setStatus("Paid");
+                }
             }
         }
 
