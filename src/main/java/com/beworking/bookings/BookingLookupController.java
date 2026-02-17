@@ -191,7 +191,8 @@ public class BookingLookupController {
             displayName,
             displayEmail,
             contact.getTenantType(),
-            contact.getAvatar()
+            contact.getAvatar(),
+            contact.getBillingTaxId()
         );
     }
 
@@ -209,7 +210,7 @@ public class BookingLookupController {
         return first + " " + last;
     }
 
-    public record ContactLookupResponse(Long id, String name, String email, String tenantType, String avatar) { }
+    public record ContactLookupResponse(Long id, String name, String email, String tenantType, String avatar, String billingTaxId) { }
 
     public record CentroLookupResponse(Long id, String name, String code) { }
 
