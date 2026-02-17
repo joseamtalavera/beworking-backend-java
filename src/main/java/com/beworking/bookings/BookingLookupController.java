@@ -60,12 +60,7 @@ public class BookingLookupController {
 
         List<ContactProfile> contacts;
         if (search != null && !search.isBlank()) {
-            contacts = contactRepository
-                .findTop50ByNameContainingIgnoreCaseOrContactNameContainingIgnoreCaseOrEmailPrimaryContainingIgnoreCase(
-                    search,
-                    search,
-                    search
-                );
+            contacts = contactRepository.searchContacts(search.trim());
         } else {
             contacts = contactRepository.findTop50ByOrderByNameAsc();
         }
