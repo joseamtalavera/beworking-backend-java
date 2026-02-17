@@ -638,6 +638,104 @@ public class InvoiceService {
         }
     }
 
+    @Transactional
+    public Map<String, Object> creditInvoice(Long originalId) {
+        // Load original invoice
+        Map<String, Object> original;
+        try {
+            original = jdbcTemplate.queryForMap(
+                "SELECT id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado,"
+                    + " holdedcuenta, id_cuenta, holdedinvoicenum"
+                    + " FROM beworking.facturas WHERE id = ?",
+                originalId
+            );
+        } catch (EmptyResultDataAccessException e) {
+            throw new IllegalArgumentException("Invoice not found: " + originalId);
+        }
+
+        Integer origLegacy = (Integer) original.get("idfactura");
+        Long origClientId = original.get("idcliente") != null ? ((Number) original.get("idcliente")).longValue() : null;
+        Integer origCenterId = original.get("idcentro") != null ? ((Number) original.get("idcentro")).intValue() : null;
+        BigDecimal origTotal = (BigDecimal) original.get("total");
+        BigDecimal origTotalIva = (BigDecimal) original.get("totaliva");
+        Integer origIva = original.get("iva") != null ? ((Number) original.get("iva")).intValue() : null;
+        String origCuenta = (String) original.get("holdedcuenta");
+        Integer origCuentaId = original.get("id_cuenta") != null ? ((Number) original.get("id_cuenta")).intValue() : null;
+        String origInvoiceNum = original.get("holdedinvoicenum") != null
+            ? (String) original.get("holdedinvoicenum")
+            : (origLegacy != null ? origLegacy.toString() : originalId.toString());
+
+        // Load original line items
+        List<Map<String, Object>> origLines = jdbcTemplate.queryForList(
+            "SELECT conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose"
+                + " FROM beworking.facturasdesglose WHERE idfacturadesglose = ?",
+            origLegacy
+        );
+
+        // Generate new IDs
+        Long nextId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+        Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
+
+        // Negate totals
+        BigDecimal creditTotal = origTotal != null ? origTotal.negate() : BigDecimal.ZERO;
+        BigDecimal creditTotalIva = origTotalIva != null ? origTotalIva.negate() : BigDecimal.ZERO;
+        String description = "Rectificación de Factura #" + origInvoiceNum;
+
+        // Insert credit note
+        jdbcTemplate.update(
+            """
+            INSERT INTO beworking.facturas
+            (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado,
+             creacionfecha, holdedcuenta, id_cuenta, holdedinvoicenum)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pagado', CURRENT_TIMESTAMP, ?, ?, ?)
+            """,
+            nextId, nextLegacy, origClientId, origCenterId, description,
+            creditTotal, origIva, creditTotalIva,
+            origCuenta, origCuentaId, null
+        );
+
+        // Insert negated line items
+        if (!origLines.isEmpty()) {
+            Long nextDesgloseId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+
+            for (int i = 0; i < origLines.size(); i++) {
+                Map<String, Object> line = origLines.get(i);
+                String concept = (String) line.get("conceptodesglose");
+                BigDecimal unitPrice = line.get("precioundesglose") != null
+                    ? ((BigDecimal) line.get("precioundesglose")).negate() : BigDecimal.ZERO;
+                BigDecimal qty = line.get("cantidaddesglose") != null
+                    ? (BigDecimal) line.get("cantidaddesglose") : BigDecimal.ONE;
+                BigDecimal lineTotal = line.get("totaldesglose") != null
+                    ? ((BigDecimal) line.get("totaldesglose")).negate() : BigDecimal.ZERO;
+
+                jdbcTemplate.update(
+                    """
+                    INSERT INTO beworking.facturasdesglose
+                    (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                    """,
+                    nextDesgloseId + i, nextLegacy,
+                    "Rectificación: " + (concept != null ? concept : "—"),
+                    unitPrice, qty, lineTotal
+                );
+            }
+        }
+
+        // Mark original as rectified
+        jdbcTemplate.update(
+            "UPDATE beworking.facturas SET estado = 'Rectificado' WHERE id = ?",
+            originalId
+        );
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", nextId);
+        response.put("idFactura", nextLegacy);
+        response.put("holdedInvoiceNum", null);
+        response.put("message", "Credit note created for invoice #" + origInvoiceNum);
+        return response;
+    }
+
     private record LineComputation(String concept, BigDecimal quantity, BigDecimal unitPrice, BigDecimal total) { }
 
     public String getNextInvoiceNumber() {
