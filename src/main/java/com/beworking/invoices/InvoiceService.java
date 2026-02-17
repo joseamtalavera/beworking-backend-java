@@ -67,13 +67,9 @@ public class InvoiceService {
 
         if (hasText(filters.name())) {
             String like = "%" + filters.name().trim().toLowerCase() + "%";
-            where.append("""
-                AND (
-                    LOWER(COALESCE(c.name, '')) LIKE ?
-                    OR LOWER(COALESCE(c.contact_name, '')) LIKE ?
-                    OR LOWER(COALESCE(c.billing_name, '')) LIKE ?
-                )
-                """);
+            where.append(" AND (LOWER(COALESCE(c.name, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.contact_name, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.billing_name, '')) LIKE ?)");
             args.add(like);
             args.add(like);
             args.add(like);
@@ -81,14 +77,10 @@ public class InvoiceService {
 
         if (hasText(filters.email())) {
             String like = "%" + filters.email().trim().toLowerCase() + "%";
-            where.append("""
-                AND (
-                    LOWER(COALESCE(c.email_primary, '')) LIKE ?
-                    OR LOWER(COALESCE(c.email_secondary, '')) LIKE ?
-                    OR LOWER(COALESCE(c.email_tertiary, '')) LIKE ?
-                    OR LOWER(COALESCE(c.representative_email, '')) LIKE ?
-                )
-                """);
+            where.append(" AND (LOWER(COALESCE(c.email_primary, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.email_secondary, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.email_tertiary, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.representative_email, '')) LIKE ?)");
             args.add(like);
             args.add(like);
             args.add(like);
@@ -121,12 +113,8 @@ public class InvoiceService {
 
         if (hasText(filters.product())) {
             String like = "%" + filters.product().trim().toLowerCase() + "%";
-            where.append("""
-                AND (
-                    LOWER(COALESCE(p.nombre, '')) LIKE ?
-                    OR LOWER(COALESCE(fd.conceptodesglose, '')) LIKE ?
-                )
-                """);
+            where.append(" AND (LOWER(COALESCE(p.nombre, '')) LIKE ?"
+                + " OR LOWER(COALESCE(fd.conceptodesglose, '')) LIKE ?)");
             args.add(like);
             args.add(like);
         }
@@ -248,13 +236,9 @@ public class InvoiceService {
 
         if (hasText(filters.name())) {
             String like = "%" + filters.name().trim().toLowerCase() + "%";
-            where.append("""
-                AND (
-                    LOWER(COALESCE(c.name, '')) LIKE ?
-                    OR LOWER(COALESCE(c.contact_name, '')) LIKE ?
-                    OR LOWER(COALESCE(c.billing_name, '')) LIKE ?
-                )
-                """);
+            where.append(" AND (LOWER(COALESCE(c.name, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.contact_name, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.billing_name, '')) LIKE ?)");
             args.add(like);
             args.add(like);
             args.add(like);
@@ -262,14 +246,10 @@ public class InvoiceService {
 
         if (hasText(filters.email())) {
             String like = "%" + filters.email().trim().toLowerCase() + "%";
-            where.append("""
-                AND (
-                    LOWER(COALESCE(c.email_primary, '')) LIKE ?
-                    OR LOWER(COALESCE(c.email_secondary, '')) LIKE ?
-                    OR LOWER(COALESCE(c.email_tertiary, '')) LIKE ?
-                    OR LOWER(COALESCE(c.representative_email, '')) LIKE ?
-                )
-                """);
+            where.append(" AND (LOWER(COALESCE(c.email_primary, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.email_secondary, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.email_tertiary, '')) LIKE ?"
+                + " OR LOWER(COALESCE(c.representative_email, '')) LIKE ?)");
             args.add(like);
             args.add(like);
             args.add(like);
@@ -302,12 +282,8 @@ public class InvoiceService {
 
         if (hasText(filters.product())) {
             String like = "%" + filters.product().trim().toLowerCase() + "%";
-            where.append("""
-                AND (
-                    LOWER(COALESCE(p.nombre, '')) LIKE ?
-                    OR LOWER(COALESCE(fd.conceptodesglose, '')) LIKE ?
-                )
-                """);
+            where.append(" AND (LOWER(COALESCE(p.nombre, '')) LIKE ?"
+                + " OR LOWER(COALESCE(fd.conceptodesglose, '')) LIKE ?)");
             args.add(like);
             args.add(like);
         }
