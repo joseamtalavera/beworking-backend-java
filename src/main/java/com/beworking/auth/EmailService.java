@@ -1,13 +1,15 @@
 package com.beworking.auth;
 
+import jakarta.activation.DataSource;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.util.ByteArrayDataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import jakarta.mail.internet.MimeMessage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Service
 public class EmailService {
@@ -80,6 +82,25 @@ public class EmailService {
 
     public String sendHtmlAndReturnMessageId(String to, String subject, String htmlContent, String replyTo) {
         return sendHtmlInternal(to, subject, htmlContent, replyTo, true);
+    }
+
+    @Async
+    public void sendHtmlWithAttachment(String to, String subject, String htmlContent,
+                                       byte[] attachment, String attachmentName) {
+        try {
+            logger.info("Attempting to send HTML email with attachment to {}", to);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(htmlContent, true);
+            DataSource dataSource = new ByteArrayDataSource(attachment, "application/pdf");
+            helper.addAttachment(attachmentName, dataSource);
+            mailSender.send(message);
+            logger.info("HTML email with attachment sent successfully to {}", to);
+        } catch (Exception e) {
+            logger.error("Failed to send HTML email with attachment to {}: {}", to, e.getMessage(), e);
+        }
     }
 
     private String sendHtmlInternal(String to, String subject, String htmlContent, String replyTo, boolean returnMessageId) {
