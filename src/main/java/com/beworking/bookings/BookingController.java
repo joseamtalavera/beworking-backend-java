@@ -141,9 +141,9 @@ public class BookingController {
                     + " c.name AS contact_name,"
                     + " COALESCE(c.email_primary, c.email_secondary, c.email_tertiary, c.representative_email) AS email"
                     + " FROM beworking.bloqueos b"
-                    + " LEFT JOIN beworking.contact_profiles c ON c.id = b.idcliente"
-                    + " LEFT JOIN beworking.productos p ON p.id = b.idproducto"
-                    + " LEFT JOIN beworking.centros ce ON ce.id = b.idcentro"
+                    + " LEFT JOIN beworking.contact_profiles c ON c.id = b.id_cliente"
+                    + " LEFT JOIN beworking.productos p ON p.id = b.id_producto"
+                    + " LEFT JOIN beworking.centros ce ON ce.id = b.id_centro"
                     + " WHERE b.id = ?",
                 id
             );
