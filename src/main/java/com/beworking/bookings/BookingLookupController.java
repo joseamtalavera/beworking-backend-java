@@ -4,6 +4,8 @@ import com.beworking.auth.User;
 import com.beworking.auth.UserRepository;
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
+import com.beworking.rooms.Room;
+import com.beworking.rooms.RoomRepository;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -26,15 +28,18 @@ public class BookingLookupController {
     private final ContactProfileRepository contactRepository;
     private final CentroRepository centroRepository;
     private final ProductoRepository productoRepository;
+    private final RoomRepository roomRepository;
 
     public BookingLookupController(UserRepository userRepository,
                                    ContactProfileRepository contactRepository,
                                    CentroRepository centroRepository,
-                                   ProductoRepository productoRepository) {
+                                   ProductoRepository productoRepository,
+                                   RoomRepository roomRepository) {
         this.userRepository = userRepository;
         this.contactRepository = contactRepository;
         this.centroRepository = centroRepository;
         this.productoRepository = productoRepository;
+        this.roomRepository = roomRepository;
     }
 
     @GetMapping("/contacts")
@@ -102,6 +107,43 @@ public class BookingLookupController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
+        // Try rooms table first (has pricing data)
+        List<ProductoLookupResponse> fromRooms = roomRepository.findAll().stream()
+            .filter(room -> type == null || (room.getType() != null && room.getType().equalsIgnoreCase(type)))
+            .filter(room -> centerCode == null || (room.getCentroCode() != null && room.getCentroCode().equalsIgnoreCase(centerCode)))
+            .sorted(Comparator.comparing(room -> Optional.ofNullable(room.getCode()).orElse("")))
+            .map(room -> {
+                Long productoId = productoRepository.findByNombreIgnoreCase(room.getCode())
+                    .map(Producto::getId)
+                    .orElse(room.getId());
+                return new ProductoLookupResponse(
+                    productoId,
+                    room.getCode(),
+                    room.getType(),
+                    room.getCentroCode(),
+                    room.getHeroImage(),
+                    room.getSubtitle(),
+                    room.getCapacity(),
+                    room.getPriceFrom(),
+                    room.getPriceUnit(),
+                    room.getRatingAverage(),
+                    room.getRatingCount(),
+                    room.isInstantBooking(),
+                    room.getDescription(),
+                    room.getAmenities().stream().map(a -> a.getAmenityCode()).toList(),
+                    room.getTags() == null || room.getTags().isBlank()
+                        ? List.of()
+                        : List.of(room.getTags().split("\\s*,\\s*")),
+                    room.getImages().stream().map(img -> img.getUrl()).toList()
+                );
+            })
+            .collect(Collectors.toList());
+
+        if (!fromRooms.isEmpty()) {
+            return ResponseEntity.ok(fromRooms);
+        }
+
+        // Fallback to productos table
         List<ProductoLookupResponse> payload = productoRepository.findAll().stream()
             .filter(producto -> type == null || (producto.getTipo() != null && producto.getTipo().equalsIgnoreCase(type)))
             .filter(producto -> centerCode == null || (producto.getCentroCodigo() != null && producto.getCentroCodigo().equalsIgnoreCase(centerCode)))
@@ -111,18 +153,7 @@ public class BookingLookupController {
                 producto.getNombre(),
                 producto.getTipo(),
                 producto.getCentroCodigo(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of()
+                null, null, null, null, null, null, null, null, null, null, null, List.of()
             ))
             .collect(Collectors.toList());
 
@@ -144,10 +175,10 @@ public class BookingLookupController {
 
     private ContactLookupResponse mapToContact(ContactProfile contact) {
         String displayName = firstNonBlank(
-            contact.getContactName(),
-            combineName(contact.getRepresentativeFirstName(), contact.getRepresentativeLastName()),
+            contact.getName(),
             contact.getBillingName(),
-            contact.getName()
+            contact.getContactName(),
+            combineName(contact.getRepresentativeFirstName(), contact.getRepresentativeLastName())
         );
         String displayEmail = firstNonBlank(
             contact.getEmailPrimary(),
