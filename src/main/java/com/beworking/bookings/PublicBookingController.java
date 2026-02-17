@@ -21,7 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class PublicBookingController {
 
     private static final String FREE_PRODUCT_NAME = "MA1A1";
-    private static final String FREE_TENANT_TYPE = "Oficina Virtual";
+    private static final String FREE_TENANT_TYPE_VIRTUAL = "Usuario Virtual";
+    private static final String FREE_TENANT_TYPE_DESK = "Usuario Mesa";
     private static final int FREE_MONTHLY_LIMIT = 5;
 
     private final BookingService bookingService;
@@ -69,15 +70,33 @@ public class PublicBookingController {
             return ResponseEntity.ok(body);
         }
 
-        // Must be Oficina Virtual contact
+        // Must be Usuario Virtual or Usuario Mesa
         String normalizedEmail = email.trim().toLowerCase();
         ContactProfile contact = contactRepository
             .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
                 normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail)
             .orElse(null);
 
-        if (contact == null || contact.getTenantType() == null
-                || !FREE_TENANT_TYPE.equalsIgnoreCase(contact.getTenantType())) {
+        if (contact == null || contact.getTenantType() == null) {
+            body.put("used", 0);
+            body.put("freeLimit", 0);
+            body.put("isFree", false);
+            return ResponseEntity.ok(body);
+        }
+
+        String tenantType = contact.getTenantType();
+
+        // Desk users: unlimited free bookings in MA1A1
+        if (FREE_TENANT_TYPE_DESK.equalsIgnoreCase(tenantType)) {
+            body.put("used", 0);
+            body.put("freeLimit", -1);
+            body.put("isFree", true);
+            body.put("unlimited", true);
+            return ResponseEntity.ok(body);
+        }
+
+        // Virtual office users: 5 free bookings per month in MA1A1
+        if (!FREE_TENANT_TYPE_VIRTUAL.equalsIgnoreCase(tenantType)) {
             body.put("used", 0);
             body.put("freeLimit", 0);
             body.put("isFree", false);
