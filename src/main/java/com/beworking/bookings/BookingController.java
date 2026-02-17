@@ -189,24 +189,57 @@ public class BookingController {
             String safeProduct = productoNombre != null ? productoNombre : "—";
             String safeCentro = centroNombre != null ? centroNombre : "—";
 
-            String html = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto'>"
-                + "<div style='background:#009624;padding:16px;text-align:center'>"
-                + "<img src='https://app.be-working.com/beworking_logo.png' alt='BeWorking' style='height:40px' />"
+            String attendeesStr = attendees != null ? String.valueOf(attendees) : null;
+            String tarifaStr = tarifa != null ? currencyFormat.format(tarifa) : null;
+
+            String html = "<div style='font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08)'>"
+                // ── Hero header with green gradient ──
+                + "<div style='background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:40px 32px 32px;color:#ffffff'>"
+                + "<p style='margin:0 0 4px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85'>BEWORKING</p>"
+                + "<h1 style='margin:0 0 8px;font-size:26px;font-weight:700;line-height:1.2'>Confirmaci\u00f3n de Reserva</h1>"
                 + "</div>"
-                + "<div style='padding:24px'>"
-                + "<p>Estimado/a " + safeName + ",</p>"
-                + "<p>Su reserva ha sido confirmada.</p>"
-                + "<h3 style='color:#009624;margin-top:24px'>Detalles de la reserva</h3>"
-                + "<table style='border-collapse:collapse'>"
-                + "<tr><td style='padding:4px 12px 4px 0;color:#666'>Sala:</td><td><strong>" + safeProduct + "</strong></td></tr>"
-                + "<tr><td style='padding:4px 12px 4px 0;color:#666'>Centro:</td><td>" + safeCentro + "</td></tr>"
-                + "<tr><td style='padding:4px 12px 4px 0;color:#666'>Fecha:</td><td>" + dateStr + "</td></tr>"
-                + "<tr><td style='padding:4px 12px 4px 0;color:#666'>Horario:</td><td>" + timeFromStr + " - " + timeToStr + "</td></tr>"
-                + (attendees != null ? "<tr><td style='padding:4px 12px 4px 0;color:#666'>Asistentes:</td><td>" + attendees + "</td></tr>" : "")
-                + (tarifa != null ? "<tr><td style='padding:4px 12px 4px 0;color:#666'>Importe:</td><td>" + currencyFormat.format(tarifa) + "</td></tr>" : "")
+                // ── Body ──
+                + "<div style='padding:32px'>"
+                + "<p style='margin:0 0 8px;font-size:16px;color:#333'>Hola <strong>" + safeName + "</strong>, tu reserva ha sido confirmada.</p>"
+                + "<p style='margin:0 0 24px;font-size:14px;color:#666'>A continuaci\u00f3n los detalles de tu reserva:</p>"
+                // ── Details card ──
+                + "<div style='background:#f5faf6;border-radius:10px;padding:20px 24px;border-left:4px solid #009624'>"
+                + "<table style='border-collapse:collapse;width:100%'>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Sala</td>"
+                + "<td style='padding:8px 0;font-size:15px;font-weight:700;color:#222'>" + safeProduct + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Centro</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'>" + safeCentro + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Fecha</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'>" + dateStr + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Horario</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'>" + timeFromStr + " - " + timeToStr + "</td></tr>"
+                + (attendeesStr != null ? "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Asistentes</td><td style='padding:8px 0;font-size:15px;color:#333'>" + attendeesStr + "</td></tr>" : "")
+                + (tarifaStr != null ? "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Importe</td><td style='padding:8px 0;font-size:15px;font-weight:700;color:#009624'>" + tarifaStr + "</td></tr>" : "")
                 + "</table>"
-                + "<p style='margin-top:24px;color:#666;font-size:13px'>Gracias por ser parte de la comunidad BeWorking.</p>"
-                + "</div></div>";
+                + "</div>"
+                // ── Info boxes (2 columns) ──
+                + "<table style='border-collapse:collapse;width:100%;margin-top:28px'><tr>"
+                + "<td style='width:50%;padding:0 8px 0 0;vertical-align:top'>"
+                + "<div style='background:#f5faf6;border-radius:8px;padding:16px'>"
+                + "<p style='margin:0 0 4px;font-size:14px;font-weight:700;color:#333'>Cambios o cancelaciones</p>"
+                + "<p style='margin:0;font-size:12px;color:#888'>Cont\u00e1ctanos con antelaci\u00f3n para gestionar cualquier cambio.</p>"
+                + "</div></td>"
+                + "<td style='width:50%;padding:0 0 0 8px;vertical-align:top'>"
+                + "<div style='background:#f5faf6;border-radius:8px;padding:16px'>"
+                + "<p style='margin:0 0 4px;font-size:14px;font-weight:700;color:#333'>Acceso al centro</p>"
+                + "<p style='margin:0;font-size:12px;color:#888'>Presenta este email en recepci\u00f3n a tu llegada.</p>"
+                + "</div></td>"
+                + "</tr></table>"
+                // ── Contact line ──
+                + "<p style='margin:28px 0 0;font-size:13px;color:#888;text-align:center'>"
+                + "\u00bfNecesitas ayuda? Responde a este correo o escr\u00edbenos por WhatsApp: "
+                + "<a href='https://wa.me/34685155560' style='color:#009624;text-decoration:none;font-weight:600'>+34 685 155 560</a></p>"
+                + "</div>"
+                // ── Footer ──
+                + "<div style='background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee'>"
+                + "<p style='margin:0;font-size:12px;color:#aaa'>\u00a9 BeWorking \u00b7 M\u00e1laga</p>"
+                + "</div>"
+                + "</div>";
 
             String recipient = (testEmail != null && !testEmail.isBlank()) ? testEmail : email;
             emailService.sendHtml(recipient, "Confirmaci\u00f3n de reserva - BeWorking", html);
