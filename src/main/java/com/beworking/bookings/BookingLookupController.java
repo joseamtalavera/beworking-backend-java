@@ -143,13 +143,39 @@ public class BookingLookupController {
     }
 
     private ContactLookupResponse mapToContact(ContactProfile contact) {
+        String displayName = firstNonBlank(
+            contact.getContactName(),
+            combineName(contact.getRepresentativeFirstName(), contact.getRepresentativeLastName()),
+            contact.getBillingName(),
+            contact.getName()
+        );
+        String displayEmail = firstNonBlank(
+            contact.getEmailPrimary(),
+            contact.getEmailSecondary(),
+            contact.getEmailTertiary(),
+            contact.getRepresentativeEmail()
+        );
         return new ContactLookupResponse(
             contact.getId(),
-            Optional.ofNullable(contact.getContactName()).orElse(contact.getName()),
-            contact.getEmailPrimary(),
+            displayName,
+            displayEmail,
             contact.getTenantType(),
             contact.getAvatar()
         );
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank()) return v;
+        }
+        return null;
+    }
+
+    private static String combineName(String first, String last) {
+        if ((first == null || first.isBlank()) && (last == null || last.isBlank())) return null;
+        if (first == null || first.isBlank()) return last;
+        if (last == null || last.isBlank()) return first;
+        return first + " " + last;
     }
 
     public record ContactLookupResponse(Long id, String name, String email, String tenantType, String avatar) { }

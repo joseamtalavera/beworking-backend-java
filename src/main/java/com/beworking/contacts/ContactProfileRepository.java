@@ -23,9 +23,12 @@ public interface ContactProfileRepository extends JpaRepository<ContactProfile, 
         WHERE (LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%'))
            OR LOWER(c.contactName) LIKE LOWER(CONCAT('%', :search, '%'))
            OR LOWER(c.billingName) LIKE LOWER(CONCAT('%', :search, '%'))
+           OR LOWER(c.representativeFirstName) LIKE LOWER(CONCAT('%', :search, '%'))
+           OR LOWER(c.representativeLastName) LIKE LOWER(CONCAT('%', :search, '%'))
            OR LOWER(c.emailPrimary) LIKE LOWER(CONCAT('%', :search, '%'))
            OR LOWER(c.emailSecondary) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(c.emailTertiary) LIKE LOWER(CONCAT('%', :search, '%')))
+           OR LOWER(c.emailTertiary) LIKE LOWER(CONCAT('%', :search, '%'))
+           OR LOWER(c.representativeEmail) LIKE LOWER(CONCAT('%', :search, '%')))
         ORDER BY c.name ASC
     """)
     List<ContactProfile> searchContacts(@org.springframework.data.repository.query.Param("search") String search);
