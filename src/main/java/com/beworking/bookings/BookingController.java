@@ -233,7 +233,7 @@ public class BookingController {
                 // ── Contact line ──
                 + "<p style='margin:28px 0 0;font-size:13px;color:#888;text-align:center'>"
                 + "\u00bfNecesitas ayuda? Responde a este correo o escr\u00edbenos por WhatsApp: "
-                + "<a href='https://wa.me/34685155560' style='color:#009624;text-decoration:none;font-weight:600'>+34 685 155 560</a></p>"
+                + "<a href='https://wa.me/34640369759' style='color:#009624;text-decoration:none;font-weight:600'>+34 640 369 759</a></p>"
                 + "</div>"
                 // ── Footer ──
                 + "<div style='background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee'>"
