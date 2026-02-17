@@ -122,7 +122,8 @@ public class BookingController {
     @PostMapping("/{id}/confirm-email")
     public ResponseEntity<Map<String, Object>> sendConfirmationEmail(
         Authentication authentication,
-        @PathVariable Long id
+        @PathVariable Long id,
+        @RequestParam(value = "testEmail", required = false) String testEmail
     ) {
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -207,10 +208,11 @@ public class BookingController {
                 + "<p style='margin-top:24px;color:#666;font-size:13px'>Gracias por ser parte de la comunidad BeWorking.</p>"
                 + "</div></div>";
 
-            emailService.sendHtml(email, "Confirmaci\u00f3n de reserva - BeWorking", html);
+            String recipient = (testEmail != null && !testEmail.isBlank()) ? testEmail : email;
+            emailService.sendHtml(recipient, "Confirmaci\u00f3n de reserva - BeWorking", html);
 
             Map<String, Object> response = new HashMap<>();
-            response.put("message", "Confirmation email sent to " + email);
+            response.put("message", "Confirmation email sent to " + recipient);
             response.put("bookingId", id);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
