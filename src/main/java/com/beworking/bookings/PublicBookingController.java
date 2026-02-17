@@ -20,21 +20,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/public")
 public class PublicBookingController {
 
-    private static final String FREE_PRODUCT_NAME = "MA1A1";
+    private static final String FREE_TENANT_TYPE = "Oficina Virtual";
     private static final int FREE_MONTHLY_LIMIT = 5;
 
     private final BookingService bookingService;
     private final ContactProfileRepository contactRepository;
-    private final ProductoRepository productoRepository;
     private final ReservaRepository reservaRepository;
 
     public PublicBookingController(BookingService bookingService,
                                    ContactProfileRepository contactRepository,
-                                   ProductoRepository productoRepository,
                                    ReservaRepository reservaRepository) {
         this.bookingService = bookingService;
         this.contactRepository = contactRepository;
-        this.productoRepository = productoRepository;
         this.reservaRepository = reservaRepository;
     }
 
@@ -57,23 +54,8 @@ public class PublicBookingController {
 
     @GetMapping("/booking-usage")
     public ResponseEntity<?> getBookingUsage(@RequestParam String email,
-                                             @RequestParam String productName) {
+                                             @RequestParam(required = false) String productName) {
         Map<String, Object> body = new HashMap<>();
-
-        if (!FREE_PRODUCT_NAME.equalsIgnoreCase(productName)) {
-            body.put("used", 0);
-            body.put("freeLimit", 0);
-            body.put("isFree", false);
-            return ResponseEntity.ok(body);
-        }
-
-        Producto producto = productoRepository.findByNombreIgnoreCase(productName).orElse(null);
-        if (producto == null) {
-            body.put("used", 0);
-            body.put("freeLimit", FREE_MONTHLY_LIMIT);
-            body.put("isFree", true);
-            return ResponseEntity.ok(body);
-        }
 
         String normalizedEmail = email.trim().toLowerCase();
         ContactProfile contact = contactRepository
@@ -81,10 +63,11 @@ public class PublicBookingController {
                 normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail)
             .orElse(null);
 
-        if (contact == null) {
+        if (contact == null || contact.getTenantType() == null
+                || !FREE_TENANT_TYPE.equalsIgnoreCase(contact.getTenantType())) {
             body.put("used", 0);
-            body.put("freeLimit", FREE_MONTHLY_LIMIT);
-            body.put("isFree", true);
+            body.put("freeLimit", 0);
+            body.put("isFree", false);
             return ResponseEntity.ok(body);
         }
 
@@ -92,8 +75,8 @@ public class PublicBookingController {
         LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
         LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
 
-        long used = reservaRepository.countByContactAndProductInMonth(
-            contact.getId(), producto.getId(), monthStart, monthEnd);
+        long used = reservaRepository.countByContactInMonth(
+            contact.getId(), monthStart, monthEnd);
 
         body.put("used", used);
         body.put("freeLimit", FREE_MONTHLY_LIMIT);

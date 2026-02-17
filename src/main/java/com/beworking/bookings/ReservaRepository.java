@@ -47,4 +47,15 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
                                          @Param("productoId") Long productoId,
                                          @Param("monthStart") LocalDateTime monthStart,
                                          @Param("monthEnd") LocalDateTime monthEnd);
+
+    @Query("""
+        SELECT COUNT(r)
+        FROM Reserva r
+        WHERE r.cliente.id = :contactId
+          AND r.creacionFecha >= :monthStart
+          AND r.creacionFecha < :monthEnd
+    """)
+    long countByContactInMonth(@Param("contactId") Long contactId,
+                               @Param("monthStart") LocalDateTime monthStart,
+                               @Param("monthEnd") LocalDateTime monthEnd);
 }
