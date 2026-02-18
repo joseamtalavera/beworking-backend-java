@@ -165,7 +165,7 @@ public class InvoiceService {
                     )
                 ) AS client_email,
                 MAX(c.tenant_type) AS tenant_type,
-                LEFT(STRING_AGG(DISTINCT p.nombre, ', ' ORDER BY p.nombre), 500) AS products
+                LEFT(STRING_AGG(DISTINCT COALESCE(p.nombre, fd.conceptodesglose), ', ' ORDER BY COALESCE(p.nombre, fd.conceptodesglose)), 500) AS products
             """ + baseFrom + where + " " + """
             GROUP BY
                 f.id,
@@ -493,6 +493,149 @@ public class InvoiceService {
         }
 
         return Optional.empty();
+    }
+
+    @Transactional
+    public int markInvoicePaid(String reference, String stripePaymentIntentId) {
+        if (reference == null || reference.isBlank()) {
+            return 0;
+        }
+
+        // Try matching by holdedinvoicenum (the stored reference)
+        int updated = jdbcTemplate.update(
+            "UPDATE beworking.facturas SET estado = 'Pagado', stripepaymentintentid1 = ?, stripepaymentintentstatus1 = 'succeeded' WHERE holdedinvoicenum = ? AND estado <> 'Pagado'",
+            stripePaymentIntentId, reference
+        );
+        if (updated > 0) {
+            return updated;
+        }
+
+        // Try matching by idfactura (numeric invoice number)
+        try {
+            int numRef = Integer.parseInt(reference);
+            updated = jdbcTemplate.update(
+                "UPDATE beworking.facturas SET estado = 'Pagado', stripepaymentintentid1 = ?, stripepaymentintentstatus1 = 'succeeded' WHERE idfactura = ? AND estado <> 'Pagado'",
+                stripePaymentIntentId, numRef
+            );
+        } catch (NumberFormatException ignored) {
+        }
+
+        return updated;
+    }
+
+    public Map<String, Object> getInvoiceDetail(Long id) {
+        Map<String, Object> invoice;
+        try {
+            invoice = jdbcTemplate.queryForMap(
+                """
+                SELECT f.id, f.idfactura, f.idcliente, f.idcentro, f.descripcion,
+                       f.total, f.iva, f.totaliva, f.estado, f.creacionfecha,
+                       f.holdedinvoicenum, f.notas, f.holdedcuenta, f.id_cuenta,
+                       f.fechacreacionreal, f.fechacobro1,
+                       c.name AS client_name, c.tenant_type
+                FROM beworking.facturas f
+                LEFT JOIN beworking.contact_profiles c ON c.id = f.idcliente
+                WHERE f.id = ?
+                """, id);
+        } catch (EmptyResultDataAccessException e) {
+            throw new IllegalArgumentException("Invoice not found: " + id);
+        }
+
+        Integer idfactura = (Integer) invoice.get("idfactura");
+        List<Map<String, Object>> lines = jdbcTemplate.queryForList(
+            """
+            SELECT conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose
+            FROM beworking.facturasdesglose WHERE idfacturadesglose = ?
+            """, idfactura);
+
+        invoice.put("lineItems", lines);
+        return invoice;
+    }
+
+    @Transactional
+    public Map<String, Object> updateInvoice(Long id, CreateManualInvoiceRequest request) {
+        // Verify the invoice exists
+        Map<String, Object> existing;
+        try {
+            existing = jdbcTemplate.queryForMap(
+                "SELECT id, idfactura FROM beworking.facturas WHERE id = ?", id);
+        } catch (EmptyResultDataAccessException e) {
+            throw new IllegalArgumentException("Invoice not found: " + id);
+        }
+
+        Integer idfactura = (Integer) existing.get("idfactura");
+
+        // Get the cuenta ID from the codigo
+        Integer cuentaId = null;
+        if (request.getCuenta() != null && !request.getCuenta().isEmpty()) {
+            Optional<com.beworking.cuentas.Cuenta> cuentaOpt = cuentaService.getCuentaByCodigo(request.getCuenta());
+            if (cuentaOpt.isPresent()) {
+                cuentaId = cuentaOpt.get().getId();
+            }
+        }
+
+        String normalizedStatus = normalizeInvoiceStatus(request.getStatus());
+
+        // Update the main invoice record
+        jdbcTemplate.update(
+            """
+            UPDATE beworking.facturas SET
+                idcliente = ?, holdedcuenta = ?, id_cuenta = ?,
+                fechacreacionreal = ?, fechacobro1 = ?, estado = ?,
+                total = ?, iva = ?, totaliva = ?, notas = ?
+            WHERE id = ?
+            """,
+            request.getClientId(),
+            request.getCuenta(),
+            cuentaId,
+            request.getDate(),
+            request.getDueDate(),
+            normalizedStatus,
+            request.getComputed().getTotal(),
+            request.getComputed().getTotalVat().intValue(),
+            request.getComputed().getTotalVat(),
+            request.getNote(),
+            id
+        );
+
+        // Delete existing line items and re-insert
+        jdbcTemplate.update(
+            "DELETE FROM beworking.facturasdesglose WHERE idfacturadesglose = ?", idfactura);
+
+        if (request.getLineItems() != null && !request.getLineItems().isEmpty()) {
+            Long nextDesgloseId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+
+            for (int i = 0; i < request.getLineItems().size(); i++) {
+                CreateManualInvoiceRequest.LineItem item = request.getLineItems().get(i);
+                BigDecimal unitPrice = item.getPrice().setScale(2, RoundingMode.HALF_UP);
+                BigDecimal lineTotal = unitPrice.multiply(item.getQuantity())
+                    .multiply(BigDecimal.ONE.add(item.getVatPercent().divide(BigDecimal.valueOf(100))))
+                    .setScale(2, RoundingMode.HALF_UP);
+
+                String description = item.getDescription();
+                if (description == null || description.isBlank()) {
+                    description = "Line item";
+                }
+
+                jdbcTemplate.update(
+                    """
+                    INSERT INTO beworking.facturasdesglose
+                    (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                    """,
+                    nextDesgloseId + i, idfactura,
+                    description, unitPrice, item.getQuantity(), lineTotal
+                );
+            }
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", id);
+        response.put("idFactura", idfactura);
+        response.put("message", "Invoice updated successfully");
+        response.put("status", normalizedStatus);
+        return response;
     }
 
     private static boolean hasText(String value) {
