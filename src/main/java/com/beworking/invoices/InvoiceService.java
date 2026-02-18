@@ -818,7 +818,7 @@ public class InvoiceService {
             original = jdbcTemplate.queryForMap(
                 "SELECT id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado,"
                     + " holdedcuenta, id_cuenta, holdedinvoicenum,"
-                    + " stripepaymentintentid1, stripepaymentintentstatus1"
+                    + " stripepaymentintentid1, stripepaymentintentstatus1, stripeinvoiceid"
                     + " FROM beworking.facturas WHERE id = ?",
                 originalId
             );
@@ -901,30 +901,52 @@ public class InvoiceService {
             originalId
         );
 
-        // If paid via Stripe, issue refund
+        // Stripe: refund if paid, void invoice if not paid
         String stripeRefundId = null;
+        String stripeVoidedInvoiceId = null;
         String stripePaymentIntentId = (String) original.get("stripepaymentintentid1");
         String stripePaymentStatus = (String) original.get("stripepaymentintentstatus1");
+        String stripeInvoiceId = (String) original.get("stripeinvoiceid");
 
-        if (stripePaymentIntentId != null && !stripePaymentIntentId.isBlank()
-                && "succeeded".equalsIgnoreCase(stripePaymentStatus)
-                && paymentsBaseUrl != null && !paymentsBaseUrl.isBlank()) {
-            try {
-                Map<String, Object> refundBody = new HashMap<>();
-                refundBody.put("payment_intent_id", stripePaymentIntentId);
-                @SuppressWarnings("unchecked")
-                Map<String, Object> refundResult = http.post()
-                    .uri(paymentsBaseUrl + "/api/refunds")
-                    .header("Content-Type", "application/json")
-                    .body(refundBody)
-                    .retrieve()
-                    .body((Class<Map<String, Object>>) (Class<?>) Map.class);
-                if (refundResult != null) {
-                    stripeRefundId = (String) refundResult.get("refundId");
+        if (paymentsBaseUrl != null && !paymentsBaseUrl.isBlank()) {
+            // Case 1: Paid via Stripe → refund
+            if (stripePaymentIntentId != null && !stripePaymentIntentId.isBlank()
+                    && "succeeded".equalsIgnoreCase(stripePaymentStatus)) {
+                try {
+                    Map<String, Object> refundBody = new HashMap<>();
+                    refundBody.put("payment_intent_id", stripePaymentIntentId);
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> refundResult = http.post()
+                        .uri(paymentsBaseUrl + "/api/refunds")
+                        .header("Content-Type", "application/json")
+                        .body(refundBody)
+                        .retrieve()
+                        .body((Class<Map<String, Object>>) (Class<?>) Map.class);
+                    if (refundResult != null) {
+                        stripeRefundId = (String) refundResult.get("refundId");
+                    }
+                } catch (Exception e) {
+                    System.err.println("Stripe refund failed for PI " + stripePaymentIntentId + ": " + e.getMessage());
                 }
-            } catch (Exception e) {
-                // Log but don't fail the credit note creation
-                System.err.println("Stripe refund failed for PI " + stripePaymentIntentId + ": " + e.getMessage());
+            }
+            // Case 2: Stripe Invoice sent but not paid → void it
+            else if (stripeInvoiceId != null && !stripeInvoiceId.isBlank()) {
+                try {
+                    Map<String, Object> voidBody = new HashMap<>();
+                    voidBody.put("invoice_id", stripeInvoiceId);
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> voidResult = http.post()
+                        .uri(paymentsBaseUrl + "/api/void-invoice")
+                        .header("Content-Type", "application/json")
+                        .body(voidBody)
+                        .retrieve()
+                        .body((Class<Map<String, Object>>) (Class<?>) Map.class);
+                    if (voidResult != null) {
+                        stripeVoidedInvoiceId = (String) voidResult.get("invoiceId");
+                    }
+                } catch (Exception e) {
+                    System.err.println("Stripe void invoice failed for " + stripeInvoiceId + ": " + e.getMessage());
+                }
             }
         }
 
@@ -935,6 +957,9 @@ public class InvoiceService {
         response.put("message", "Credit note created for invoice #" + origInvoiceNum);
         if (stripeRefundId != null) {
             response.put("stripeRefundId", stripeRefundId);
+        }
+        if (stripeVoidedInvoiceId != null) {
+            response.put("stripeVoidedInvoiceId", stripeVoidedInvoiceId);
         }
         return response;
     }
@@ -985,10 +1010,10 @@ public class InvoiceService {
             // Insert the invoice into the database
             String insertSql = """
                 INSERT INTO beworking.facturas (
-                    id, idfactura, idcliente, holdedcuenta, id_cuenta, 
-                    fechacreacionreal, fechacobro1, estado, 
-                    total, iva, totaliva, notas, creacionfecha
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    id, idfactura, idcliente, holdedcuenta, id_cuenta,
+                    fechacreacionreal, fechacobro1, estado,
+                    total, iva, totaliva, notas, creacionfecha, stripeinvoiceid
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                 RETURNING idfactura
                 """;
 
@@ -1024,7 +1049,8 @@ public class InvoiceService {
                 request.getComputed().getTotal(),
                 request.getComputed().getTotalVat().intValue(), // Convert BigDecimal to Integer for iva column
                 request.getComputed().getTotalVat(),
-                request.getNote()
+                request.getNote(),
+                request.getStripeInvoiceId()
             );
 
             // Insert line items

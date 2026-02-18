@@ -38,6 +38,8 @@ public class CreateManualInvoiceRequest {
     
     private ComputedTotals computed;
 
+    private String stripeInvoiceId;
+
     // Getters and Setters
     public String getClientName() {
         return clientName;
@@ -133,6 +135,14 @@ public class CreateManualInvoiceRequest {
 
     public void setComputed(ComputedTotals computed) {
         this.computed = computed;
+    }
+
+    public String getStripeInvoiceId() {
+        return stripeInvoiceId;
+    }
+
+    public void setStripeInvoiceId(String stripeInvoiceId) {
+        this.stripeInvoiceId = stripeInvoiceId;
     }
 
     // Inner classes for line items and computed totals
