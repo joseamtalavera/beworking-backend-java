@@ -15,6 +15,7 @@ public class ContactProfileRequest {
     
     // Billing information
     private String billingCompany;
+    private String billingTaxId;
     private String billingEmail;
     private String billingAddress;
     private String billingPostalCode;
@@ -105,11 +106,19 @@ public class ContactProfileRequest {
     public String getBillingCompany() {
         return billingCompany;
     }
-    
+
     public void setBillingCompany(String billingCompany) {
         this.billingCompany = billingCompany;
     }
-    
+
+    public String getBillingTaxId() {
+        return billingTaxId;
+    }
+
+    public void setBillingTaxId(String billingTaxId) {
+        this.billingTaxId = billingTaxId;
+    }
+
     public String getBillingEmail() {
         return billingEmail;
     }

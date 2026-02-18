@@ -417,12 +417,13 @@ public class ContactProfileService {
         profile.setPhonePrimary(request.getPhone());
         profile.setStatus(request.getStatus() != null ? request.getStatus() : "Potencial");
         profile.setTenantType(request.getUserType());
-        profile.setCenterId(request.getCenter() != null ? Long.parseLong(request.getCenter()) : null);
+        profile.setCenterId(parseCenterId(request.getCenter()));
         profile.setChannel(request.getChannel());
         profile.setAvatar(request.getAvatar());
         
         // Set billing information
         profile.setBillingName(request.getBillingCompany());
+        profile.setBillingTaxId(request.getBillingTaxId());
         profile.setEmailSecondary(request.getBillingEmail());
         profile.setBillingAddress(request.getBillingAddress());
         profile.setBillingPostalCode(request.getBillingPostalCode());
@@ -523,6 +524,9 @@ public class ContactProfileService {
         // Billing block
         if (request.getBillingCompany() != null) {
             profile.setBillingName(blankToNull(request.getBillingCompany()));
+        }
+        if (request.getBillingTaxId() != null) {
+            profile.setBillingTaxId(blankToNull(request.getBillingTaxId()));
         }
         if (request.getBillingEmail() != null) {
             profile.setEmailSecondary(blankToNull(request.getBillingEmail()));
