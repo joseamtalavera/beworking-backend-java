@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -681,6 +682,13 @@ public class InvoiceService {
         String concept = buildConcept(productName, centerName, bloqueo);
 
         BigDecimal quantity = BigDecimal.ONE;
+        if (bloqueo.getFechaIni() != null && bloqueo.getFechaFin() != null) {
+            long hours = Duration.between(bloqueo.getFechaIni(), bloqueo.getFechaFin()).toHours();
+            if (hours > 0) {
+                quantity = BigDecimal.valueOf(hours);
+            }
+        }
+
         Double tarifa = bloqueo.getTarifa();
         BigDecimal unitPrice = tarifa != null
             ? BigDecimal.valueOf(tarifa).setScale(2, RoundingMode.HALF_UP)
