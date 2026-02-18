@@ -156,7 +156,7 @@ public class InvoiceService {
                 f.creacionfecha,
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf,
-                MAX(c.name) AS client_name,
+                MAX(COALESCE(c.name, c.contact_name, c.billing_name)) AS client_name,
                 MAX(
                     COALESCE(
                         c.email_primary,
