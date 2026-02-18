@@ -504,7 +504,18 @@ public class InvoiceService {
     }
 
     @Transactional
-    public int markInvoicePaid(String reference, String stripePaymentIntentId) {
+    public int markInvoicePaid(String reference, String stripePaymentIntentId, String stripeInvoiceId) {
+        // Try matching by stripeinvoiceid first (most reliable for Stripe Invoice payments)
+        if (stripeInvoiceId != null && !stripeInvoiceId.isBlank()) {
+            int updated = jdbcTemplate.update(
+                "UPDATE beworking.facturas SET estado = 'Pagado', stripepaymentintentid1 = ?, stripepaymentintentstatus1 = 'succeeded' WHERE stripeinvoiceid = ? AND estado <> 'Pagado'",
+                stripePaymentIntentId, stripeInvoiceId
+            );
+            if (updated > 0) {
+                return updated;
+            }
+        }
+
         if (reference == null || reference.isBlank()) {
             return 0;
         }
