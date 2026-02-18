@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.text.NumberFormat;
 import java.time.LocalDateTime;
@@ -106,10 +107,14 @@ public class InvoicePdfService {
             subtotal = null;
         }
 
-        BigDecimal total = header.total() != null ? header.total() : subtotal;
         BigDecimal taxAmount = null;
-        if (total != null && subtotal != null) {
-            taxAmount = total.subtract(subtotal);
+        if (header.vatPercent() != null && subtotal != null) {
+            taxAmount = subtotal.multiply(header.vatPercent())
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        }
+        BigDecimal total = subtotal;
+        if (total != null && taxAmount != null) {
+            total = total.add(taxAmount);
         }
 
         try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
