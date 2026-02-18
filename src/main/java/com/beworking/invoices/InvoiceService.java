@@ -30,6 +30,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.client.RestClient;
 
 @Service
@@ -42,12 +43,18 @@ public class InvoiceService {
     private final RestClient http;
     private final BloqueoRepository bloqueoRepository;
     private final CuentaService cuentaService;
+    private final String paymentsBaseUrl;
 
-    public InvoiceService(JdbcTemplate jdbcTemplate, BloqueoRepository bloqueoRepository, CuentaService cuentaService) {
+    public InvoiceService(
+            JdbcTemplate jdbcTemplate,
+            BloqueoRepository bloqueoRepository,
+            CuentaService cuentaService,
+            @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
         this.http = RestClient.create();
         this.bloqueoRepository = bloqueoRepository;
         this.cuentaService = cuentaService;
+        this.paymentsBaseUrl = paymentsBaseUrl;
     }
 
     public Page<InvoiceListItem> findInvoices(int page, int size, InvoiceFilters filters) {
@@ -810,7 +817,8 @@ public class InvoiceService {
         try {
             original = jdbcTemplate.queryForMap(
                 "SELECT id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado,"
-                    + " holdedcuenta, id_cuenta, holdedinvoicenum"
+                    + " holdedcuenta, id_cuenta, holdedinvoicenum,"
+                    + " stripepaymentintentid1, stripepaymentintentstatus1"
                     + " FROM beworking.facturas WHERE id = ?",
                 originalId
             );
@@ -893,11 +901,41 @@ public class InvoiceService {
             originalId
         );
 
+        // If paid via Stripe, issue refund
+        String stripeRefundId = null;
+        String stripePaymentIntentId = (String) original.get("stripepaymentintentid1");
+        String stripePaymentStatus = (String) original.get("stripepaymentintentstatus1");
+
+        if (stripePaymentIntentId != null && !stripePaymentIntentId.isBlank()
+                && "succeeded".equalsIgnoreCase(stripePaymentStatus)
+                && paymentsBaseUrl != null && !paymentsBaseUrl.isBlank()) {
+            try {
+                Map<String, Object> refundBody = new HashMap<>();
+                refundBody.put("payment_intent_id", stripePaymentIntentId);
+                @SuppressWarnings("unchecked")
+                Map<String, Object> refundResult = http.post()
+                    .uri(paymentsBaseUrl + "/api/refunds")
+                    .header("Content-Type", "application/json")
+                    .body(refundBody)
+                    .retrieve()
+                    .body((Class<Map<String, Object>>) (Class<?>) Map.class);
+                if (refundResult != null) {
+                    stripeRefundId = (String) refundResult.get("refundId");
+                }
+            } catch (Exception e) {
+                // Log but don't fail the credit note creation
+                System.err.println("Stripe refund failed for PI " + stripePaymentIntentId + ": " + e.getMessage());
+            }
+        }
+
         Map<String, Object> response = new HashMap<>();
         response.put("id", nextId);
         response.put("idFactura", nextLegacy);
         response.put("holdedInvoiceNum", null);
         response.put("message", "Credit note created for invoice #" + origInvoiceNum);
+        if (stripeRefundId != null) {
+            response.put("stripeRefundId", stripeRefundId);
+        }
         return response;
     }
 
