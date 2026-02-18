@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -202,6 +203,37 @@ public class InvoiceController {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Failed to update invoice: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<Map<String, Object>> updateStatus(
+        Authentication authentication,
+        @PathVariable Long id,
+        @RequestBody Map<String, String> body
+    ) {
+        Optional<User> userOpt = resolveUser(authentication);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (userOpt.get().getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        String status = body.get("status");
+        if (status == null || status.isBlank()) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "status is required");
+            return ResponseEntity.badRequest().body(error);
+        }
+
+        try {
+            Map<String, Object> result = invoiceService.updateInvoiceStatus(id, status);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
         }
     }
 

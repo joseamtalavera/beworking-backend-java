@@ -523,6 +523,20 @@ public class InvoiceService {
         return updated;
     }
 
+    @Transactional
+    public Map<String, Object> updateInvoiceStatus(Long id, String status) {
+        String normalized = normalizeInvoiceStatus(status);
+        int updated = jdbcTemplate.update(
+            "UPDATE beworking.facturas SET estado = ? WHERE id = ?", normalized, id);
+        if (updated == 0) {
+            throw new IllegalArgumentException("Invoice not found: " + id);
+        }
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", id);
+        response.put("status", normalized);
+        return response;
+    }
+
     public Map<String, Object> getInvoiceDetail(Long id) {
         Map<String, Object> invoice;
         try {
