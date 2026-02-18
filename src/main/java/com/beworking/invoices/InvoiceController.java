@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -148,6 +149,58 @@ public class InvoiceController {
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Failed to create manual invoice: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Map<String, Object>> getInvoice(
+        Authentication authentication,
+        @PathVariable Long id
+    ) {
+        Optional<User> userOpt = resolveUser(authentication);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (userOpt.get().getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        try {
+            Map<String, Object> result = invoiceService.getInvoiceDetail(id);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Map<String, Object>> updateInvoice(
+        Authentication authentication,
+        @PathVariable Long id,
+        @Valid @RequestBody CreateManualInvoiceRequest request
+    ) {
+        Optional<User> userOpt = resolveUser(authentication);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (userOpt.get().getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        try {
+            Map<String, Object> result = invoiceService.updateInvoice(id, request);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            logger.error("Failed to update invoice {}: {}", id, e.getMessage(), e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Failed to update invoice: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
