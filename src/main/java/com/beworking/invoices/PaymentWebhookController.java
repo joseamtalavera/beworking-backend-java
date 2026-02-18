@@ -41,16 +41,17 @@ public class PaymentWebhookController {
 
         String reference = payload.get("reference");
         String stripePaymentIntentId = payload.get("stripePaymentIntentId");
+        String stripeInvoiceId = payload.get("stripeInvoiceId");
 
-        if (reference == null || reference.isBlank()) {
+        if ((reference == null || reference.isBlank()) && (stripeInvoiceId == null || stripeInvoiceId.isBlank())) {
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "reference is required");
+            error.put("error", "reference or stripeInvoiceId is required");
             return ResponseEntity.badRequest().body(error);
         }
 
-        logger.info("Payment completed webhook — reference={} stripePI={}", reference, stripePaymentIntentId);
+        logger.info("Payment completed webhook — reference={} stripePI={} stripeInvoiceId={}", reference, stripePaymentIntentId, stripeInvoiceId);
 
-        int updated = invoiceService.markInvoicePaid(reference, stripePaymentIntentId);
+        int updated = invoiceService.markInvoicePaid(reference, stripePaymentIntentId, stripeInvoiceId);
 
         Map<String, Object> response = new HashMap<>();
         response.put("updated", updated);
