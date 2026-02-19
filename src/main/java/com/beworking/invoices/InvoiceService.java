@@ -1063,7 +1063,7 @@ public class InvoiceService {
                 request.getDate(),
                 request.getDueDate(),
                 normalizedStatus,
-                request.getComputed().getSubtotal(),
+                request.getComputed().getTotal(),
                 vatPercent,
                 request.getComputed().getTotalVat(),
                 request.getNote(),
