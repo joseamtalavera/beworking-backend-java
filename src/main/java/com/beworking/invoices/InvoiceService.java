@@ -1048,6 +1048,12 @@ public class InvoiceService {
 
             String normalizedStatus = normalizeInvoiceStatus(request.getStatus());
 
+            // Derive VAT percentage from the first line item (all lines share the same rate)
+            int vatPercent = 21; // default
+            if (request.getLineItems() != null && !request.getLineItems().isEmpty()) {
+                vatPercent = request.getLineItems().get(0).getVatPercent().intValue();
+            }
+
             Integer facturaId = jdbcTemplate.queryForObject(insertSql, Integer.class,
                 nextInternalId,
                 invoiceId,
@@ -1057,8 +1063,8 @@ public class InvoiceService {
                 request.getDate(),
                 request.getDueDate(),
                 normalizedStatus,
-                request.getComputed().getTotal(),
-                request.getComputed().getTotalVat().intValue(), // Convert BigDecimal to Integer for iva column
+                request.getComputed().getSubtotal(),
+                vatPercent,
                 request.getComputed().getTotalVat(),
                 request.getNote(),
                 request.getStripeInvoiceId()
@@ -1082,7 +1088,6 @@ public class InvoiceService {
                     CreateManualInvoiceRequest.LineItem item = request.getLineItems().get(i);
                     BigDecimal unitPrice = item.getPrice().setScale(2, RoundingMode.HALF_UP);
                     BigDecimal lineTotal = unitPrice.multiply(item.getQuantity())
-                        .multiply(BigDecimal.ONE.add(item.getVatPercent().divide(BigDecimal.valueOf(100))))
                         .setScale(2, RoundingMode.HALF_UP);
 
                     String description = item.getDescription();
