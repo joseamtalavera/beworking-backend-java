@@ -7,6 +7,7 @@ import com.beworking.contacts.ContactProfileRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -98,6 +99,11 @@ public class SubscriptionController {
                 stripeRequest.put("amount_cents", amountCents);
                 stripeRequest.put("currency", request.getCurrency() != null ? request.getCurrency().toLowerCase() : "eur");
                 stripeRequest.put("description", request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
+
+                // Anchor billing to the 1st of next month (prorate the first partial period)
+                LocalDate firstOfNextMonth = LocalDate.now().plusMonths(1).withDayOfMonth(1);
+                long anchorEpoch = firstOfNextMonth.atStartOfDay().toEpochSecond(ZoneOffset.UTC);
+                stripeRequest.put("billing_cycle_anchor", anchorEpoch);
 
                 @SuppressWarnings("unchecked")
                 Map<String, Object> stripeResponse = http.post()
