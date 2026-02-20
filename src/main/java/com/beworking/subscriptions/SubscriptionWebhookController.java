@@ -77,4 +77,54 @@ public class SubscriptionWebhookController {
 
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
+
+    @PostMapping("/subscription-activated")
+    public ResponseEntity<Map<String, Object>> subscriptionActivated(
+        @RequestBody Map<String, String> payload,
+        @RequestHeader(value = "X-Callback-Secret", required = false) String secret
+    ) {
+        if (callbackSecret != null && !callbackSecret.isBlank()) {
+            if (secret == null || !secret.equals(callbackSecret)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+        }
+
+        String scheduleId = payload.get("scheduleId");
+        String subscriptionId = payload.get("subscriptionId");
+        String customerId = payload.get("customerId");
+
+        if (scheduleId == null || scheduleId.isBlank() || subscriptionId == null || subscriptionId.isBlank()) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "scheduleId and subscriptionId are required");
+            return ResponseEntity.badRequest().body(error);
+        }
+
+        logger.info("Subscription activated webhook — scheduleId={} subscriptionId={} customerId={}",
+            scheduleId, subscriptionId, customerId);
+
+        Optional<Subscription> subOpt = subscriptionService.findByStripeSubscriptionId(scheduleId);
+        if (subOpt.isEmpty()) {
+            logger.warn("No subscription found for scheduleId={}", scheduleId);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Subscription not found for schedule: " + scheduleId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        }
+
+        Subscription subscription = subOpt.get();
+        subscription.setStripeSubscriptionId(subscriptionId);
+        if (customerId != null && !customerId.isBlank()) {
+            subscription.setStripeCustomerId(customerId);
+        }
+        subscriptionService.save(subscription);
+
+        logger.info("Updated subscription id={} — stripeSubscriptionId {} → {}, customerId={}",
+            subscription.getId(), scheduleId, subscriptionId, customerId);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", subscription.getId());
+        response.put("oldStripeId", scheduleId);
+        response.put("newStripeId", subscriptionId);
+        response.put("customerId", customerId);
+        return ResponseEntity.ok(response);
+    }
 }
