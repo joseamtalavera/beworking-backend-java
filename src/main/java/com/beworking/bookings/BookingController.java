@@ -3,10 +3,13 @@ package com.beworking.bookings;
 import com.beworking.auth.EmailService;
 import com.beworking.auth.User;
 import com.beworking.auth.UserRepository;
+import com.beworking.contacts.ContactProfile;
+import com.beworking.contacts.ContactProfileRepository;
 import jakarta.validation.Valid;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
@@ -34,17 +37,31 @@ public class BookingController {
 
     private static final Logger logger = LoggerFactory.getLogger(BookingController.class);
 
+    private static final String FREE_PRODUCT_NAME = "MA1A1";
+    private static final String FREE_TENANT_TYPE_VIRTUAL = "Usuario Virtual";
+    private static final String FREE_TENANT_TYPE_DESK = "Usuario Mesa";
+    private static final int FREE_MONTHLY_LIMIT = 5;
+
     private final BookingService bookingService;
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final JdbcTemplate jdbcTemplate;
+    private final ReservaRepository reservaRepository;
+    private final ContactProfileRepository contactRepository;
+    private final ProductoRepository productoRepository;
 
     public BookingController(BookingService bookingService, UserRepository userRepository,
-                             EmailService emailService, JdbcTemplate jdbcTemplate) {
+                             EmailService emailService, JdbcTemplate jdbcTemplate,
+                             ReservaRepository reservaRepository,
+                             ContactProfileRepository contactRepository,
+                             ProductoRepository productoRepository) {
         this.bookingService = bookingService;
         this.userRepository = userRepository;
         this.emailService = emailService;
         this.jdbcTemplate = jdbcTemplate;
+        this.reservaRepository = reservaRepository;
+        this.contactRepository = contactRepository;
+        this.productoRepository = productoRepository;
     }
 
     @GetMapping
@@ -254,5 +271,55 @@ public class BookingController {
             error.put("error", "Failed to send confirmation email: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<?> getBookingStats(
+        Authentication authentication,
+        @RequestParam Long contactId
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
+        if (userOpt.isEmpty() || userOpt.get().getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        // YTD count
+        LocalDateTime yearStart = LocalDate.now().withDayOfYear(1).atStartOfDay();
+        long ytd = reservaRepository.countByContactSinceDate(contactId, yearStart);
+
+        // This month count
+        YearMonth currentMonth = YearMonth.now();
+        LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
+        LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
+        long month = reservaRepository.countByContactInMonth(contactId, monthStart, monthEnd);
+
+        // Free bookings info
+        Map<String, Object> body = new HashMap<>();
+        body.put("totalBookingsYTD", ytd);
+        body.put("totalBookingsMonth", month);
+
+        Optional<ContactProfile> contactOpt = contactRepository.findById(contactId);
+        if (contactOpt.isPresent()) {
+            String tenantType = contactOpt.get().getTenantType();
+            if (FREE_TENANT_TYPE_DESK.equalsIgnoreCase(tenantType)) {
+                body.put("freeBookings", "unlimited");
+            } else if (FREE_TENANT_TYPE_VIRTUAL.equalsIgnoreCase(tenantType)) {
+                Producto producto = productoRepository.findByNombreIgnoreCase(FREE_PRODUCT_NAME).orElse(null);
+                long freeUsed = 0;
+                if (producto != null) {
+                    freeUsed = reservaRepository.countByContactAndProductInMonth(
+                        contactId, producto.getId(), monthStart, monthEnd);
+                }
+                long freeLeft = Math.max(0, FREE_MONTHLY_LIMIT - freeUsed);
+                body.put("freeBookings", freeUsed);
+                body.put("freeBookingsLeft", freeLeft);
+                body.put("freeBookingsLimit", FREE_MONTHLY_LIMIT);
+            }
+        }
+
+        return ResponseEntity.ok(body);
     }
 }
