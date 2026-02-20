@@ -22,6 +22,7 @@ public class CreateSubscriptionRequest {
     private String cuenta;
     private String description;
     private Integer vatPercent;
+    private String vatNumber;
     private LocalDate startDate;
     private LocalDate endDate;
 
@@ -48,6 +49,9 @@ public class CreateSubscriptionRequest {
 
     public Integer getVatPercent() { return vatPercent; }
     public void setVatPercent(Integer vatPercent) { this.vatPercent = vatPercent; }
+
+    public String getVatNumber() { return vatNumber; }
+    public void setVatNumber(String vatNumber) { this.vatNumber = vatNumber; }
 
     public LocalDate getStartDate() { return startDate; }
     public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
