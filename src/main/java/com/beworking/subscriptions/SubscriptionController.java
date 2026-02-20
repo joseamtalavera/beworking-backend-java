@@ -110,6 +110,33 @@ public class SubscriptionController {
                 long anchorEpoch = firstOfNextMonth.atStartOfDay().toEpochSecond(ZoneOffset.UTC);
                 stripeRequest.put("billing_cycle_anchor", anchorEpoch);
 
+                // Pass billing details from contact profile to Stripe customer
+                Map<String, Object> billing = new HashMap<>();
+                if (contact.getBillingName() != null && !contact.getBillingName().isBlank()) {
+                    billing.put("company", contact.getBillingName());
+                }
+                if (contact.getBillingAddress() != null && !contact.getBillingAddress().isBlank()) {
+                    billing.put("line1", contact.getBillingAddress());
+                }
+                if (contact.getBillingCity() != null && !contact.getBillingCity().isBlank()) {
+                    billing.put("city", contact.getBillingCity());
+                }
+                if (contact.getBillingProvince() != null && !contact.getBillingProvince().isBlank()) {
+                    billing.put("state", contact.getBillingProvince());
+                }
+                if (contact.getBillingPostalCode() != null && !contact.getBillingPostalCode().isBlank()) {
+                    billing.put("postal_code", contact.getBillingPostalCode());
+                }
+                if (contact.getBillingCountry() != null && !contact.getBillingCountry().isBlank()) {
+                    billing.put("country", mapCountryToIso(contact.getBillingCountry()));
+                }
+                if (contact.getBillingTaxId() != null && !contact.getBillingTaxId().isBlank()) {
+                    billing.put("tax_id", contact.getBillingTaxId());
+                }
+                if (!billing.isEmpty()) {
+                    stripeRequest.put("billing", billing);
+                }
+
                 @SuppressWarnings("unchecked")
                 Map<String, Object> stripeResponse = http.post()
                     .uri("/api/subscriptions/auto")
@@ -206,6 +233,20 @@ public class SubscriptionController {
 
         subscriptionService.deactivate(id);
         return ResponseEntity.noContent().build();
+    }
+
+    private String mapCountryToIso(String country) {
+        if (country == null) return "";
+        return switch (country.trim().toLowerCase()) {
+            case "españa", "spain" -> "ES";
+            case "portugal" -> "PT";
+            case "francia", "france" -> "FR";
+            case "alemania", "germany" -> "DE";
+            case "italia", "italy" -> "IT";
+            case "reino unido", "united kingdom" -> "GB";
+            case "estados unidos", "united states" -> "US";
+            default -> country.length() == 2 ? country.toUpperCase() : country;
+        };
     }
 
     private boolean isAdmin(Authentication authentication) {
