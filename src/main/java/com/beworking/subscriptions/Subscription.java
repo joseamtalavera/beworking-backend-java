@@ -37,6 +37,9 @@ public class Subscription {
     @Column(name = "vat_percent")
     private Integer vatPercent = 21;
 
+    @Column(name = "vat_number", length = 50)
+    private String vatNumber;
+
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
@@ -80,6 +83,9 @@ public class Subscription {
 
     public Integer getVatPercent() { return vatPercent; }
     public void setVatPercent(Integer vatPercent) { this.vatPercent = vatPercent; }
+
+    public String getVatNumber() { return vatNumber; }
+    public void setVatNumber(String vatNumber) { this.vatNumber = vatNumber; }
 
     public LocalDate getStartDate() { return startDate; }
     public void setStartDate(LocalDate startDate) { this.startDate = startDate; }

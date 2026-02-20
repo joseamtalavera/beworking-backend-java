@@ -100,6 +100,11 @@ public class SubscriptionController {
                 stripeRequest.put("currency", request.getCurrency() != null ? request.getCurrency().toLowerCase() : "eur");
                 stripeRequest.put("description", request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
 
+                // VAT: if no VAT number → apply 21% tax in Stripe; if VAT number → tax exempt
+                boolean taxExempt = request.getVatNumber() != null && !request.getVatNumber().isBlank();
+                stripeRequest.put("vat_number", taxExempt ? request.getVatNumber() : "");
+                stripeRequest.put("tax_exempt", taxExempt);
+
                 // Anchor billing to the 1st of next month (prorate the first partial period)
                 LocalDate firstOfNextMonth = LocalDate.now().plusMonths(1).withDayOfMonth(1);
                 long anchorEpoch = firstOfNextMonth.atStartOfDay().toEpochSecond(ZoneOffset.UTC);
@@ -142,7 +147,9 @@ public class SubscriptionController {
         sub.setCurrency(request.getCurrency() != null ? request.getCurrency() : "EUR");
         sub.setCuenta(request.getCuenta() != null ? request.getCuenta() : "PT");
         sub.setDescription(request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
-        sub.setVatPercent(request.getVatPercent() != null ? request.getVatPercent() : 21);
+        boolean hasVatNumber = request.getVatNumber() != null && !request.getVatNumber().isBlank();
+        sub.setVatNumber(hasVatNumber ? request.getVatNumber() : null);
+        sub.setVatPercent(hasVatNumber ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
         sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
         sub.setEndDate(request.getEndDate());
         sub.setActive(true);
