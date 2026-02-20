@@ -66,10 +66,6 @@ public class InvoicePdfService {
         "GT", COMPANY_GT
     );
 
-    // ─── Bank details ────────────────────────────────────────────────────
-    private static final String IBAN = "ES82 0182 2116 0102 0171 0670";
-    private static final String IBAN_HOLDER = "BeWorking Partners Offices SL";
-
     static CompanyInfo resolveCompany(String cuentaCodigo) {
         if (cuentaCodigo == null) return COMPANY_PT;
         String key = cuentaCodigo.trim().toUpperCase();
@@ -399,23 +395,6 @@ public class InvoicePdfService {
             cs.setNonStrokingColor(WHITE);
             addText(cs, PDType1Font.HELVETICA_BOLD, 11, summaryX + 8, summaryY - 12, "TOTAL");
             addTextRightAligned(cs, PDType1Font.HELVETICA_BOLD, 12, margin + contentWidth - 8, summaryY - 12, formatCurrency(total, currencyFormat));
-
-            // ─── Bank details section ─────────────────────────────────
-            float bankY = summaryY - totalBoxH - 14;
-            cs.setStrokingColor(BORDER);
-            cs.setLineWidth(0.5f);
-            cs.moveTo(margin, bankY + 4);
-            cs.lineTo(margin + contentWidth, bankY + 4);
-            cs.stroke();
-
-            bankY -= 8;
-            cs.setNonStrokingColor(BRAND_GREEN);
-            addText(cs, PDType1Font.HELVETICA_BOLD, 8, margin, bankY, "DATOS BANCARIOS / BANK DETAILS");
-            bankY -= 14;
-            cs.setNonStrokingColor(INK);
-            addText(cs, PDType1Font.HELVETICA, 9, margin, bankY, "IBAN: " + IBAN);
-            bankY -= 13;
-            addText(cs, PDType1Font.HELVETICA, 9, margin, bankY, "Titular: " + IBAN_HOLDER);
 
             // ─── Footer ──────────────────────────────────────────────
             float footerY = margin + 16;
