@@ -369,6 +369,19 @@ public class InvoiceService {
                 subtotal = subtotal.add(line.total());
             }
         }
+
+        // Add extra line items to subtotal
+        List<CreateInvoiceRequest.ExtraLineItem> extras = request.getExtraLineItems();
+        if (extras != null) {
+            for (CreateInvoiceRequest.ExtraLineItem extra : extras) {
+                if (extra.getDescription() != null && !extra.getDescription().isBlank()) {
+                    BigDecimal lineTotal = extra.getQuantity().multiply(extra.getPrice())
+                        .setScale(2, RoundingMode.HALF_UP);
+                    subtotal = subtotal.add(lineTotal);
+                }
+            }
+        }
+
         subtotal = subtotal.setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal vatPercent = request.getVatPercent();
@@ -434,6 +447,33 @@ public class InvoiceService {
             bloqueo.setEstado("Invoiced");
             bloqueo.setEdicionFecha(now);
         }
+
+        // Insert extra line items (not linked to any bloqueo)
+        if (extras != null) {
+            for (CreateInvoiceRequest.ExtraLineItem extra : extras) {
+                if (extra.getDescription() != null && !extra.getDescription().isBlank()) {
+                    BigDecimal lineTotal = extra.getQuantity().multiply(extra.getPrice())
+                        .setScale(2, RoundingMode.HALF_UP);
+                    jdbcTemplate.update(
+                        """
+                        INSERT INTO beworking.facturasdesglose
+                        (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        nextDesgloseId,
+                        nextLegacy,
+                        extra.getDescription(),
+                        extra.getPrice().setScale(2, RoundingMode.HALF_UP),
+                        extra.getQuantity(),
+                        lineTotal,
+                        1,
+                        null
+                    );
+                    nextDesgloseId++;
+                }
+            }
+        }
+
         bloqueoRepository.saveAll(bloqueos);
 
         List<CreateInvoiceResponse.Line> responseLines = computedLines.entrySet().stream()
@@ -1018,13 +1058,30 @@ public class InvoiceService {
                 Long.class
             );
 
+            // Build description from line items
+            String description = null;
+            if (request.getLineItems() != null && !request.getLineItems().isEmpty()) {
+                description = request.getLineItems().stream()
+                    .map(li -> li.getDescription() != null ? li.getDescription() : "Item")
+                    .collect(java.util.stream.Collectors.joining(", "));
+            }
+
+            // Resolve center ID from string
+            Integer centerId = null;
+            if (request.getCenter() != null && !request.getCenter().isEmpty()) {
+                try {
+                    centerId = Integer.parseInt(request.getCenter());
+                } catch (NumberFormatException ignored) {}
+            }
+
             // Insert the invoice into the database
             String insertSql = """
                 INSERT INTO beworking.facturas (
-                    id, idfactura, idcliente, holdedcuenta, id_cuenta,
+                    id, idfactura, idcliente, idcentro, holdedcuenta, id_cuenta,
+                    descripcion, holdedinvoicenum,
                     fechacreacionreal, fechacobro1, estado,
                     total, iva, totaliva, notas, creacionfecha, stripeinvoiceid
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                 RETURNING idfactura
                 """;
 
@@ -1043,9 +1100,6 @@ public class InvoiceService {
                 invoiceId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
             }
 
-            // Debugging: Print the resolved invoiceId
-            System.out.println("Resolved invoiceId before insert: " + invoiceId);
-
             String normalizedStatus = normalizeInvoiceStatus(request.getStatus());
 
             // Derive VAT percentage from the first line item (all lines share the same rate)
@@ -1058,8 +1112,11 @@ public class InvoiceService {
                 nextInternalId,
                 invoiceId,
                 request.getClientId(),
+                centerId,
                 request.getCuenta(),
                 cuentaId,
+                description,
+                invoiceNumber,
                 request.getDate(),
                 request.getDueDate(),
                 normalizedStatus,
