@@ -178,8 +178,10 @@ public class InvoiceService {
                     CASE
                         WHEN fd.conceptodesglose LIKE '%Oficina Virtual:%' THEN
                             TRIM(SPLIT_PART(SPLIT_PART(fd.conceptodesglose, 'Oficina Virtual: ', 2), '.', 1))
-                        WHEN fd.conceptodesglose LIKE '%·%' THEN
-                            SPLIT_PART(fd.conceptodesglose, ' · ', 1)
+                        WHEN fd.conceptodesglose LIKE '%Centro:%' THEN
+                            TRIM(SPLIT_PART(SPLIT_PART(fd.conceptodesglose, 'Oficina Virtual: ', 2), '.', 1))
+                        WHEN fd.conceptodesglose ~ '\\d{4}-\\d{2}-\\d{2}' THEN
+                            TRIM(REGEXP_REPLACE(fd.conceptodesglose, '\\s+.\\s+\\d{4}-.*$', ''))
                         ELSE fd.conceptodesglose
                     END
                 ), ', '), 500) AS products
