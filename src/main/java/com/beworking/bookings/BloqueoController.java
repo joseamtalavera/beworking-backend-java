@@ -90,6 +90,25 @@ public class BloqueoController {
         return ResponseEntity.ok(bloqueos);
     }
 
+    @GetMapping("/uninvoiced")
+    public ResponseEntity<List<BloqueoResponse>> getUninvoicedBloqueos(
+        Authentication authentication,
+        @RequestParam("contactId") Long contactId
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(401).build();
+        }
+        Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(401).build();
+        }
+        if (userOpt.get().getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(403).build();
+        }
+        List<BloqueoResponse> bloqueos = bloqueoService.getUninvoicedBloqueos(contactId);
+        return ResponseEntity.ok(bloqueos);
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<?> updateBloqueo(Authentication authentication,
                                            @PathVariable Long id,
