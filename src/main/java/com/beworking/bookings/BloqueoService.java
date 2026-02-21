@@ -76,6 +76,22 @@ class BloqueoService {
         }
     }
 
+    @Transactional(readOnly = true)
+    List<BloqueoResponse> getUninvoicedBloqueos(Long contactId) {
+        if (contactId == null) {
+            return List.of();
+        }
+        try {
+            List<Bloqueo> bloqueos = bloqueoRepository.findUninvoicedByContact(contactId);
+            return bloqueos.stream()
+                .map(BloqueoMapper::toResponse)
+                .toList();
+        } catch (DataAccessException ex) {
+            LOGGER.warn("Failed to load uninvoiced bloqueos for contact {}", contactId, ex);
+            return List.of();
+        }
+    }
+
     @Transactional
     BloqueoResponse updateBloqueo(Long id, UpdateBloqueoRequest request) {
         if (request.getDateFrom() == null || request.getDateTo() == null) {
