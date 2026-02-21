@@ -1133,15 +1133,15 @@ public class InvoiceService {
                     BigDecimal lineTotal = unitPrice.multiply(item.getQuantity())
                         .setScale(2, RoundingMode.HALF_UP);
 
-                    String description = item.getDescription();
-                    if (description == null || description.isBlank()) {
-                        description = "Manual line item";
+                    String lineConcept = item.getDescription();
+                    if (lineConcept == null || lineConcept.isBlank()) {
+                        lineConcept = "Manual line item";
                     }
 
                     jdbcTemplate.update(lineItemSql,
                         nextDesgloseId + i,
                         facturaId,
-                        description,
+                        lineConcept,
                         unitPrice,
                         item.getQuantity(),
                         lineTotal,
