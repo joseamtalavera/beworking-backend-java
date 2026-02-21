@@ -18,19 +18,19 @@ public interface ContactProfileRepository extends JpaRepository<ContactProfile, 
         String email
     );
 
-    @org.springframework.data.jpa.repository.Query("""
-        SELECT c FROM ContactProfile c
-        WHERE (LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(c.contactName) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(c.billingName) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(c.representativeFirstName) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(c.representativeLastName) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(c.emailPrimary) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(c.emailSecondary) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(c.emailTertiary) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(c.representativeEmail) LIKE LOWER(CONCAT('%', :search, '%')))
+    @org.springframework.data.jpa.repository.Query(value = """
+        SELECT * FROM beworking.contact_profiles c
+        WHERE (unaccent(LOWER(c.name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
+           OR unaccent(LOWER(c.contact_name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
+           OR unaccent(LOWER(c.billing_name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
+           OR unaccent(LOWER(c.representative_first_name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
+           OR unaccent(LOWER(c.representative_last_name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
+           OR LOWER(c.email_primary) LIKE LOWER(CONCAT('%', :search, '%'))
+           OR LOWER(c.email_secondary) LIKE LOWER(CONCAT('%', :search, '%'))
+           OR LOWER(c.email_tertiary) LIKE LOWER(CONCAT('%', :search, '%'))
+           OR LOWER(c.representative_email) LIKE LOWER(CONCAT('%', :search, '%')))
         ORDER BY c.name ASC
-    """)
+    """, nativeQuery = true)
     List<ContactProfile> searchContacts(@org.springframework.data.repository.query.Param("search") String search);
 
     Optional<ContactProfile> findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
