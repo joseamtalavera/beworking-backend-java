@@ -438,18 +438,18 @@ public class ContactProfileService {
         // Save the profile
         ContactProfile savedProfile = repository.save(profile);
         
-        // Sync avatar to user table if this contact profile belongs to a user
-        if (savedProfile.getAvatar() != null && savedProfile.getEmailPrimary() != null) {
-            System.out.println("DEBUG: Creating contact profile, syncing avatar for email: " + savedProfile.getEmailPrimary());
+        // Link user account to this contact profile and sync avatar
+        if (savedProfile.getEmailPrimary() != null) {
             userRepository.findByEmail(savedProfile.getEmailPrimary())
                 .ifPresent(user -> {
-                    System.out.println("DEBUG: Found user during creation, updating avatar from: " + user.getAvatar() + " to: " + savedProfile.getAvatar());
-                    user.setAvatar(savedProfile.getAvatar());
+                    user.setTenantId(savedProfile.getId());
+                    if (savedProfile.getAvatar() != null) {
+                        user.setAvatar(savedProfile.getAvatar());
+                    }
                     userRepository.save(user);
-                    System.out.println("DEBUG: User avatar updated successfully during creation");
                 });
         }
-        
+
         return savedProfile;
     }
 
@@ -477,28 +477,20 @@ public class ContactProfileService {
             profile.setPhonePrimary(blankToNull(request.getPhone()));
         }
 
-        System.out.println("DEBUG: Avatar request value: " + request.getAvatar());
-        System.out.println("DEBUG: Avatar request is null: " + (request.getAvatar() == null));
-        
         if (request.getAvatar() != null) {
-            System.out.println("DEBUG: Avatar is not null, updating profile avatar");
             profile.setAvatar(blankToNull(request.getAvatar()));
-            
-            // Sync avatar to user table if this contact profile belongs to a user
-            if (profile.getEmailPrimary() != null) {
-                System.out.println("DEBUG: Syncing avatar for email: " + profile.getEmailPrimary());
-                userRepository.findByEmail(profile.getEmailPrimary())
-                    .ifPresent(user -> {
-                        System.out.println("DEBUG: Found user, updating avatar from: " + user.getAvatar() + " to: " + profile.getAvatar());
+        }
+
+        // Link user account to this contact profile and sync avatar
+        if (profile.getEmailPrimary() != null) {
+            userRepository.findByEmail(profile.getEmailPrimary())
+                .ifPresent(user -> {
+                    user.setTenantId(profile.getId());
+                    if (profile.getAvatar() != null) {
                         user.setAvatar(profile.getAvatar());
-                        userRepository.save(user);
-                        System.out.println("DEBUG: User avatar updated successfully");
-                    });
-            } else {
-                System.out.println("DEBUG: No email found for contact profile, skipping avatar sync");
-            }
-        } else {
-            System.out.println("DEBUG: Avatar is null, skipping avatar update");
+                    }
+                    userRepository.save(user);
+                });
         }
 
         if (request.getStatus() != null) {

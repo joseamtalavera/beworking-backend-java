@@ -1,5 +1,6 @@
 package com.beworking.auth;
 
+import com.beworking.contacts.ContactProfileRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -17,11 +18,14 @@ public class RegisterService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final ContactProfileRepository contactProfileRepository;
 
-    public RegisterService(UserRepository userRepository, PasswordEncoder passwordEncoder, EmailService emailService) {
+    public RegisterService(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                           EmailService emailService, ContactProfileRepository contactProfileRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
+        this.contactProfileRepository = contactProfileRepository;
     }
 
     /**
@@ -46,6 +50,13 @@ public class RegisterService {
         String rawToken = UUID.randomUUID().toString();
         user.setConfirmationToken(hashToken(rawToken));
         user.setConfirmationTokenExpiry(Instant.now().plus(24, ChronoUnit.HOURS));
+
+        // Auto-link to existing contact profile by email
+        contactProfileRepository
+            .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail)
+            .ifPresent(cp -> user.setTenantId(cp.getId()));
+
         userRepository.save(user);
 
         // Fire-and-forget confirmation email after persistence.
