@@ -15,6 +15,8 @@ public class CreateInvoiceRequest {
 
     private String reference;
 
+    private List<ExtraLineItem> extraLineItems;
+
     public List<Long> getBloqueoIds() {
         return bloqueoIds;
     }
@@ -45,5 +47,43 @@ public class CreateInvoiceRequest {
 
     public void setReference(String reference) {
         this.reference = reference;
+    }
+
+    public List<ExtraLineItem> getExtraLineItems() {
+        return extraLineItems;
+    }
+
+    public void setExtraLineItems(List<ExtraLineItem> extraLineItems) {
+        this.extraLineItems = extraLineItems;
+    }
+
+    public static class ExtraLineItem {
+        private String description;
+        private BigDecimal quantity;
+        private BigDecimal price;
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+
+        public BigDecimal getQuantity() {
+            return quantity;
+        }
+
+        public void setQuantity(BigDecimal quantity) {
+            this.quantity = quantity;
+        }
+
+        public BigDecimal getPrice() {
+            return price;
+        }
+
+        public void setPrice(BigDecimal price) {
+            this.price = price;
+        }
     }
 }
