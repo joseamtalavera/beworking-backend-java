@@ -31,6 +31,8 @@ class RegisterServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private EmailService emailService;
+    @Mock
+    private com.beworking.contacts.ContactProfileRepository contactProfileRepository;
 
     // Service under test
     private RegisterService registerService;
@@ -40,7 +42,7 @@ class RegisterServiceTest {
      */
     @BeforeEach
     void setUp() {
-        registerService = new RegisterService(userRepository, passwordEncoder, emailService);
+        registerService = new RegisterService(userRepository, passwordEncoder, emailService, contactProfileRepository);
     }
 
     /**
