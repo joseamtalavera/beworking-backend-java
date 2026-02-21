@@ -86,4 +86,26 @@ public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
         ORDER BY b.fechaIni ASC
     """)
     List<Bloqueo> findUninvoicedByContact(@Param("contactId") Long contactId);
+
+    @Query("""
+        SELECT DISTINCT b
+        FROM Bloqueo b
+        LEFT JOIN FETCH b.cliente c
+        LEFT JOIN FETCH b.centro centro
+        LEFT JOIN FETCH b.producto producto
+        WHERE b.fechaIni >= :monthStart
+          AND b.fechaIni < :monthEnd
+          AND (
+              b.estado IS NULL
+              OR (
+                  LOWER(b.estado) NOT LIKE '%invoice%'
+                  AND LOWER(b.estado) NOT LIKE '%factura%'
+                  AND LOWER(b.estado) NOT LIKE '%pend%'
+                  AND LOWER(b.estado) NOT LIKE '%pag%'
+              )
+          )
+        ORDER BY b.fechaIni ASC
+    """)
+    List<Bloqueo> findUninvoicedForMonth(@Param("monthStart") LocalDateTime monthStart,
+                                          @Param("monthEnd") LocalDateTime monthEnd);
 }

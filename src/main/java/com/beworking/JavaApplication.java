@@ -1,8 +1,9 @@
 package com.beworking;
 
-import org.springframework.boot.SpringApplication; 
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.scheduling.annotation.EnableAsync; 
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Spring Boot entrypoint for the BeWorking backend API.
@@ -11,6 +12,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
  */
 @SpringBootApplication
 @EnableAsync
+@EnableScheduling
 public class JavaApplication {
 	/**
 	 * Application entrypoint invoked by the JVM.

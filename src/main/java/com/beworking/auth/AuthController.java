@@ -57,7 +57,7 @@ public class AuthController {
                     .secure(cookieSecure)
                     .sameSite("Lax")
                     .path("/")
-                    .maxAge(Duration.ofMinutes(15))
+                    .maxAge(Duration.ofHours(1))
                     .build();
 
             ResponseCookie refreshCookie = ResponseCookie.from(REFRESH_COOKIE, refresh)
@@ -101,7 +101,7 @@ public class AuthController {
                     .secure(cookieSecure)
                     .sameSite("Lax")
                     .path("/")
-                    .maxAge(Duration.ofMinutes(15))
+                    .maxAge(Duration.ofHours(1))
                     .build();
 
             ResponseCookie refreshCookie = ResponseCookie.from(REFRESH_COOKIE, newRefresh)

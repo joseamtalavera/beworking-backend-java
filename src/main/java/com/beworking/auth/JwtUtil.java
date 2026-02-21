@@ -20,7 +20,7 @@ import java.util.Date;
 public class JwtUtil {
     @Value("${jwt.secret}")
     private String jwtSecret; // Step 1: Secret injected here
-    private final long ACCESS_EXPIRATION_MS = 1000 * 60 * 15; // 15 minutes
+    private final long ACCESS_EXPIRATION_MS = 1000 * 60 * 60; // 1 hour
     private final long REFRESH_EXPIRATION_MS = 1000L * 60 * 60 * 24 * 7; // 7 days
 
     private Key getSigningKey() {
