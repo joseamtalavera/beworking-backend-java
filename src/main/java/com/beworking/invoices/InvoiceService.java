@@ -173,7 +173,16 @@ public class InvoiceService {
                     )
                 ) AS client_email,
                 MAX(c.tenant_type) AS tenant_type,
-                LEFT(STRING_AGG(DISTINCT COALESCE(p.nombre, fd.conceptodesglose), ', ' ORDER BY COALESCE(p.nombre, fd.conceptodesglose)), 500) AS products
+                LEFT(STRING_AGG(DISTINCT COALESCE(
+                    p.nombre,
+                    CASE
+                        WHEN fd.conceptodesglose LIKE '%Oficina Virtual:%' THEN
+                            TRIM(SPLIT_PART(SPLIT_PART(fd.conceptodesglose, 'Oficina Virtual: ', 2), '.', 1))
+                        WHEN fd.conceptodesglose LIKE '%·%' THEN
+                            SPLIT_PART(fd.conceptodesglose, ' · ', 1)
+                        ELSE fd.conceptodesglose
+                    END
+                ), ', '), 500) AS products
             """ + baseFrom + where + " " + """
             GROUP BY
                 f.id,
