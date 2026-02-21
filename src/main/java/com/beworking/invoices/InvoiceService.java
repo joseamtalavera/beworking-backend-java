@@ -766,33 +766,10 @@ public class InvoiceService {
     }
 
     private static String buildConcept(String productName, String centerName, Bloqueo bloqueo) {
-        List<String> parts = new ArrayList<>();
         if (productName != null && !productName.isBlank()) {
-            parts.add(productName);
-        } else {
-            parts.add("Workspace booking");
+            return productName;
         }
-        if (centerName != null && !centerName.isBlank()) {
-            parts.add(centerName);
-        }
-
-        LocalDateTime start = bloqueo.getFechaIni();
-        LocalDateTime end = bloqueo.getFechaFin();
-        if (start != null && end != null) {
-            parts.add(formatRange(start, end));
-        } else if (start != null) {
-            parts.add(DAY_FORMAT.format(start.toLocalDate()));
-        }
-        return String.join(" · ", parts);
-    }
-
-    private static String formatRange(LocalDateTime start, LocalDateTime end) {
-        LocalDate startDate = start.toLocalDate();
-        LocalDate endDate = end.toLocalDate();
-        if (startDate.equals(endDate)) {
-            return DAY_FORMAT.format(startDate) + " " + start.toLocalTime() + "-" + end.toLocalTime();
-        }
-        return DAY_FORMAT.format(startDate) + " - " + DAY_FORMAT.format(endDate);
+        return "Workspace booking";
     }
 
     private static String buildDefaultDescription(List<Bloqueo> bloqueos) {
