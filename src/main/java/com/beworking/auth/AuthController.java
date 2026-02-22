@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.Duration;
 import java.util.Map;
+import com.beworking.contacts.ContactProfileRepository;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -21,17 +22,23 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final RegisterService registerService;
     private final UserRepository userRepository;
+    private final ContactProfileRepository contactProfileRepository;
     private final TurnstileService turnstileService;
     @Value("${app.security.cookie-secure:true}")
     private boolean cookieSecure;
+    @Value("${app.security.cookie-domain:}")
+    private String cookieDomain;
     private static final String ACCESS_COOKIE = "beworking_access";
     private static final String REFRESH_COOKIE = "beworking_refresh";
 
-    public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService, UserRepository userRepository, TurnstileService turnstileService) {
+    public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService,
+                          UserRepository userRepository, ContactProfileRepository contactProfileRepository,
+                          TurnstileService turnstileService) {
         this.loginService = loginService;
         this.jwtUtil = jwtUtil;
         this.registerService = registerService;
         this.userRepository = userRepository;
+        this.contactProfileRepository = contactProfileRepository;
         this.turnstileService = turnstileService;
     }
 
@@ -49,24 +56,24 @@ public class AuthController {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(new AuthResponse("Please confirm your email before logging in", null, null));
             }
+
+            // Auto-link tenantId if missing
+            if (user.getTenantId() == null) {
+                String email = user.getEmail();
+                contactProfileRepository
+                    .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                        email, email, email, email)
+                    .ifPresent(cp -> {
+                        user.setTenantId(cp.getId());
+                        userRepository.save(user);
+                    });
+            }
+
             String access = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getTenantId());
             String refresh = jwtUtil.generateRefreshToken(user.getEmail(), user.getRole().name(), user.getTenantId());
 
-            ResponseCookie accessCookie = ResponseCookie.from(ACCESS_COOKIE, access)
-                    .httpOnly(true)
-                    .secure(cookieSecure)
-                    .sameSite("Lax")
-                    .path("/")
-                    .maxAge(Duration.ofHours(1))
-                    .build();
-
-            ResponseCookie refreshCookie = ResponseCookie.from(REFRESH_COOKIE, refresh)
-                    .httpOnly(true)
-                    .secure(cookieSecure)
-                    .sameSite("Lax")
-                    .path("/api/auth/refresh")
-                    .maxAge(Duration.ofDays(7))
-                    .build();
+            ResponseCookie accessCookie = buildCookie(ACCESS_COOKIE, access, "/", Duration.ofHours(1));
+            ResponseCookie refreshCookie = buildCookie(REFRESH_COOKIE, refresh, "/api/auth/refresh", Duration.ofDays(7));
 
             return ResponseEntity.ok()
                     .header("Set-Cookie", accessCookie.toString())
@@ -96,21 +103,8 @@ public class AuthController {
 
             String newAccess = jwtUtil.generateAccessToken(email, role, tenantId);
             String newRefresh = jwtUtil.generateRefreshToken(email, role, tenantId);
-            ResponseCookie accessCookie = ResponseCookie.from(ACCESS_COOKIE, newAccess)
-                    .httpOnly(true)
-                    .secure(cookieSecure)
-                    .sameSite("Lax")
-                    .path("/")
-                    .maxAge(Duration.ofHours(1))
-                    .build();
-
-            ResponseCookie refreshCookie = ResponseCookie.from(REFRESH_COOKIE, newRefresh)
-                    .httpOnly(true)
-                    .secure(cookieSecure)
-                    .sameSite("Lax")
-                    .path("/api/auth/refresh")
-                    .maxAge(Duration.ofDays(7))
-                    .build();
+            ResponseCookie accessCookie = buildCookie(ACCESS_COOKIE, newAccess, "/", Duration.ofHours(1));
+            ResponseCookie refreshCookie = buildCookie(REFRESH_COOKIE, newRefresh, "/api/auth/refresh", Duration.ofDays(7));
 
             return ResponseEntity.ok()
                     .header("Set-Cookie", accessCookie.toString())
@@ -363,8 +357,21 @@ public class AuthController {
         boolean reset = registerService.resetPassword(token, newPassword);
         if (reset) {
             return ResponseEntity.ok("Password reset successfully.");
-        } else { 
+        } else {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid or expired token");
         }
+    }
+
+    private ResponseCookie buildCookie(String name, String value, String path, Duration maxAge) {
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(name, value)
+                .httpOnly(true)
+                .secure(cookieSecure)
+                .sameSite("Lax")
+                .path(path)
+                .maxAge(maxAge);
+        if (cookieDomain != null && !cookieDomain.isBlank()) {
+            builder.domain(cookieDomain);
+        }
+        return builder.build();
     }
 }

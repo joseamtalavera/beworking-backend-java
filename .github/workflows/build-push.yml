@@ -40,12 +40,17 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build & push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ inputs.image_tag || 'main' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Download current task definition
         run: |

@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import com.beworking.contacts.ContactProfileRepository;
 import java.util.Optional;
 import static org.mockito.Mockito.when;
 import org.springframework.test.context.ActiveProfiles;
@@ -29,7 +30,7 @@ public class AuthControllerTest {
     @MockBean
     private JavaMailSender javaMailSender;
 
-    @MockBean 
+    @MockBean
     private UserRepository userRepository;
 
     @MockBean
@@ -43,6 +44,9 @@ public class AuthControllerTest {
 
     @MockBean
     private RegisterService registerService;
+
+    @MockBean
+    private ContactProfileRepository contactProfileRepository;
 
    /*  @MockBean
     private RateLimitingFilter rateLimitingFilter; */ 
