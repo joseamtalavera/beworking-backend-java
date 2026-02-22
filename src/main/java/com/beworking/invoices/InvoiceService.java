@@ -424,9 +424,9 @@ public class InvoiceService {
             contactId,
             centerId,
             description,
-            subtotal,
-            vatPercent != null ? vatPercent.intValue() : null,
             total,
+            vatPercent != null ? vatPercent.intValue() : null,
+            vatAmount,
             "Pendiente",
             Timestamp.valueOf(now),
             request.getReference(),
@@ -486,6 +486,13 @@ public class InvoiceService {
         }
 
         bloqueoRepository.saveAll(bloqueos);
+
+        // Auto-update contact status to "Activo" when invoiced
+        jdbcTemplate.update("""
+            UPDATE beworking.contact_profiles
+            SET status = 'Activo', status_changed_at = NOW()
+            WHERE id = ? AND status != 'Activo'
+            """, contactId);
 
         List<CreateInvoiceResponse.Line> responseLines = computedLines.entrySet().stream()
             .map(entry -> new CreateInvoiceResponse.Line(
@@ -1332,6 +1339,15 @@ public class InvoiceService {
                         null
                     );
                 }
+            }
+
+            // Auto-update contact status to "Activo" when invoiced
+            if (request.getClientId() != null) {
+                jdbcTemplate.update("""
+                    UPDATE beworking.contact_profiles
+                    SET status = 'Activo', status_changed_at = NOW()
+                    WHERE id = ? AND status != 'Activo'
+                    """, request.getClientId());
             }
 
             Map<String, Object> response = new HashMap<>();
