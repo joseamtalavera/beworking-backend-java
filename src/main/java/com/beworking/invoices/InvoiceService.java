@@ -1012,7 +1012,8 @@ public class InvoiceService {
                    b.fecha_ini, b.fecha_fin, b.tarifa,
                    c.name AS client_name,
                    p.nombre AS product_name,
-                   centro.nombre AS center_name
+                   centro.nombre AS center_name,
+                   EXTRACT(EPOCH FROM (b.fecha_fin - b.fecha_ini))/3600 AS hours
             FROM beworking.bloqueos b
             LEFT JOIN beworking.contact_profiles c ON c.id = b.id_cliente
             LEFT JOIN beworking.productos p ON p.id = b.id_producto
@@ -1025,12 +1026,33 @@ public class InvoiceService {
               )
             ORDER BY b.fecha_ini DESC
             """;
-        return jdbcTemplate.queryForList(sql);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql);
+
+        // Enrich each row with the estimated rate that would be used by the fix
+        for (Map<String, Object> row : rows) {
+            Double tarifa = row.get("tarifa") != null ? ((Number) row.get("tarifa")).doubleValue() : null;
+            Long contactId = row.get("id_cliente") != null ? ((Number) row.get("id_cliente")).longValue() : null;
+            Long productId = row.get("id_producto") != null ? ((Number) row.get("id_producto")).longValue() : null;
+
+            if (tarifa != null) {
+                row.put("estimated_rate", tarifa);
+                row.put("rate_source", "bloqueo");
+            } else if (contactId != null && productId != null) {
+                Double historicalRate = lookupHistoricalRate(contactId, productId);
+                row.put("estimated_rate", historicalRate);
+                row.put("rate_source", historicalRate != null ? "historical" : "none");
+            } else {
+                row.put("estimated_rate", null);
+                row.put("rate_source", "none");
+            }
+        }
+        return rows;
     }
 
     /**
      * Create missing facturas for orphaned invoiced bloqueos.
      * Each bloqueo gets its own factura with estado = "Pagado".
+     * When tarifa is null, looks up the contact's most recent rate for the same product.
      */
     @Transactional
     public List<Map<String, Object>> fixOrphanedInvoicedBloqueos() {
@@ -1045,21 +1067,32 @@ public class InvoiceService {
             Long bloqueoId = ((Number) row.get("id")).longValue();
             Long contactId = row.get("id_cliente") != null ? ((Number) row.get("id_cliente")).longValue() : null;
             Integer centerId = row.get("id_centro") != null ? ((Number) row.get("id_centro")).intValue() : null;
+            Long productId = row.get("id_producto") != null ? ((Number) row.get("id_producto")).longValue() : null;
             String productName = (String) row.get("product_name");
             String clientName = (String) row.get("client_name");
             Double tarifa = row.get("tarifa") != null ? ((Number) row.get("tarifa")).doubleValue() : null;
+
+            // If tarifa is null, look up the contact's most recent rate for the same product
+            String rateSource = "bloqueo";
+            if (tarifa == null && contactId != null && productId != null) {
+                tarifa = lookupHistoricalRate(contactId, productId);
+                rateSource = tarifa != null ? "historical" : "none";
+            } else if (tarifa == null) {
+                rateSource = "none";
+            }
 
             Timestamp fechaIniTs = (Timestamp) row.get("fecha_ini");
             Timestamp fechaFinTs = (Timestamp) row.get("fecha_fin");
             LocalDateTime fechaIni = fechaIniTs != null ? fechaIniTs.toLocalDateTime() : null;
             LocalDateTime fechaFin = fechaFinTs != null ? fechaFinTs.toLocalDateTime() : null;
 
-            // Compute line
+            // Compute line — use fractional hours for sub-hour bookings
             BigDecimal quantity = BigDecimal.ONE;
             if (fechaIni != null && fechaFin != null) {
-                long hours = Duration.between(fechaIni, fechaFin).toHours();
-                if (hours > 0) {
-                    quantity = BigDecimal.valueOf(hours);
+                long minutes = Duration.between(fechaIni, fechaFin).toMinutes();
+                if (minutes > 0) {
+                    quantity = BigDecimal.valueOf(minutes)
+                        .divide(BigDecimal.valueOf(60), 4, RoundingMode.HALF_UP);
                 }
             }
             BigDecimal unitPrice = tarifa != null
@@ -1111,10 +1144,44 @@ public class InvoiceService {
             entry.put("subtotal", lineTotal);
             entry.put("total", total);
             entry.put("estado", "Pagado");
+            entry.put("rateSource", rateSource);
+            entry.put("unitPrice", unitPrice);
+            entry.put("hours", quantity);
             created.add(entry);
         }
 
         return created;
+    }
+
+    /**
+     * Look up the contact's most recent tarifa for a given product from properly-invoiced bloqueos.
+     * Falls back to the product average if no contact-specific rate exists.
+     */
+    private Double lookupHistoricalRate(Long contactId, Long productId) {
+        // 1) Most recent rate for this contact + product
+        try {
+            Double rate = jdbcTemplate.queryForObject(
+                """
+                SELECT b.tarifa FROM beworking.bloqueos b
+                JOIN beworking.facturasdesglose fd ON fd.idbloqueovinculado = b.id
+                WHERE b.id_cliente = ? AND b.id_producto = ? AND b.tarifa IS NOT NULL AND b.tarifa > 0
+                ORDER BY b.fecha_ini DESC LIMIT 1
+                """, Double.class, contactId, productId);
+            if (rate != null) return rate;
+        } catch (EmptyResultDataAccessException ignored) {}
+
+        // 2) Product average across all contacts
+        try {
+            Double avg = jdbcTemplate.queryForObject(
+                """
+                SELECT AVG(b.tarifa) FROM beworking.bloqueos b
+                JOIN beworking.facturasdesglose fd ON fd.idbloqueovinculado = b.id
+                WHERE b.id_producto = ? AND b.tarifa IS NOT NULL AND b.tarifa > 0
+                """, Double.class, productId);
+            if (avg != null) return avg;
+        } catch (EmptyResultDataAccessException ignored) {}
+
+        return null;
     }
 
     private record LineComputation(String concept, BigDecimal quantity, BigDecimal unitPrice, BigDecimal total) { }
