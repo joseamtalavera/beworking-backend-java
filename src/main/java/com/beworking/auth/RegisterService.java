@@ -1,5 +1,6 @@
 package com.beworking.auth;
 
+import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -7,6 +8,7 @@ import org.springframework.stereotype.Service;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
@@ -51,11 +53,25 @@ public class RegisterService {
         user.setConfirmationToken(hashToken(rawToken));
         user.setConfirmationTokenExpiry(Instant.now().plus(24, ChronoUnit.HOURS));
 
-        // Auto-link to existing contact profile by email
-        contactProfileRepository
+        // Auto-link to existing contact profile, or create a new one
+        var existingProfile = contactProfileRepository
             .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
-                normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail)
-            .ifPresent(cp -> user.setTenantId(cp.getId()));
+                normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail);
+        if (existingProfile.isPresent()) {
+            user.setTenantId(existingProfile.get().getId());
+        } else {
+            ContactProfile cp = new ContactProfile();
+            cp.setId(System.currentTimeMillis());
+            cp.setName(name.trim());
+            cp.setEmailPrimary(normalizedEmail);
+            cp.setStatus("Potencial");
+            cp.setActive(true);
+            cp.setCreatedAt(LocalDateTime.now());
+            cp.setStatusChangedAt(LocalDateTime.now());
+            cp.setChannel("Self-registration");
+            contactProfileRepository.save(cp);
+            user.setTenantId(cp.getId());
+        }
 
         userRepository.save(user);
 
