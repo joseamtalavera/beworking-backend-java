@@ -75,9 +75,9 @@ public class InvoiceService {
 
         if (hasText(filters.name())) {
             String like = "%" + filters.name().trim().toLowerCase() + "%";
-            where.append(" AND (unaccent(LOWER(COALESCE(c.name, ''))) LIKE unaccent(?)"
-                + " OR unaccent(LOWER(COALESCE(c.contact_name, ''))) LIKE unaccent(?)"
-                + " OR unaccent(LOWER(COALESCE(c.billing_name, ''))) LIKE unaccent(?))");
+            where.append(" AND (public.unaccent(LOWER(COALESCE(c.name, ''))) LIKE public.unaccent(?)"
+                + " OR public.unaccent(LOWER(COALESCE(c.contact_name, ''))) LIKE public.unaccent(?)"
+                + " OR public.unaccent(LOWER(COALESCE(c.billing_name, ''))) LIKE public.unaccent(?))");
             args.add(like);
             args.add(like);
             args.add(like);
@@ -255,9 +255,9 @@ public class InvoiceService {
 
         if (hasText(filters.name())) {
             String like = "%" + filters.name().trim().toLowerCase() + "%";
-            where.append(" AND (unaccent(LOWER(COALESCE(c.name, ''))) LIKE unaccent(?)"
-                + " OR unaccent(LOWER(COALESCE(c.contact_name, ''))) LIKE unaccent(?)"
-                + " OR unaccent(LOWER(COALESCE(c.billing_name, ''))) LIKE unaccent(?))");
+            where.append(" AND (public.unaccent(LOWER(COALESCE(c.name, ''))) LIKE public.unaccent(?)"
+                + " OR public.unaccent(LOWER(COALESCE(c.contact_name, ''))) LIKE public.unaccent(?)"
+                + " OR public.unaccent(LOWER(COALESCE(c.billing_name, ''))) LIKE public.unaccent(?))");
             args.add(like);
             args.add(like);
             args.add(like);
