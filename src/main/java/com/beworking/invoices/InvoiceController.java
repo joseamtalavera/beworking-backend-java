@@ -5,6 +5,7 @@ import com.beworking.auth.User;
 import com.beworking.auth.UserRepository;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
+import java.util.List;
 import java.text.NumberFormat;
 import java.util.HashMap;
 import java.util.Locale;
@@ -364,6 +365,47 @@ public class InvoiceController {
             logger.error("Failed to send invoice email for id {}: {}", id, e.getMessage(), e);
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Failed to send invoice email: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    @GetMapping("/orphaned-bloqueos")
+    public ResponseEntity<Map<String, Object>> findOrphanedBloqueos(Authentication authentication) {
+        Optional<User> userOpt = resolveUser(authentication);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (userOpt.get().getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        List<Map<String, Object>> orphaned = invoiceService.findOrphanedInvoicedBloqueos();
+        Map<String, Object> response = new HashMap<>();
+        response.put("count", orphaned.size());
+        response.put("bloqueos", orphaned);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/orphaned-bloqueos/fix")
+    public ResponseEntity<Map<String, Object>> fixOrphanedBloqueos(Authentication authentication) {
+        Optional<User> userOpt = resolveUser(authentication);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (userOpt.get().getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        try {
+            List<Map<String, Object>> created = invoiceService.fixOrphanedInvoicedBloqueos();
+            Map<String, Object> response = new HashMap<>();
+            response.put("fixed", created.size());
+            response.put("invoices", created);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to fix orphaned bloqueos: {}", e.getMessage(), e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Failed to fix orphaned bloqueos: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }

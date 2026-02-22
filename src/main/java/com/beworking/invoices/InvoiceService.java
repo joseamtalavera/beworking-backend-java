@@ -1003,6 +1003,120 @@ public class InvoiceService {
         return response;
     }
 
+    /**
+     * Find bloqueos marked as invoiced but with no corresponding facturasdesglose record.
+     */
+    public List<Map<String, Object>> findOrphanedInvoicedBloqueos() {
+        String sql = """
+            SELECT b.id, b.estado, b.id_cliente, b.id_centro, b.id_producto,
+                   b.fecha_ini, b.fecha_fin, b.tarifa,
+                   c.name AS client_name,
+                   p.nombre AS product_name,
+                   centro.nombre AS center_name
+            FROM beworking.bloqueos b
+            LEFT JOIN beworking.contact_profiles c ON c.id = b.id_cliente
+            LEFT JOIN beworking.productos p ON p.id = b.id_producto
+            LEFT JOIN beworking.centros centro ON centro.id = b.id_centro
+            WHERE (LOWER(b.estado) LIKE '%invoice%' OR LOWER(b.estado) LIKE '%factura%')
+              AND b.id NOT IN (
+                  SELECT fd.idbloqueovinculado
+                  FROM beworking.facturasdesglose fd
+                  WHERE fd.idbloqueovinculado IS NOT NULL
+              )
+            ORDER BY b.fecha_ini DESC
+            """;
+        return jdbcTemplate.queryForList(sql);
+    }
+
+    /**
+     * Create missing facturas for orphaned invoiced bloqueos.
+     * Each bloqueo gets its own factura with estado = "Pagado".
+     */
+    @Transactional
+    public List<Map<String, Object>> fixOrphanedInvoicedBloqueos() {
+        List<Map<String, Object>> orphaned = findOrphanedInvoicedBloqueos();
+        if (orphaned.isEmpty()) {
+            return List.of();
+        }
+
+        List<Map<String, Object>> created = new ArrayList<>();
+
+        for (Map<String, Object> row : orphaned) {
+            Long bloqueoId = ((Number) row.get("id")).longValue();
+            Long contactId = row.get("id_cliente") != null ? ((Number) row.get("id_cliente")).longValue() : null;
+            Integer centerId = row.get("id_centro") != null ? ((Number) row.get("id_centro")).intValue() : null;
+            String productName = (String) row.get("product_name");
+            String clientName = (String) row.get("client_name");
+            Double tarifa = row.get("tarifa") != null ? ((Number) row.get("tarifa")).doubleValue() : null;
+
+            Timestamp fechaIniTs = (Timestamp) row.get("fecha_ini");
+            Timestamp fechaFinTs = (Timestamp) row.get("fecha_fin");
+            LocalDateTime fechaIni = fechaIniTs != null ? fechaIniTs.toLocalDateTime() : null;
+            LocalDateTime fechaFin = fechaFinTs != null ? fechaFinTs.toLocalDateTime() : null;
+
+            // Compute line
+            BigDecimal quantity = BigDecimal.ONE;
+            if (fechaIni != null && fechaFin != null) {
+                long hours = Duration.between(fechaIni, fechaFin).toHours();
+                if (hours > 0) {
+                    quantity = BigDecimal.valueOf(hours);
+                }
+            }
+            BigDecimal unitPrice = tarifa != null
+                ? BigDecimal.valueOf(tarifa).setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+            BigDecimal lineTotal = unitPrice.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
+
+            String concept = productName != null && !productName.isBlank() ? productName : "Workspace booking";
+            String description = concept;
+            if (fechaIni != null) {
+                description += " · " + DAY_FORMAT.format(fechaIni.toLocalDate());
+            }
+
+            BigDecimal vatAmount = lineTotal.multiply(BigDecimal.valueOf(21))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            BigDecimal total = lineTotal.add(vatAmount);
+
+            Long nextId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+            Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
+            LocalDateTime now = LocalDateTime.now();
+
+            jdbcTemplate.update(
+                """
+                INSERT INTO beworking.facturas
+                (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado, creacionfecha)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                nextId, nextLegacy, contactId, centerId, description,
+                lineTotal, 21, total, "Pagado", Timestamp.valueOf(now)
+            );
+
+            Long nextDesgloseId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+            jdbcTemplate.update(
+                """
+                INSERT INTO beworking.facturasdesglose
+                (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                nextDesgloseId, nextLegacy, concept, unitPrice, quantity, lineTotal, 1, bloqueoId
+            );
+
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("facturaId", nextId);
+            entry.put("idFactura", nextLegacy);
+            entry.put("bloqueoId", bloqueoId);
+            entry.put("clientName", clientName);
+            entry.put("product", concept);
+            entry.put("subtotal", lineTotal);
+            entry.put("total", total);
+            entry.put("estado", "Pagado");
+            created.add(entry);
+        }
+
+        return created;
+    }
+
     private record LineComputation(String concept, BigDecimal quantity, BigDecimal unitPrice, BigDecimal total) { }
 
     public String getNextInvoiceNumber() {
