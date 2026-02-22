@@ -20,11 +20,11 @@ public interface ContactProfileRepository extends JpaRepository<ContactProfile, 
 
     @org.springframework.data.jpa.repository.Query(value = """
         SELECT * FROM beworking.contact_profiles c
-        WHERE (unaccent(LOWER(c.name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
-           OR unaccent(LOWER(c.contact_name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
-           OR unaccent(LOWER(c.billing_name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
-           OR unaccent(LOWER(c.representative_first_name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
-           OR unaccent(LOWER(c.representative_last_name)) LIKE unaccent(LOWER(CONCAT('%', :search, '%')))
+        WHERE (public.unaccent(LOWER(c.name)) LIKE public.unaccent(LOWER(CONCAT('%', :search, '%')))
+           OR public.unaccent(LOWER(c.contact_name)) LIKE public.unaccent(LOWER(CONCAT('%', :search, '%')))
+           OR public.unaccent(LOWER(c.billing_name)) LIKE public.unaccent(LOWER(CONCAT('%', :search, '%')))
+           OR public.unaccent(LOWER(c.representative_first_name)) LIKE public.unaccent(LOWER(CONCAT('%', :search, '%')))
+           OR public.unaccent(LOWER(c.representative_last_name)) LIKE public.unaccent(LOWER(CONCAT('%', :search, '%')))
            OR LOWER(c.email_primary) LIKE LOWER(CONCAT('%', :search, '%'))
            OR LOWER(c.email_secondary) LIKE LOWER(CONCAT('%', :search, '%'))
            OR LOWER(c.email_tertiary) LIKE LOWER(CONCAT('%', :search, '%'))
