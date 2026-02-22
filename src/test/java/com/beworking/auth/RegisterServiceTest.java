@@ -57,6 +57,8 @@ class RegisterServiceTest {
         String email = "test@example.com";
         String password = "Password123!";
         when(userRepository.findByEmail(email)).thenReturn(java.util.Optional.empty());
+        when(contactProfileRepository.findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+            anyString(), anyString(), anyString(), anyString())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenReturn(new User());
         boolean result = registerService.registerUser(name, email, password);
@@ -151,6 +153,8 @@ class RegisterServiceTest {
         String email = "test@example.com";
         String password = "Aa1!aaaa";
         when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+        when(contactProfileRepository.findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+            anyString(), anyString(), anyString(), anyString())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenReturn(new User());
         boolean result = registerService.registerUser(name, email, password);
@@ -167,6 +171,8 @@ class RegisterServiceTest {
         String email = "test@example.com";
         String password = "Password123!";
         when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+        when(contactProfileRepository.findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+            anyString(), anyString(), anyString(), anyString())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         final User[] savedUser = new User[1];
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
@@ -190,6 +196,8 @@ class RegisterServiceTest {
         String email = "test@example.com";
         String password = "Password123!";
         when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+        when(contactProfileRepository.findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+            anyString(), anyString(), anyString(), anyString())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         final User[] savedUser = new User[1];
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
@@ -197,9 +205,9 @@ class RegisterServiceTest {
             return savedUser[0];
         });
         boolean result = registerService.registerUser(name, email, password);
-        assertTrue(result); // Add this line to assert registration succeeded
-        // verify that the confirmation email was sent with the correct token
-        verify(emailService).sendConfirmationEmail(eq(email), eq(savedUser[0].getConfirmationToken()));
+        assertTrue(result);
+        // The email is sent with the raw token (not the hashed one stored on the user)
+        verify(emailService).sendConfirmationEmail(eq(email), anyString());
     }
 
     /**
@@ -210,20 +218,19 @@ class RegisterServiceTest {
 
      @Test
      void testRegisterUser_ConfirmationToken_Found() {
-        String token ="abc123";
+        String token = "abc123";
         User user = new User("test@example.com", "hashed", User.Role.USER);
         user.setConfirmationToken(token);
-        when(userRepository.findAll()).thenReturn(java.util.List.of(user));
+        when(userRepository.findByConfirmationToken(anyString())).thenReturn(Optional.of(user));
 
         Optional<User> result = registerService.findByConfirmationToken(token);
         assertTrue(result.isPresent());
-        assertEquals(token, result.get().getConfirmationToken());
      }
 
      @Test
      void testRegisterUser_ConfirmationToken_NotFound(){
         String token = "notfound";
-        when(userRepository.findAll()).thenReturn(java.util.List.of());
+        when(userRepository.findByConfirmationToken(anyString())).thenReturn(Optional.empty());
         Optional<User> result = registerService.findByConfirmationToken(token);
         assertTrue(result.isEmpty());
      }
@@ -260,7 +267,7 @@ class RegisterServiceTest {
         assertNotNull(user.getConfirmationToken(), "Confirmation token should not be null");
         assertNotNull(user.getConfirmationTokenExpiry(), "Token expiry should not be null");
         verify(userRepository).save(user);
-        verify(emailService).sendPasswordResetEmail(eq(email), eq(user.getConfirmationToken()));
+        verify(emailService).sendPasswordResetEmail(eq(email), anyString());
       }
 
         /**
@@ -305,7 +312,7 @@ class RegisterServiceTest {
          */
         @Test
         void testResetPassword_UserNotFound() {
-            when(userRepository.findAll()).thenReturn(java.util.List.of());
+            when(userRepository.findByConfirmationToken(anyString())).thenReturn(Optional.empty());
             assertFalse(registerService.resetPassword("notfoundtoken", "Password123!"));
             verify(userRepository, never()).save(any(User.class));
         }
@@ -319,7 +326,7 @@ class RegisterServiceTest {
             User user = new User("test@example.com", "hashed", User.Role.USER);
             user.setConfirmationToken("validtoken");
             user.setConfirmationTokenExpiry(java.time.Instant.now().minus(2, java.time.temporal.ChronoUnit.HOURS));
-            when(userRepository.findAll()).thenReturn(java.util.List.of(user));
+            when(userRepository.findByConfirmationToken(anyString())).thenReturn(Optional.of(user));
             assertFalse(registerService.resetPassword("validtoken", "Password123!"));
             verify(userRepository, never()).save(any(User.class));
         }
@@ -329,12 +336,12 @@ class RegisterServiceTest {
          */
         @Test
         void testResetPassword_Success() {
-            User user = new User( "test@example.com", "hashed", User.Role.USER);
+            User user = new User("test@example.com", "hashed", User.Role.USER);
             user.setConfirmationToken("validtoken");
             user.setConfirmationTokenExpiry(java.time.Instant.now().plus(2, java.time.temporal.ChronoUnit.HOURS));
-            when(userRepository.findAll()).thenReturn(java.util.List.of(user));
+            when(userRepository.findByConfirmationToken(anyString())).thenReturn(Optional.of(user));
             when(passwordEncoder.encode("Valid1!pass")).thenReturn("newhashed");
-            
+
             boolean result = registerService.resetPassword("validtoken", "Valid1!pass");
 
             assertTrue(result);
