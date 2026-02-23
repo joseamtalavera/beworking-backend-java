@@ -47,8 +47,19 @@ public class SubscriptionController {
         Authentication authentication,
         @RequestParam(required = false) Long contactId
     ) {
-        if (!isAdmin(authentication)) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
+        if (userOpt.isEmpty()) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        User currentUser = userOpt.get();
+        // Non-admin users can only list subscriptions for their own contact
+        if (currentUser.getRole() != User.Role.ADMIN) {
+            if (contactId == null || currentUser.getTenantId() == null || !currentUser.getTenantId().equals(contactId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
         }
 
         List<Subscription> subs = contactId != null

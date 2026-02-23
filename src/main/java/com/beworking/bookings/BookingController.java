@@ -282,8 +282,15 @@ public class BookingController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
-        if (userOpt.isEmpty() || userOpt.get().getRole() != User.Role.ADMIN) {
+        if (userOpt.isEmpty()) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        User currentUser = userOpt.get();
+        // Allow admins to query any contact; users can only query their own
+        if (currentUser.getRole() != User.Role.ADMIN) {
+            if (currentUser.getTenantId() == null || !currentUser.getTenantId().equals(contactId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
         }
 
         // YTD count
