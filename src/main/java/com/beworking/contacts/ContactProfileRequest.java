@@ -19,6 +19,7 @@ public class ContactProfileRequest {
     private String billingEmail;
     private String billingAddress;
     private String billingPostalCode;
+    private String billingCity;
     private String billingCounty;
     private String billingCountry;
     
@@ -143,10 +144,18 @@ public class ContactProfileRequest {
         this.billingPostalCode = billingPostalCode;
     }
     
+    public String getBillingCity() {
+        return billingCity;
+    }
+
+    public void setBillingCity(String billingCity) {
+        this.billingCity = billingCity;
+    }
+
     public String getBillingCounty() {
         return billingCounty;
     }
-    
+
     public void setBillingCounty(String billingCounty) {
         this.billingCounty = billingCounty;
     }

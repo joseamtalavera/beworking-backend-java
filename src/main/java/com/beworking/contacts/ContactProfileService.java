@@ -427,9 +427,10 @@ public class ContactProfileService {
         profile.setEmailSecondary(request.getBillingEmail());
         profile.setBillingAddress(request.getBillingAddress());
         profile.setBillingPostalCode(request.getBillingPostalCode());
+        profile.setBillingCity(request.getBillingCity());
         profile.setBillingProvince(request.getBillingCounty());
         profile.setBillingCountry(request.getBillingCountry());
-        
+
         // Set default values
         profile.setActive(true);
         profile.setCreatedAt(LocalDateTime.now());
@@ -528,6 +529,9 @@ public class ContactProfileService {
         }
         if (request.getBillingPostalCode() != null) {
             profile.setBillingPostalCode(blankToNull(request.getBillingPostalCode()));
+        }
+        if (request.getBillingCity() != null) {
+            profile.setBillingCity(blankToNull(request.getBillingCity()));
         }
         if (request.getBillingCounty() != null) {
             profile.setBillingProvince(blankToNull(request.getBillingCounty()));
