@@ -416,8 +416,8 @@ public class InvoiceService {
         jdbcTemplate.update(
             """
             INSERT INTO beworking.facturas
-            (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado, creacionfecha, holdedinvoicenum, holdedinvoicepdf)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado, creacionfecha, holdedinvoicenum, holdedinvoicepdf, stripeinvoiceid)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             nextId,
             nextLegacy,
@@ -430,7 +430,8 @@ public class InvoiceService {
             "Pendiente",
             Timestamp.valueOf(now),
             request.getReference(),
-            null
+            null,
+            request.getStripeInvoiceId()
         );
 
         long nextDesgloseId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);

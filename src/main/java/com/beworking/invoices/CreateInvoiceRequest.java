@@ -17,6 +17,8 @@ public class CreateInvoiceRequest {
 
     private List<ExtraLineItem> extraLineItems;
 
+    private String stripeInvoiceId;
+
     public List<Long> getBloqueoIds() {
         return bloqueoIds;
     }
@@ -55,6 +57,14 @@ public class CreateInvoiceRequest {
 
     public void setExtraLineItems(List<ExtraLineItem> extraLineItems) {
         this.extraLineItems = extraLineItems;
+    }
+
+    public String getStripeInvoiceId() {
+        return stripeInvoiceId;
+    }
+
+    public void setStripeInvoiceId(String stripeInvoiceId) {
+        this.stripeInvoiceId = stripeInvoiceId;
     }
 
     public static class ExtraLineItem {
