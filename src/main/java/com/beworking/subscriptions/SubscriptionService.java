@@ -126,23 +126,13 @@ public class SubscriptionService {
         Long nextInternalId = jdbcTemplate.queryForObject(
             "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
 
-        // Compute totals — use actual Stripe amounts when available (handles proration)
-        BigDecimal subtotal;
-        if (payload.getSubtotalCents() != null) {
-            subtotal = new BigDecimal(payload.getSubtotalCents())
-                .divide(new BigDecimal(100), 2, RoundingMode.HALF_UP);
-        } else {
-            subtotal = subscription.getMonthlyAmount();
-        }
+        // Always use subscription monthly amount as the base — Stripe subtotal may
+        // reflect tax-inclusive pricing from legacy subscriptions, which conflicts
+        // with our own VAT computation.
+        BigDecimal subtotal = subscription.getMonthlyAmount();
         int vatPercent = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
-        BigDecimal vatAmount;
-        if (payload.getTaxCents() != null) {
-            vatAmount = new BigDecimal(payload.getTaxCents())
-                .divide(new BigDecimal(100), 2, RoundingMode.HALF_UP);
-        } else {
-            vatAmount = subtotal.multiply(BigDecimal.valueOf(vatPercent))
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-        }
+        BigDecimal vatAmount = subtotal.multiply(BigDecimal.valueOf(vatPercent))
+            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(vatAmount);
 
         // Build description from period
