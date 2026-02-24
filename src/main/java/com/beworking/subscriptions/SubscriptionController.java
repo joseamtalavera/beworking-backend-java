@@ -79,6 +79,7 @@ public class SubscriptionController {
         }
 
         String stripeSubId = request.getStripeSubscriptionId();
+        Map<String, Object> stripeResponse = null;
 
         // If no Stripe subscription ID provided, create one via stripe-service
         if (stripeSubId == null || stripeSubId.isBlank()) {
@@ -149,12 +150,13 @@ public class SubscriptionController {
                 }
 
                 @SuppressWarnings("unchecked")
-                Map<String, Object> stripeResponse = http.post()
+                Map<String, Object> resp = http.post()
                     .uri("/api/subscriptions/auto")
                     .header("Content-Type", "application/json")
                     .body(stripeRequest)
                     .retrieve()
                     .body(Map.class);
+                stripeResponse = resp;
 
                 stripeSubId = (String) stripeResponse.get("subscriptionId");
                 String customerId = (String) stripeResponse.get("customerId");
@@ -195,6 +197,31 @@ public class SubscriptionController {
         sub.setUpdatedAt(LocalDateTime.now());
 
         Subscription saved = subscriptionService.save(sub);
+
+        // Create local Pendiente invoice from the first Stripe invoice
+        if (stripeResponse != null && stripeResponse.containsKey("firstInvoice")) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> firstInvoice = (Map<String, Object>) stripeResponse.get("firstInvoice");
+                if (firstInvoice != null) {
+                    SubscriptionInvoicePayload invoicePayload = new SubscriptionInvoicePayload();
+                    invoicePayload.setStripeSubscriptionId(saved.getStripeSubscriptionId());
+                    invoicePayload.setStripeInvoiceId((String) firstInvoice.get("stripeInvoiceId"));
+                    invoicePayload.setStripePaymentIntentId((String) firstInvoice.get("paymentIntentId"));
+                    invoicePayload.setSubtotalCents(toInteger(firstInvoice.get("subtotalCents")));
+                    invoicePayload.setTaxCents(toInteger(firstInvoice.get("taxCents")));
+                    invoicePayload.setInvoicePdf((String) firstInvoice.get("invoicePdf"));
+                    invoicePayload.setPeriodStart((String) firstInvoice.get("periodStart"));
+                    invoicePayload.setPeriodEnd((String) firstInvoice.get("periodEnd"));
+                    invoicePayload.setStatus("pending");
+                    subscriptionService.createInvoiceFromSubscription(saved, invoicePayload);
+                    logger.info("Created Pendiente invoice for subscription {}", saved.getStripeSubscriptionId());
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to create local Pendiente invoice: {}", e.getMessage(), e);
+            }
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
@@ -264,5 +291,12 @@ public class SubscriptionController {
         if (authentication == null || !authentication.isAuthenticated()) return false;
         Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
         return userOpt.isPresent() && userOpt.get().getRole() == User.Role.ADMIN;
+    }
+
+    private static Integer toInteger(Object value) {
+        if (value == null) return null;
+        if (value instanceof Integer i) return i;
+        if (value instanceof Number n) return n.intValue();
+        return null;
     }
 }

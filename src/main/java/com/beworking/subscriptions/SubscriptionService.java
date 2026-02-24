@@ -81,9 +81,16 @@ public class SubscriptionService {
                 if (existing != null && existing > 0) {
                     // If it already exists and this is a successful payment, update to Pagado
                     if ("paid".equalsIgnoreCase(payload.getStatus())) {
-                        jdbcTemplate.update(
-                            "UPDATE beworking.facturas SET estado = 'Pagado', stripepaymentintentid1 = ?, stripepaymentintentstatus1 = 'succeeded' WHERE stripeinvoiceid = ? AND estado <> 'Pagado'",
-                            payload.getStripePaymentIntentId(), payload.getStripeInvoiceId());
+                        String pdfUrl = payload.getInvoicePdf();
+                        if (pdfUrl != null && !pdfUrl.isBlank()) {
+                            jdbcTemplate.update(
+                                "UPDATE beworking.facturas SET estado = 'Pagado', stripepaymentintentid1 = ?, stripepaymentintentstatus1 = 'succeeded', holdedinvoicepdf = ? WHERE stripeinvoiceid = ? AND estado <> 'Pagado'",
+                                payload.getStripePaymentIntentId(), pdfUrl, payload.getStripeInvoiceId());
+                        } else {
+                            jdbcTemplate.update(
+                                "UPDATE beworking.facturas SET estado = 'Pagado', stripepaymentintentid1 = ?, stripepaymentintentstatus1 = 'succeeded' WHERE stripeinvoiceid = ? AND estado <> 'Pagado'",
+                                payload.getStripePaymentIntentId(), payload.getStripeInvoiceId());
+                        }
                     }
                     logger.info("Invoice already exists for stripeInvoiceId={}, skipping creation",
                         payload.getStripeInvoiceId());
@@ -119,11 +126,23 @@ public class SubscriptionService {
         Long nextInternalId = jdbcTemplate.queryForObject(
             "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
 
-        // Compute totals
-        BigDecimal subtotal = subscription.getMonthlyAmount();
+        // Compute totals — use actual Stripe amounts when available (handles proration)
+        BigDecimal subtotal;
+        if (payload.getSubtotalCents() != null) {
+            subtotal = new BigDecimal(payload.getSubtotalCents())
+                .divide(new BigDecimal(100), 2, RoundingMode.HALF_UP);
+        } else {
+            subtotal = subscription.getMonthlyAmount();
+        }
         int vatPercent = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
-        BigDecimal vatAmount = subtotal.multiply(BigDecimal.valueOf(vatPercent))
-            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        BigDecimal vatAmount;
+        if (payload.getTaxCents() != null) {
+            vatAmount = new BigDecimal(payload.getTaxCents())
+                .divide(new BigDecimal(100), 2, RoundingMode.HALF_UP);
+        } else {
+            vatAmount = subtotal.multiply(BigDecimal.valueOf(vatPercent))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        }
         BigDecimal total = subtotal.add(vatAmount);
 
         // Build description from period
@@ -139,14 +158,16 @@ public class SubscriptionService {
             : LocalDate.now();
 
         // Insert facturas record
+        String invoicePdf = payload.getInvoicePdf();
         jdbcTemplate.update(
             """
             INSERT INTO beworking.facturas (
                 id, idfactura, idcliente, holdedcuenta, id_cuenta,
                 fechacreacionreal, estado, descripcion,
                 total, iva, totaliva, creacionfecha,
-                stripeinvoiceid, stripepaymentintentid1, stripepaymentintentstatus1
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
+                stripeinvoiceid, stripepaymentintentid1, stripepaymentintentstatus1,
+                holdedinvoicenum, holdedinvoicepdf
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?)
             """,
             nextInternalId,
             invoiceId,
@@ -156,12 +177,14 @@ public class SubscriptionService {
             invoiceDate,
             estado,
             description,
-            subtotal,
+            total,
             vatPercent,
             vatAmount,
             payload.getStripeInvoiceId(),
             payload.getStripePaymentIntentId(),
-            "paid".equalsIgnoreCase(payload.getStatus()) ? "succeeded" : null
+            "paid".equalsIgnoreCase(payload.getStatus()) ? "succeeded" : null,
+            invoiceNumber,
+            invoicePdf != null && !invoicePdf.isBlank() ? invoicePdf : null
         );
 
         // Insert line item
