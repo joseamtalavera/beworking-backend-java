@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -112,8 +113,8 @@ public class SubscriptionController {
                 stripeRequest.put("currency", request.getCurrency() != null ? request.getCurrency().toLowerCase() : "eur");
                 stripeRequest.put("description", request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
 
-                // VAT: if no VAT number → apply 21% tax in Stripe; if VAT number → tax exempt
-                boolean taxExempt = request.getVatNumber() != null && !request.getVatNumber().isBlank();
+                // VAT: only exempt if valid EU intracommunity VAT number (2-letter EU prefix)
+                boolean taxExempt = isEuVatNumber(request.getVatNumber());
                 stripeRequest.put("vat_number", taxExempt ? request.getVatNumber() : "");
                 stripeRequest.put("tax_exempt", taxExempt);
 
@@ -189,7 +190,8 @@ public class SubscriptionController {
         sub.setDescription(request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
         boolean hasVatNumber = request.getVatNumber() != null && !request.getVatNumber().isBlank();
         sub.setVatNumber(hasVatNumber ? request.getVatNumber() : null);
-        sub.setVatPercent(hasVatNumber ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
+        boolean euIntracommunity = isEuVatNumber(request.getVatNumber());
+        sub.setVatPercent(euIntracommunity ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
         sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
         sub.setEndDate(request.getEndDate());
         sub.setActive(true);
@@ -291,6 +293,18 @@ public class SubscriptionController {
         if (authentication == null || !authentication.isAuthenticated()) return false;
         Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
         return userOpt.isPresent() && userOpt.get().getRole() == User.Role.ADMIN;
+    }
+
+    private static final Set<String> EU_VAT_PREFIXES = Set.of(
+        "AT","BE","BG","CY","CZ","DE","DK","EE","ES","FI","FR","GR",
+        "HR","HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO",
+        "SE","SI","SK"
+    );
+
+    private static boolean isEuVatNumber(String vatNumber) {
+        if (vatNumber == null || vatNumber.length() < 3) return false;
+        String prefix = vatNumber.substring(0, 2).toUpperCase();
+        return EU_VAT_PREFIXES.contains(prefix);
     }
 
     private static Integer toInteger(Object value) {
