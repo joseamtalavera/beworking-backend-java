@@ -83,6 +83,15 @@ public class SubscriptionController {
 
         // --- Bank transfer flow: no Stripe interaction ---
         if ("bank_transfer".equals(billingMethod)) {
+            // Resolve VAT number from contact profile if not explicitly provided
+            String vatNumber = request.getVatNumber();
+            if (vatNumber == null || vatNumber.isBlank()) {
+                Optional<ContactProfile> contactOpt = contactRepository.findById(request.getContactId());
+                if (contactOpt.isPresent() && contactOpt.get().getBillingTaxId() != null) {
+                    vatNumber = contactOpt.get().getBillingTaxId();
+                }
+            }
+
             Subscription sub = new Subscription();
             sub.setContactId(request.getContactId());
             sub.setBillingMethod("bank_transfer");
@@ -90,9 +99,9 @@ public class SubscriptionController {
             sub.setCurrency(request.getCurrency() != null ? request.getCurrency() : "EUR");
             sub.setCuenta(request.getCuenta() != null ? request.getCuenta() : "GT");
             sub.setDescription(request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
-            boolean hasVat = request.getVatNumber() != null && !request.getVatNumber().isBlank();
-            sub.setVatNumber(hasVat ? request.getVatNumber() : null);
-            boolean euIntra = isEuVatNumber(request.getVatNumber());
+            boolean hasVat = vatNumber != null && !vatNumber.isBlank();
+            sub.setVatNumber(hasVat ? vatNumber : null);
+            boolean euIntra = isEuVatNumber(vatNumber);
             sub.setVatPercent(euIntra ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
             sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
             sub.setEndDate(request.getEndDate());
@@ -151,9 +160,13 @@ public class SubscriptionController {
                 stripeRequest.put("currency", request.getCurrency() != null ? request.getCurrency().toLowerCase() : "eur");
                 stripeRequest.put("description", request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
 
-                // VAT: only exempt if valid EU intracommunity VAT number (2-letter EU prefix)
-                boolean taxExempt = isEuVatNumber(request.getVatNumber());
-                stripeRequest.put("vat_number", taxExempt ? request.getVatNumber() : "");
+                // Resolve VAT: use request vatNumber, fallback to contact billing tax ID
+                String resolvedVat = request.getVatNumber();
+                if ((resolvedVat == null || resolvedVat.isBlank()) && contact.getBillingTaxId() != null) {
+                    resolvedVat = contact.getBillingTaxId();
+                }
+                boolean taxExempt = isEuVatNumber(resolvedVat);
+                stripeRequest.put("vat_number", taxExempt ? resolvedVat : "");
                 stripeRequest.put("tax_exempt", taxExempt);
 
                 // Anchor billing to the 1st of next month (prorate the first partial period)
@@ -218,6 +231,17 @@ public class SubscriptionController {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
         }
 
+        // Resolve VAT number: use request vatNumber, fallback to contact billing tax ID
+        String effectiveVat = request.getVatNumber();
+        if (effectiveVat == null || effectiveVat.isBlank()) {
+            contactRepository.findById(request.getContactId()).ifPresent(cp -> {
+                if (cp.getBillingTaxId() != null && !cp.getBillingTaxId().isBlank()) {
+                    request.setVatNumber(cp.getBillingTaxId());
+                }
+            });
+            effectiveVat = request.getVatNumber();
+        }
+
         Subscription sub = new Subscription();
         sub.setContactId(request.getContactId());
         sub.setBillingMethod("stripe");
@@ -227,9 +251,9 @@ public class SubscriptionController {
         sub.setCurrency(request.getCurrency() != null ? request.getCurrency() : "EUR");
         sub.setCuenta(request.getCuenta() != null ? request.getCuenta() : "PT");
         sub.setDescription(request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
-        boolean hasVatNumber = request.getVatNumber() != null && !request.getVatNumber().isBlank();
-        sub.setVatNumber(hasVatNumber ? request.getVatNumber() : null);
-        boolean euIntracommunity = isEuVatNumber(request.getVatNumber());
+        boolean hasVatNumber = effectiveVat != null && !effectiveVat.isBlank();
+        sub.setVatNumber(hasVatNumber ? effectiveVat : null);
+        boolean euIntracommunity = isEuVatNumber(effectiveVat);
         sub.setVatPercent(euIntracommunity ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
         sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
         sub.setEndDate(request.getEndDate());
