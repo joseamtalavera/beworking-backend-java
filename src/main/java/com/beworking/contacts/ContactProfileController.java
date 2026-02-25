@@ -19,13 +19,16 @@ public class ContactProfileController {
     private final ContactProfileService contactProfileService;
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final ViesVatService viesVatService;
 
     public ContactProfileController(ContactProfileService contactProfileService,
                                      UserRepository userRepository,
-                                     JdbcTemplate jdbcTemplate) {
+                                     JdbcTemplate jdbcTemplate,
+                                     ViesVatService viesVatService) {
         this.contactProfileService = contactProfileService;
         this.userRepository = userRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.viesVatService = viesVatService;
     }
 
     @GetMapping
@@ -185,6 +188,17 @@ public class ContactProfileController {
         response.put("noInvoices", Map.of("count", noInvoices.size(), "contacts", noInvoices));
 
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/vat/validate")
+    public ResponseEntity<Map<String, Object>> validateVat(@RequestParam String vatNumber) {
+        ViesVatService.VatValidationResult result = viesVatService.validate(vatNumber);
+        Map<String, Object> body = new HashMap<>();
+        body.put("valid", result.valid());
+        body.put("name", result.name());
+        body.put("address", result.address());
+        body.put("error", result.error());
+        return ResponseEntity.ok(body);
     }
 
     @DeleteMapping("/{id}")
