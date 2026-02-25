@@ -28,6 +28,7 @@ public record ContactProfileResponse(
         @JsonProperty("postal_code") String postalCode,
         String county,
         String country,
-        @JsonProperty("tax_id") String taxId
+        @JsonProperty("tax_id") String taxId,
+        @JsonProperty("vat_valid") Boolean vatValid
     ) {}
 }

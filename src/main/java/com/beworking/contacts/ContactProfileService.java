@@ -36,10 +36,12 @@ public class ContactProfileService {
 
     private final ContactProfileRepository repository;
     private final UserRepository userRepository;
+    private final ViesVatService viesVatService;
 
-    public ContactProfileService(ContactProfileRepository repository, UserRepository userRepository) {
+    public ContactProfileService(ContactProfileRepository repository, UserRepository userRepository, ViesVatService viesVatService) {
         this.repository = repository;
         this.userRepository = userRepository;
+        this.viesVatService = viesVatService;
     }
 
     @Transactional(readOnly = true)
@@ -289,7 +291,8 @@ public class ContactProfileService {
             profile.getBillingPostalCode(),
             firstNonBlank(profile.getBillingProvince(), profile.getBillingCity()),
             profile.getBillingCountry(),
-            profile.getBillingTaxId()
+            profile.getBillingTaxId(),
+            profile.getVatValid()
         );
 
         return new ContactProfileResponse(
@@ -519,7 +522,21 @@ public class ContactProfileService {
             profile.setBillingName(blankToNull(request.getBillingCompany()));
         }
         if (request.getBillingTaxId() != null) {
-            profile.setBillingTaxId(blankToNull(request.getBillingTaxId()));
+            String newTaxId = blankToNull(request.getBillingTaxId());
+            profile.setBillingTaxId(newTaxId);
+            if (newTaxId != null && viesVatService.isEuVatFormat(newTaxId)) {
+                try {
+                    ViesVatService.VatValidationResult result = viesVatService.validate(newTaxId);
+                    profile.setVatValid(result.valid());
+                    profile.setVatValidatedAt(LocalDateTime.now());
+                } catch (Exception e) {
+                    profile.setVatValid(null);
+                    profile.setVatValidatedAt(LocalDateTime.now());
+                }
+            } else {
+                profile.setVatValid(null);
+                profile.setVatValidatedAt(null);
+            }
         }
         if (request.getBillingEmail() != null) {
             profile.setEmailSecondary(blankToNull(request.getBillingEmail()));

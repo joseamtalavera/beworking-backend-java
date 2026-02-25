@@ -101,6 +101,12 @@ public class ContactProfile {
     @Column(name = "avatar")
     private String avatar;
 
+    @Column(name = "vat_valid")
+    private Boolean vatValid;
+
+    @Column(name = "vat_validated_at")
+    private LocalDateTime vatValidatedAt;
+
     public ContactProfile() {
     }
 
@@ -358,5 +364,21 @@ public class ContactProfile {
 
     public void setAvatar(String avatar) {
         this.avatar = avatar;
+    }
+
+    public Boolean getVatValid() {
+        return vatValid;
+    }
+
+    public void setVatValid(Boolean vatValid) {
+        this.vatValid = vatValid;
+    }
+
+    public LocalDateTime getVatValidatedAt() {
+        return vatValidatedAt;
+    }
+
+    public void setVatValidatedAt(LocalDateTime vatValidatedAt) {
+        this.vatValidatedAt = vatValidatedAt;
     }
 }
