@@ -1218,6 +1218,51 @@ public class InvoiceService {
         return cuentaService.generateNextInvoiceNumber(cuentaCodigo);
     }
 
+    // ── Stripe payment helpers ──────────────────────────────────────────
+
+    private String getContactEmail(Long contactId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                "SELECT COALESCE(email_primary, representative_email) FROM beworking.contact_profiles WHERE id = ?",
+                String.class, contactId);
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    private String getContactName(Long contactId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                "SELECT name FROM beworking.contact_profiles WHERE id = ?",
+                String.class, contactId);
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    private String mapCuentaToTenant(String cuenta) {
+        if ("GT".equalsIgnoreCase(cuenta)) return "gt";
+        return "bw";
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> lookupPaymentInfo(Long contactId, String cuenta) {
+        String email = getContactEmail(contactId);
+        if (email == null || email.isBlank() || paymentsBaseUrl == null || paymentsBaseUrl.isBlank()) {
+            Map<String, Object> empty = new HashMap<>();
+            empty.put("hasPaymentMethod", false);
+            empty.put("paymentMethods", List.of());
+            return empty;
+        }
+
+        String tenant = mapCuentaToTenant(cuenta);
+        Map<String, Object> result = http.get()
+            .uri(paymentsBaseUrl + "/api/customers/check?email=" + email + "&tenant=" + tenant)
+            .retrieve()
+            .body((Class<Map<String, Object>>) (Class<?>) Map.class);
+        return result != null ? result : Map.of("hasPaymentMethod", false, "paymentMethods", List.of());
+    }
+
     @Transactional
     public Map<String, Object> createManualInvoice(CreateManualInvoiceRequest request) {
         try {
@@ -1362,12 +1407,123 @@ public class InvoiceService {
                     """, request.getClientId());
             }
 
+            // Stripe integration: charge saved card or send Stripe invoice
+            String paymentMethod = null;
+            String stripeError = null;
+            if (paymentsBaseUrl != null && !paymentsBaseUrl.isBlank() && request.getClientId() != null) {
+                String contactEmail = getContactEmail(request.getClientId());
+                if (contactEmail != null && !contactEmail.isBlank()) {
+                    String tenant = mapCuentaToTenant(request.getCuenta());
+                    int amountCents = request.getComputed().getTotal()
+                        .multiply(new java.math.BigDecimal("100")).intValue();
+
+                    try {
+                        // Look up customer payment methods in Stripe
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> checkResult = http.get()
+                            .uri(paymentsBaseUrl + "/api/customers/check?email="
+                                + java.net.URLEncoder.encode(contactEmail, "UTF-8")
+                                + "&tenant=" + tenant)
+                            .retrieve()
+                            .body((Class<Map<String, Object>>) (Class<?>) Map.class);
+
+                        boolean hasCard = checkResult != null
+                            && Boolean.TRUE.equals(checkResult.get("hasPaymentMethod"));
+
+                        if (hasCard) {
+                            // Charge the saved card
+                            @SuppressWarnings("unchecked")
+                            java.util.List<Map<String, Object>> methods =
+                                (java.util.List<Map<String, Object>>) checkResult.get("paymentMethods");
+                            String paymentMethodId = (String) methods.get(0).get("id");
+
+                            Map<String, Object> chargeBody = new HashMap<>();
+                            chargeBody.put("customer_email", contactEmail);
+                            chargeBody.put("payment_method_id", paymentMethodId);
+                            chargeBody.put("amount", amountCents);
+                            chargeBody.put("currency", "eur");
+                            chargeBody.put("description", description);
+                            chargeBody.put("tenant", tenant);
+                            chargeBody.put("reference", invoiceNumber);
+
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> chargeResult = http.post()
+                                .uri(paymentsBaseUrl + "/api/charge")
+                                .header("Content-Type", "application/json")
+                                .body(chargeBody)
+                                .retrieve()
+                                .body((Class<Map<String, Object>>) (Class<?>) Map.class);
+
+                            if (chargeResult != null) {
+                                String piId = (String) chargeResult.get("paymentIntentId");
+                                String piStatus = (String) chargeResult.get("status");
+                                jdbcTemplate.update("""
+                                    UPDATE beworking.facturas
+                                    SET estado = 'Pagado',
+                                        stripepaymentintentid1 = ?,
+                                        stripepaymentintentstatus1 = ?,
+                                        stripepaymentmethodid1 = ?,
+                                        fechacobro1 = CURRENT_DATE
+                                    WHERE id = ?
+                                    """, piId, piStatus, paymentMethodId, nextInternalId);
+                                normalizedStatus = "Pagado";
+                                paymentMethod = "card_charged";
+                            }
+                        } else {
+                            // No card on file → create and send Stripe invoice
+                            String contactName = getContactName(request.getClientId());
+                            if (contactName == null || contactName.isBlank()) {
+                                contactName = request.getClientName();
+                            }
+
+                            Map<String, Object> invoiceBody = new HashMap<>();
+                            invoiceBody.put("customer_email", contactEmail);
+                            invoiceBody.put("customer_name", contactName);
+                            invoiceBody.put("amount", amountCents);
+                            invoiceBody.put("currency", "eur");
+                            invoiceBody.put("description", description != null ? description : "Invoice " + invoiceNumber);
+                            invoiceBody.put("tenant", tenant);
+                            invoiceBody.put("reference", invoiceNumber);
+                            invoiceBody.put("due_days", 1);
+
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> invoiceResult = http.post()
+                                .uri(paymentsBaseUrl + "/api/invoices")
+                                .header("Content-Type", "application/json")
+                                .body(invoiceBody)
+                                .retrieve()
+                                .body((Class<Map<String, Object>>) (Class<?>) Map.class);
+
+                            if (invoiceResult != null) {
+                                String stripeInvId = (String) invoiceResult.get("invoiceId");
+                                jdbcTemplate.update("""
+                                    UPDATE beworking.facturas
+                                    SET stripeinvoiceid = ?
+                                    WHERE id = ?
+                                    """, stripeInvId, nextInternalId);
+                                paymentMethod = "stripe_invoice";
+                            }
+                        }
+                    } catch (Exception stripeEx) {
+                        System.err.println("Stripe integration failed for invoice "
+                            + invoiceNumber + ": " + stripeEx.getMessage());
+                        stripeError = stripeEx.getMessage();
+                    }
+                }
+            }
+
             Map<String, Object> response = new HashMap<>();
             response.put("id", nextInternalId);
             response.put("idFactura", facturaId);
             response.put("invoiceNumber", invoiceNumber);
             response.put("message", "Manual invoice created successfully");
             response.put("status", normalizedStatus);
+            if (paymentMethod != null) {
+                response.put("paymentMethod", paymentMethod);
+            }
+            if (stripeError != null) {
+                response.put("stripeError", stripeError);
+            }
 
             return response;
 
