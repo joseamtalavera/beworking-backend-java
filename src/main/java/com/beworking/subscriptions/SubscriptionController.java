@@ -160,6 +160,12 @@ public class SubscriptionController {
                 stripeRequest.put("currency", request.getCurrency() != null ? request.getCurrency().toLowerCase() : "eur");
                 stripeRequest.put("description", request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
 
+                // Reuse existing Stripe customer for this contact if available
+                subscriptionService.findByContactIdAndActiveTrue(request.getContactId()).stream()
+                    .filter(s -> s.getStripeCustomerId() != null && !s.getStripeCustomerId().isBlank())
+                    .findFirst()
+                    .ifPresent(s -> stripeRequest.put("customer_id", s.getStripeCustomerId()));
+
                 // Resolve VAT: use request vatNumber, fallback to contact billing tax ID
                 String resolvedVat = request.getVatNumber();
                 if ((resolvedVat == null || resolvedVat.isBlank()) && contact.getBillingTaxId() != null) {
