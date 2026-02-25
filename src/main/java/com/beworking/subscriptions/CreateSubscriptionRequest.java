@@ -1,6 +1,5 @@
 package com.beworking.subscriptions;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -10,7 +9,6 @@ public class CreateSubscriptionRequest {
     @NotNull
     private Long contactId;
 
-    @NotBlank
     private String stripeSubscriptionId;
 
     private String stripeCustomerId;
@@ -25,6 +23,7 @@ public class CreateSubscriptionRequest {
     private String vatNumber;
     private LocalDate startDate;
     private LocalDate endDate;
+    private String billingMethod;
 
     public Long getContactId() { return contactId; }
     public void setContactId(Long contactId) { this.contactId = contactId; }
@@ -58,4 +57,7 @@ public class CreateSubscriptionRequest {
 
     public LocalDate getEndDate() { return endDate; }
     public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
+
+    public String getBillingMethod() { return billingMethod; }
+    public void setBillingMethod(String billingMethod) { this.billingMethod = billingMethod; }
 }

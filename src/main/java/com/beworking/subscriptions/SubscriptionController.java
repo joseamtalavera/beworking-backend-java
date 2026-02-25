@@ -79,6 +79,44 @@ public class SubscriptionController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
+        String billingMethod = request.getBillingMethod() != null ? request.getBillingMethod() : "stripe";
+
+        // --- Bank transfer flow: no Stripe interaction ---
+        if ("bank_transfer".equals(billingMethod)) {
+            Subscription sub = new Subscription();
+            sub.setContactId(request.getContactId());
+            sub.setBillingMethod("bank_transfer");
+            sub.setMonthlyAmount(request.getMonthlyAmount());
+            sub.setCurrency(request.getCurrency() != null ? request.getCurrency() : "EUR");
+            sub.setCuenta(request.getCuenta() != null ? request.getCuenta() : "GT");
+            sub.setDescription(request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
+            boolean hasVat = request.getVatNumber() != null && !request.getVatNumber().isBlank();
+            sub.setVatNumber(hasVat ? request.getVatNumber() : null);
+            boolean euIntra = isEuVatNumber(request.getVatNumber());
+            sub.setVatPercent(euIntra ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
+            sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
+            sub.setEndDate(request.getEndDate());
+            sub.setActive(true);
+            sub.setCreatedAt(LocalDateTime.now());
+            sub.setUpdatedAt(LocalDateTime.now());
+
+            Subscription saved = subscriptionService.save(sub);
+
+            // Create first Pendiente invoice for the start month
+            try {
+                String month = saved.getStartDate().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
+                subscriptionService.createBankTransferInvoice(saved, month);
+                saved.setLastInvoicedMonth(month);
+                subscriptionService.save(saved);
+                logger.info("Created first Pendiente invoice for bank_transfer subscription {} (month={})", saved.getId(), month);
+            } catch (Exception e) {
+                logger.warn("Failed to create first bank_transfer invoice: {}", e.getMessage(), e);
+            }
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        }
+
+        // --- Stripe flow (existing logic) ---
         String stripeSubId = request.getStripeSubscriptionId();
         Map<String, Object> stripeResponse = null;
 
@@ -182,6 +220,7 @@ public class SubscriptionController {
 
         Subscription sub = new Subscription();
         sub.setContactId(request.getContactId());
+        sub.setBillingMethod("stripe");
         sub.setStripeSubscriptionId(request.getStripeSubscriptionId());
         sub.setStripeCustomerId(request.getStripeCustomerId());
         sub.setMonthlyAmount(request.getMonthlyAmount());

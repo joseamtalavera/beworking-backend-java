@@ -210,6 +210,116 @@ public class SubscriptionService {
         return response;
     }
 
+    /**
+     * Creates a Pendiente invoice for a bank_transfer subscription for the given month.
+     * month format: "yyyy-MM" (e.g. "2026-03")
+     */
+    @Transactional
+    public Map<String, Object> createBankTransferInvoice(Subscription subscription, String month) {
+        // Resolve cuenta
+        String cuentaCodigo = subscription.getCuenta();
+        Integer cuentaId = null;
+        Optional<Cuenta> cuentaOpt = cuentaService.getCuentaByCodigo(cuentaCodigo);
+        if (cuentaOpt.isPresent()) {
+            cuentaId = cuentaOpt.get().getId();
+        }
+
+        // Generate invoice number
+        String invoiceNumber;
+        if (cuentaId != null) {
+            invoiceNumber = cuentaService.generateNextInvoiceNumber(cuentaId);
+        } else {
+            invoiceNumber = cuentaService.generateNextInvoiceNumber("PT");
+        }
+
+        // Parse invoice number to numeric idfactura
+        String numericPart = invoiceNumber.replaceAll("[^0-9]", "");
+        int invoiceId = numericPart.isEmpty()
+            ? jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class)
+            : Integer.parseInt(numericPart);
+
+        // Generate internal primary key
+        Long nextInternalId = jdbcTemplate.queryForObject(
+            "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+
+        // VAT calculation
+        BigDecimal subtotal = subscription.getMonthlyAmount();
+        int vatPercent = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
+        BigDecimal vatAmount = subtotal.multiply(BigDecimal.valueOf(vatPercent))
+            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        BigDecimal total = subtotal.add(vatAmount);
+
+        // Build description with Spanish month name
+        LocalDate monthDate = LocalDate.parse(month + "-01");
+        String periodLabel = monthDate.format(DateTimeFormatter.ofPattern("MMMM yyyy", new Locale("es", "ES")));
+        String description = subscription.getDescription() + " · " + periodLabel;
+
+        // Invoice date = 1st of the month
+        LocalDate invoiceDate = monthDate;
+
+        // Insert facturas record (no Stripe fields)
+        jdbcTemplate.update(
+            """
+            INSERT INTO beworking.facturas (
+                id, idfactura, idcliente, holdedcuenta, id_cuenta,
+                fechacreacionreal, estado, descripcion,
+                total, iva, totaliva, creacionfecha,
+                holdedinvoicenum
+            ) VALUES (?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            """,
+            nextInternalId,
+            invoiceId,
+            subscription.getContactId(),
+            cuentaCodigo,
+            cuentaId,
+            invoiceDate,
+            description,
+            total,
+            vatPercent,
+            vatAmount,
+            invoiceNumber
+        );
+
+        // Insert line item
+        Long nextDesgloseId = jdbcTemplate.queryForObject(
+            "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+
+        jdbcTemplate.update(
+            """
+            INSERT INTO beworking.facturasdesglose (
+                id, idfacturadesglose, conceptodesglose, precioundesglose,
+                cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            nextDesgloseId,
+            invoiceId,
+            description,
+            subtotal,
+            BigDecimal.ONE,
+            subtotal,
+            1,
+            null
+        );
+
+        logger.info("Created bank_transfer invoice: invoiceNumber={} contactId={} month={}",
+            invoiceNumber, subscription.getContactId(), month);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", nextInternalId);
+        response.put("idFactura", invoiceId);
+        response.put("invoiceNumber", invoiceNumber);
+        response.put("status", "Pendiente");
+        response.put("total", total);
+        return response;
+    }
+
+    /**
+     * Returns active bank_transfer subscriptions that haven't been invoiced for the given month.
+     */
+    public List<Subscription> findBankTransferDueForMonth(String month) {
+        return subscriptionRepository.findBankTransferDueForMonth(month);
+    }
+
     private String buildPeriodLabel(String periodStart) {
         if (periodStart == null || periodStart.isBlank()) {
             return LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy", new Locale("es", "ES")));
