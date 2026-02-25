@@ -16,7 +16,7 @@ public class Subscription {
     @Column(name = "contact_id", nullable = false)
     private Long contactId;
 
-    @Column(name = "stripe_subscription_id", nullable = false, unique = true)
+    @Column(name = "stripe_subscription_id", unique = true)
     private String stripeSubscriptionId;
 
     @Column(name = "stripe_customer_id")
@@ -51,6 +51,12 @@ public class Subscription {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Column(name = "billing_method", length = 20)
+    private String billingMethod = "stripe";
+
+    @Column(name = "last_invoiced_month", length = 7)
+    private String lastInvoicedMonth;
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
@@ -101,4 +107,10 @@ public class Subscription {
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getBillingMethod() { return billingMethod; }
+    public void setBillingMethod(String billingMethod) { this.billingMethod = billingMethod; }
+
+    public String getLastInvoicedMonth() { return lastInvoicedMonth; }
+    public void setLastInvoicedMonth(String lastInvoicedMonth) { this.lastInvoicedMonth = lastInvoicedMonth; }
 }

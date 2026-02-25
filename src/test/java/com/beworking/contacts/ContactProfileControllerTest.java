@@ -47,6 +47,12 @@ public class ContactProfileControllerTest {
     @MockBean
     private JwtUtil jwtUtil;
 
+    @MockBean
+    private ViesVatService viesVatService;
+
+    @MockBean
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     // --- Helper to build a mock admin user ---
     private User adminUser() {
         User user = new User();
