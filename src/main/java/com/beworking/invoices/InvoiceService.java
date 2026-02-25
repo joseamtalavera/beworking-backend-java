@@ -127,12 +127,17 @@ public class InvoiceService {
             args.add(like);
         }
 
+        if (hasText(filters.cuenta())) {
+            where.append(" AND UPPER(COALESCE(f.holdedcuenta, '')) = UPPER(?)");
+            args.add(filters.cuenta().trim());
+        }
+
         // Date filtering - use creacionfecha (creation date) for filtering
         if (hasText(filters.startDate())) {
             where.append(" AND f.creacionfecha >= ?::timestamp");
             args.add(filters.startDate().trim());
         }
-        
+
         if (hasText(filters.endDate())) {
             where.append(" AND f.creacionfecha < ?::date + INTERVAL '1 day'");
             args.add(filters.endDate().trim());
@@ -305,6 +310,11 @@ public class InvoiceService {
                 + " OR LOWER(COALESCE(fd.conceptodesglose, '')) LIKE ?)");
             args.add(like);
             args.add(like);
+        }
+
+        if (hasText(filters.cuenta())) {
+            where.append(" AND UPPER(COALESCE(f.holdedcuenta, '')) = UPPER(?)");
+            args.add(filters.cuenta().trim());
         }
 
         // Date filtering - use creacionfecha (creation date) for filtering
@@ -833,7 +843,8 @@ public class InvoiceService {
         String product,
         String startDate,
         String endDate,
-        Long contactId
+        Long contactId,
+        String cuenta
     ) { }
 
     public Optional<Long> findContactIdByEmail(String email) {

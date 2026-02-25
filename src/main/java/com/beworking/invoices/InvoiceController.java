@@ -60,7 +60,8 @@ public class InvoiceController {
         @RequestParam(value = "startDate", required = false) String startDate,
         @RequestParam(value = "endDate", required = false) String endDate,
         @RequestParam(value = "from", required = false) String from,
-        @RequestParam(value = "to", required = false) String to
+        @RequestParam(value = "to", required = false) String to,
+        @RequestParam(value = "cuenta", required = false) String cuenta
     ) {
         Optional<User> userOpt = resolveUser(authentication);
         if (userOpt.isEmpty()) {
@@ -94,7 +95,8 @@ public class InvoiceController {
             product,
             actualStartDate,
             actualEndDate,
-            restrictedContactId
+            restrictedContactId,
+            cuenta
         );
         Page<InvoiceListItem> invoices = invoiceService.findInvoices(page, size, filters);
         BigDecimal totalRevenue = invoiceService.calculateTotalRevenue(filters);
