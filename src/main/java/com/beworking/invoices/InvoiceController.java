@@ -275,6 +275,32 @@ public class InvoiceController {
         }
     }
 
+    @GetMapping("/payment-info")
+    public ResponseEntity<Map<String, Object>> getPaymentInfo(
+        Authentication authentication,
+        @RequestParam("contactId") Long contactId,
+        @RequestParam(value = "cuenta", required = false) String cuenta
+    ) {
+        Optional<User> userOpt = resolveUser(authentication);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (userOpt.get().getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        try {
+            Map<String, Object> result = invoiceService.lookupPaymentInfo(contactId, cuenta);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("Failed to lookup payment info for contact {}: {}", contactId, e.getMessage());
+            Map<String, Object> fallback = new HashMap<>();
+            fallback.put("hasPaymentMethod", false);
+            fallback.put("paymentMethods", List.of());
+            return ResponseEntity.ok(fallback);
+        }
+    }
+
     @PostMapping("/{id}/credit")
     public ResponseEntity<Map<String, Object>> creditInvoice(
         Authentication authentication,
