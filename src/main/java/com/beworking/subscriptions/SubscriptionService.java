@@ -43,6 +43,10 @@ public class SubscriptionService {
         return subscriptionRepository.findByContactId(contactId);
     }
 
+    public List<Subscription> findByContactIdAndActiveTrue(Long contactId) {
+        return subscriptionRepository.findByContactIdAndActiveTrue(contactId);
+    }
+
     public Optional<Subscription> findById(Integer id) {
         return subscriptionRepository.findById(id);
     }
@@ -126,10 +130,15 @@ public class SubscriptionService {
         Long nextInternalId = jdbcTemplate.queryForObject(
             "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
 
-        // Always use subscription monthly amount as the base — Stripe subtotal may
-        // reflect tax-inclusive pricing from legacy subscriptions, which conflicts
-        // with our own VAT computation.
-        BigDecimal subtotal = subscription.getMonthlyAmount();
+        // Use Stripe subtotal when available (handles prorated first invoices correctly).
+        // Fall back to subscription monthly amount for bank transfer or missing data.
+        BigDecimal subtotal;
+        if (payload.getSubtotalCents() != null && payload.getSubtotalCents() > 0) {
+            subtotal = BigDecimal.valueOf(payload.getSubtotalCents())
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        } else {
+            subtotal = subscription.getMonthlyAmount();
+        }
         int vatPercent = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
         BigDecimal vatAmount = subtotal.multiply(BigDecimal.valueOf(vatPercent))
             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
