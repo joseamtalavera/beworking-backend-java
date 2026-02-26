@@ -210,13 +210,13 @@ public class InvoicePdfService {
         if (clientId == null) return null;
         try {
             return jdbcTemplate.queryForObject(
-                "SELECT name,"
+                "SELECT COALESCE(NULLIF(billing_name, ''), name) AS display_name,"
                     + " COALESCE(email_primary, email_secondary, email_tertiary, representative_email) AS email,"
                     + " billing_address, billing_postal_code, billing_city,"
                     + " billing_province, billing_country, billing_tax_id"
                     + " FROM beworking.contact_profiles WHERE id = ?",
                 (rs, rowNum) -> new ClientInfo(
-                    rs.getString("name"),
+                    rs.getString("display_name"),
                     rs.getString("email"),
                     rs.getString("billing_address"),
                     rs.getString("billing_postal_code"),
