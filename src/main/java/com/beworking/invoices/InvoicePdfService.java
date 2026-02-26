@@ -211,7 +211,7 @@ public class InvoicePdfService {
         try {
             return jdbcTemplate.queryForObject(
                 "SELECT COALESCE(NULLIF(billing_name, ''), name) AS display_name,"
-                    + " COALESCE(email_primary, email_secondary, email_tertiary, representative_email) AS email,"
+                    + " COALESCE(NULLIF(email_secondary, ''), email_primary, email_tertiary, representative_email) AS email,"
                     + " billing_address, billing_postal_code, billing_city,"
                     + " billing_province, billing_country, billing_tax_id"
                     + " FROM beworking.contact_profiles WHERE id = ?",
