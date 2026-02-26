@@ -159,6 +159,7 @@ public class SubscriptionController {
                 stripeRequest.put("amount_cents", amountCents);
                 stripeRequest.put("currency", request.getCurrency() != null ? request.getCurrency().toLowerCase() : "eur");
                 stripeRequest.put("description", request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
+                stripeRequest.put("tenant", "GT".equalsIgnoreCase(request.getCuenta()) ? "gt" : "bw");
 
                 // Reuse existing Stripe customer for this contact if available
                 subscriptionService.findByContactIdAndActiveTrue(request.getContactId()).stream()
