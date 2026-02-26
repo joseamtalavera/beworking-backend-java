@@ -175,10 +175,15 @@ public class SubscriptionController {
                 stripeRequest.put("vat_number", taxExempt ? resolvedVat : "");
                 stripeRequest.put("tax_exempt", taxExempt);
 
-                // Anchor billing to the 1st of next month (prorate the first partial period)
+                // Anchor billing to the 1st of next month
                 LocalDate firstOfNextMonth = LocalDate.now().plusMonths(1).withDayOfMonth(1);
                 long anchorEpoch = firstOfNextMonth.atStartOfDay().toEpochSecond(ZoneOffset.UTC);
                 stripeRequest.put("billing_cycle_anchor", anchorEpoch);
+
+                // If start date is on the 1st (future), skip proration; otherwise prorate from today
+                LocalDate startDate = request.getStartDate() != null ? request.getStartDate() : LocalDate.now();
+                boolean startsOnFirst = startDate.getDayOfMonth() == 1 && !startDate.isBefore(firstOfNextMonth);
+                stripeRequest.put("proration_behavior", startsOnFirst ? "none" : "create_prorations");
 
                 // Pass billing details from contact profile to Stripe customer
                 Map<String, Object> billing = new HashMap<>();
