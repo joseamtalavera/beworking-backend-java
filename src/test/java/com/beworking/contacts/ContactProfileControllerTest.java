@@ -97,7 +97,7 @@ public class ContactProfileControllerTest {
             new ContactProfileResponse.Contact(name, email),
             "Virtual", null, "Usuario Virtual", "Activo",
             0, 0.0, null, null, null, null, null,
-            new ContactProfileResponse.Billing(name, email, null, null, null, null, null, null)
+            new ContactProfileResponse.Billing(name, email, null, null, null, null, null, null, null)
         );
     }
 
