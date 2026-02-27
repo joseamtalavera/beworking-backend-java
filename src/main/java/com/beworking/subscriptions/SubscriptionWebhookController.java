@@ -51,8 +51,23 @@ public class SubscriptionWebhookController {
             subId, payload.getStripeInvoiceId(), payload.getStatus());
 
         Optional<Subscription> subOpt = subscriptionService.findByStripeSubscriptionId(subId);
+
+        // Fallback: if not found by subscription ID, try matching by Stripe customer ID.
+        // This handles cases where subscriptions were created directly in Stripe
+        // (e.g. as subscription schedules) and the local record has a different ID.
+        if (subOpt.isEmpty() && payload.getStripeCustomerId() != null && !payload.getStripeCustomerId().isBlank()) {
+            subOpt = subscriptionService.findByStripeCustomerId(payload.getStripeCustomerId());
+            if (subOpt.isPresent()) {
+                Subscription matched = subOpt.get();
+                logger.info("Matched subscription by stripeCustomerId={} — updating stripeSubscriptionId from {} to {}",
+                    payload.getStripeCustomerId(), matched.getStripeSubscriptionId(), subId);
+                matched.setStripeSubscriptionId(subId);
+                subscriptionService.save(matched);
+            }
+        }
+
         if (subOpt.isEmpty()) {
-            logger.warn("No subscription found for stripeSubscriptionId={}", subId);
+            logger.warn("No subscription found for stripeSubscriptionId={} or stripeCustomerId={}", subId, payload.getStripeCustomerId());
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Subscription not found: " + subId);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
