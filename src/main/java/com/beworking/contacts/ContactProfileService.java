@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import com.beworking.auth.UserRepository;
+import com.beworking.bookings.CentroRepository;
 
 @Service
 public class ContactProfileService {
@@ -37,11 +38,13 @@ public class ContactProfileService {
     private final ContactProfileRepository repository;
     private final UserRepository userRepository;
     private final ViesVatService viesVatService;
+    private final CentroRepository centroRepository;
 
-    public ContactProfileService(ContactProfileRepository repository, UserRepository userRepository, ViesVatService viesVatService) {
+    public ContactProfileService(ContactProfileRepository repository, UserRepository userRepository, ViesVatService viesVatService, CentroRepository centroRepository) {
         this.repository = repository;
         this.userRepository = userRepository;
         this.viesVatService = viesVatService;
+        this.centroRepository = centroRepository;
     }
 
     @Transactional(readOnly = true)
@@ -274,7 +277,9 @@ public class ContactProfileService {
         );
 
         String plan = firstNonBlank(profile.getAssignment(), profile.getCategory(), profile.getTenantType(), "Custom");
-        String center = profile.getCenterId() != null ? String.valueOf(profile.getCenterId()) : null;
+        String center = profile.getCenterId() != null
+            ? centroRepository.findById(profile.getCenterId()).map(c -> c.getNombre()).orElse(null)
+            : null;
         String userType = firstNonBlank(profile.getTenantType(), profile.getCategory(), profile.getAssignment(), "—");
         String status = resolveStatus(profile);
         Double usage = 0.0d;
@@ -289,7 +294,8 @@ public class ContactProfileService {
             firstNonBlank(profile.getEmailPrimary(), profile.getEmailSecondary(), profile.getEmailTertiary()),
             profile.getBillingAddress(),
             profile.getBillingPostalCode(),
-            firstNonBlank(profile.getBillingProvince(), profile.getBillingCity()),
+            profile.getBillingProvince(),
+            profile.getBillingCity(),
             profile.getBillingCountry(),
             profile.getBillingTaxId(),
             profile.getVatValid()
