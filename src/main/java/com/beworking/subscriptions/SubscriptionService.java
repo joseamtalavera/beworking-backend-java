@@ -53,6 +53,10 @@ public class SubscriptionService {
         return subscriptionRepository.findByStripeSubscriptionId(stripeSubscriptionId);
     }
 
+    public Optional<Subscription> findByStripeCustomerId(String stripeCustomerId) {
+        return subscriptionRepository.findFirstByStripeCustomerIdAndActiveTrue(stripeCustomerId);
+    }
+
     public Subscription save(Subscription subscription) {
         return subscriptionRepository.save(subscription);
     }

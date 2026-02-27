@@ -25,7 +25,7 @@ public class MonthlyInvoiceScheduler {
 
     private static final Logger logger = LoggerFactory.getLogger(MonthlyInvoiceScheduler.class);
 
-    private static final String ADMIN_EMAIL = "info@be-working.com";
+    private static final String ADMIN_EMAIL = "accounts@be-working.com";
 
     private final BloqueoRepository bloqueoRepository;
     private final InvoiceService invoiceService;
@@ -48,13 +48,13 @@ public class MonthlyInvoiceScheduler {
     }
 
     /**
-     * Runs on the 1st of each month at 05:00 AM.
-     * Invoices all uninvoiced bloqueos for the current month, grouped by contact.
+     * Runs on the 28th of each month at 05:00 AM.
+     * Invoices all uninvoiced bloqueos for the NEXT month, grouped by contact.
      * Sends a status email to admin on completion or failure.
      */
-    @Scheduled(cron = "0 0 5 1 * *")
+    @Scheduled(cron = "0 0 5 28 * *")
     public void invoiceCurrentMonth() {
-        YearMonth currentMonth = YearMonth.now();
+        YearMonth currentMonth = YearMonth.now().plusMonths(1);
         logger.info("Monthly auto-invoicing started for {}", currentMonth);
 
         int successCount = 0;
@@ -115,7 +115,7 @@ public class MonthlyInvoiceScheduler {
     }
 
     private void processContactInvoice(Long contactId, List<Bloqueo> bloqueos, YearMonth month) {
-        List<Long> bloqueoIds = bloqueos.stream().map(Bloqueo::getId).toList();
+        List<Long> bloqueoIds = bloqueos.stream().map(Bloqueo::getId).sorted().toList();
 
         // 1. Create internal invoice
         CreateInvoiceRequest request = new CreateInvoiceRequest();
@@ -137,6 +137,17 @@ public class MonthlyInvoiceScheduler {
 
     @SuppressWarnings("unchecked")
     private void createStripeInvoice(CreateInvoiceResponse invoice, ContactProfile contact, YearMonth month) {
+        // Skip if this internal invoice is already linked to a Stripe invoice
+        try {
+            Integer linked = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM beworking.facturas WHERE id = ? AND stripeinvoiceid IS NOT NULL AND stripeinvoiceid <> ''",
+                Integer.class, invoice.id());
+            if (linked != null && linked > 0) {
+                logger.info("Internal invoice {} already has a Stripe invoice — skipping", invoice.id());
+                return;
+            }
+        } catch (Exception ignored) {}
+
         String email = resolveEmail(contact);
         if (email == null || email.isBlank()) {
             logger.warn("No email found for contact {} — skipping Stripe invoice", contact.getId());
@@ -153,7 +164,7 @@ public class MonthlyInvoiceScheduler {
         body.put("currency", "eur");
         body.put("description", invoice.description());
         body.put("due_days", 15);
-        body.put("idempotency_key", "monthly-" + invoice.id());
+        body.put("idempotency_key", "monthly-" + contact.getId() + "-" + invoice.id());
 
         try {
             Map<String, Object> result = http.post()

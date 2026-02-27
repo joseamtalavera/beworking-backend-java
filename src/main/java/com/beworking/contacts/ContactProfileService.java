@@ -171,14 +171,18 @@ public class ContactProfileService {
 
         if (search != null && !search.isBlank()) {
             String likePattern = "%" + search.trim().toLowerCase() + "%";
-            specification = specification.and((root, query, criteriaBuilder) -> criteriaBuilder.or(
-                criteriaBuilder.like(criteriaBuilder.lower(root.get("name")), likePattern),
-                criteriaBuilder.like(criteriaBuilder.lower(root.get("contactName")), likePattern),
-                criteriaBuilder.like(criteriaBuilder.lower(root.get("billingName")), likePattern),
-                criteriaBuilder.like(criteriaBuilder.lower(root.get("emailPrimary")), likePattern),
-                criteriaBuilder.like(criteriaBuilder.lower(root.get("emailSecondary")), likePattern),
-                criteriaBuilder.like(criteriaBuilder.lower(root.get("emailTertiary")), likePattern)
-            ));
+            specification = specification.and((root, query, cb) -> {
+                // Use unaccent() for accent-insensitive search (e.g. "area" matches "Área")
+                var unaccentPattern = cb.function("unaccent", String.class, cb.literal(likePattern));
+                return cb.or(
+                    cb.like(cb.function("unaccent", String.class, cb.lower(root.get("name"))), unaccentPattern),
+                    cb.like(cb.function("unaccent", String.class, cb.lower(root.get("contactName"))), unaccentPattern),
+                    cb.like(cb.function("unaccent", String.class, cb.lower(root.get("billingName"))), unaccentPattern),
+                    cb.like(cb.lower(root.get("emailPrimary")), likePattern),
+                    cb.like(cb.lower(root.get("emailSecondary")), likePattern),
+                    cb.like(cb.lower(root.get("emailTertiary")), likePattern)
+                );
+            });
         }
 
         if (status != null && !status.isBlank()) {

@@ -3,6 +3,7 @@ package com.beworking.subscriptions;
 public class SubscriptionInvoicePayload {
 
     private String stripeSubscriptionId;
+    private String stripeCustomerId;
     private String stripeInvoiceId;
     private String stripePaymentIntentId;
     private String customerEmail;
@@ -17,6 +18,9 @@ public class SubscriptionInvoicePayload {
 
     public String getStripeSubscriptionId() { return stripeSubscriptionId; }
     public void setStripeSubscriptionId(String stripeSubscriptionId) { this.stripeSubscriptionId = stripeSubscriptionId; }
+
+    public String getStripeCustomerId() { return stripeCustomerId; }
+    public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
 
     public String getStripeInvoiceId() { return stripeInvoiceId; }
     public void setStripeInvoiceId(String stripeInvoiceId) { this.stripeInvoiceId = stripeInvoiceId; }
