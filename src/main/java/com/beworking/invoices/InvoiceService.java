@@ -1485,6 +1485,7 @@ public class InvoiceService {
                             invoiceBody.put("tenant", tenant);
                             invoiceBody.put("reference", invoiceNumber);
                             invoiceBody.put("due_days", 1);
+                            invoiceBody.put("idempotency_key", "inv-" + invoiceNumber);
 
                             @SuppressWarnings("unchecked")
                             Map<String, Object> invoiceResult = http.post()
