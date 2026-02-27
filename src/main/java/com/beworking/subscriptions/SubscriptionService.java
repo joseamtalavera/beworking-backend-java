@@ -5,10 +5,8 @@ import com.beworking.cuentas.CuentaService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -144,9 +142,7 @@ public class SubscriptionService {
             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(vatAmount);
 
-        // Build description from period
-        String periodLabel = buildPeriodLabel(payload.getPeriodStart());
-        String description = subscription.getDescription() + " · " + periodLabel;
+        String description = subscription.getDescription();
 
         // Determine status
         String estado = "paid".equalsIgnoreCase(payload.getStatus()) ? "Pagado" : "Pendiente";
@@ -258,10 +254,8 @@ public class SubscriptionService {
             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(vatAmount);
 
-        // Build description with Spanish month name
+        String description = subscription.getDescription();
         LocalDate monthDate = LocalDate.parse(month + "-01");
-        String periodLabel = monthDate.format(DateTimeFormatter.ofPattern("MMMM yyyy", new Locale("es", "ES")));
-        String description = subscription.getDescription() + " · " + periodLabel;
 
         // Invoice date = 1st of the month
         LocalDate invoiceDate = monthDate;
@@ -329,15 +323,4 @@ public class SubscriptionService {
         return subscriptionRepository.findBankTransferDueForMonth(month);
     }
 
-    private String buildPeriodLabel(String periodStart) {
-        if (periodStart == null || periodStart.isBlank()) {
-            return LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy", new Locale("es", "ES")));
-        }
-        try {
-            LocalDate date = LocalDate.parse(periodStart);
-            return date.format(DateTimeFormatter.ofPattern("MMMM yyyy", new Locale("es", "ES")));
-        } catch (Exception e) {
-            return periodStart;
-        }
-    }
 }
