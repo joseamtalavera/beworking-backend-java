@@ -153,6 +153,7 @@ public class MonthlyInvoiceScheduler {
         body.put("currency", "eur");
         body.put("description", invoice.description());
         body.put("due_days", 15);
+        body.put("idempotency_key", "monthly-" + invoice.id());
 
         try {
             Map<String, Object> result = http.post()
