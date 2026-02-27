@@ -770,9 +770,10 @@ public class InvoiceService {
 
         BigDecimal quantity = BigDecimal.ONE;
         if (bloqueo.getFechaIni() != null && bloqueo.getFechaFin() != null) {
-            long hours = Duration.between(bloqueo.getFechaIni(), bloqueo.getFechaFin()).toHours();
-            if (hours > 0) {
-                quantity = BigDecimal.valueOf(hours);
+            long minutes = Duration.between(bloqueo.getFechaIni(), bloqueo.getFechaFin()).toMinutes();
+            if (minutes > 0) {
+                quantity = BigDecimal.valueOf(minutes)
+                    .divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
             }
         }
 
