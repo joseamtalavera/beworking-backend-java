@@ -95,6 +95,7 @@ public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
         LEFT JOIN FETCH b.producto producto
         WHERE b.fechaIni >= :monthStart
           AND b.fechaIni < :monthEnd
+          AND c.tenantType = 'Usuario Aulas'
           AND (
               b.estado IS NULL
               OR (
