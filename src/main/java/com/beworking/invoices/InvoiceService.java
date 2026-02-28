@@ -416,7 +416,7 @@ public class InvoiceService {
 
         Long nextId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
         Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now();
 
         String description = request.getDescription();
         if (description == null || description.isBlank()) {

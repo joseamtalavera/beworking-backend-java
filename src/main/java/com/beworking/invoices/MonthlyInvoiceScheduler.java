@@ -117,11 +117,12 @@ public class MonthlyInvoiceScheduler {
     private void processContactInvoice(Long contactId, List<Bloqueo> bloqueos, YearMonth month) {
         List<Long> bloqueoIds = bloqueos.stream().map(Bloqueo::getId).sorted().toList();
 
-        // 1. Create internal invoice
+        // 1. Create internal invoice (date = 1st of the invoiced month)
         CreateInvoiceRequest request = new CreateInvoiceRequest();
         request.setBloqueoIds(bloqueoIds);
         request.setVatPercent(BigDecimal.valueOf(21));
         request.setDescription("Factura mensual - " + month.getMonth().name() + " " + month.getYear());
+        request.setInvoiceDate(month.atDay(1).atStartOfDay());
 
         CreateInvoiceResponse response = invoiceService.createInvoice(request);
         logger.info("Internal invoice created: id={}, total={} for contact {}",
