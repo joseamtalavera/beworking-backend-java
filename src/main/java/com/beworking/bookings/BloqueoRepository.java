@@ -74,6 +74,7 @@ public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
         LEFT JOIN FETCH b.centro centro
         LEFT JOIN FETCH b.producto producto
         WHERE c.id = :contactId
+          AND b.fechaIni >= :fromDate
           AND (
               b.estado IS NULL
               OR (
@@ -85,7 +86,8 @@ public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
           )
         ORDER BY b.fechaIni ASC
     """)
-    List<Bloqueo> findUninvoicedByContact(@Param("contactId") Long contactId);
+    List<Bloqueo> findUninvoicedByContact(@Param("contactId") Long contactId,
+                                           @Param("fromDate") LocalDateTime fromDate);
 
     @Query("""
         SELECT DISTINCT b

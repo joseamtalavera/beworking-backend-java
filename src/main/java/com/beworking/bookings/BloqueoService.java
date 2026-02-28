@@ -82,7 +82,8 @@ class BloqueoService {
             return List.of();
         }
         try {
-            List<Bloqueo> bloqueos = bloqueoRepository.findUninvoicedByContact(contactId);
+            LocalDateTime today = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
+            List<Bloqueo> bloqueos = bloqueoRepository.findUninvoicedByContact(contactId, today);
             return bloqueos.stream()
                 .map(BloqueoMapper::toResponse)
                 .toList();
