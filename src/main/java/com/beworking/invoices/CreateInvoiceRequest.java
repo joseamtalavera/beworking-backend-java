@@ -2,6 +2,7 @@ package com.beworking.invoices;
 
 import jakarta.validation.constraints.NotEmpty;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public class CreateInvoiceRequest {
@@ -18,6 +19,8 @@ public class CreateInvoiceRequest {
     private List<ExtraLineItem> extraLineItems;
 
     private String stripeInvoiceId;
+
+    private LocalDateTime invoiceDate;
 
     public List<Long> getBloqueoIds() {
         return bloqueoIds;
@@ -65,6 +68,14 @@ public class CreateInvoiceRequest {
 
     public void setStripeInvoiceId(String stripeInvoiceId) {
         this.stripeInvoiceId = stripeInvoiceId;
+    }
+
+    public LocalDateTime getInvoiceDate() {
+        return invoiceDate;
+    }
+
+    public void setInvoiceDate(LocalDateTime invoiceDate) {
+        this.invoiceDate = invoiceDate;
     }
 
     public static class ExtraLineItem {
