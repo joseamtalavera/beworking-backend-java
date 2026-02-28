@@ -114,9 +114,13 @@ public class SubscriptionService {
             cuentaId = cuentaOpt.get().getId();
         }
 
-        // Generate invoice number
+        // Generate invoice number — reuse the one already reserved during invoice.created
         String invoiceNumber;
-        if (cuentaId != null) {
+        if (payload.getStripeInvoiceNumber() != null && !payload.getStripeInvoiceNumber().isBlank()) {
+            invoiceNumber = payload.getStripeInvoiceNumber();
+            logger.info("Reusing pre-reserved invoice number {} for stripeInvoiceId={}",
+                invoiceNumber, payload.getStripeInvoiceId());
+        } else if (cuentaId != null) {
             invoiceNumber = cuentaService.generateNextInvoiceNumber(cuentaId);
         } else {
             invoiceNumber = cuentaService.generateNextInvoiceNumber("PT");

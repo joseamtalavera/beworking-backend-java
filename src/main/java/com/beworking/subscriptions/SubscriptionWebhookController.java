@@ -1,5 +1,7 @@
 package com.beworking.subscriptions;
 
+import com.beworking.cuentas.Cuenta;
+import com.beworking.cuentas.CuentaService;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -8,10 +10,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -21,12 +25,14 @@ public class SubscriptionWebhookController {
     private static final Logger logger = LoggerFactory.getLogger(SubscriptionWebhookController.class);
 
     private final SubscriptionService subscriptionService;
+    private final CuentaService cuentaService;
 
     @Value("${app.webhook.callback-secret:}")
     private String callbackSecret;
 
-    public SubscriptionWebhookController(SubscriptionService subscriptionService) {
+    public SubscriptionWebhookController(SubscriptionService subscriptionService, CuentaService cuentaService) {
         this.subscriptionService = subscriptionService;
+        this.cuentaService = cuentaService;
     }
 
     @PostMapping("/subscription-invoice")
@@ -140,6 +146,52 @@ public class SubscriptionWebhookController {
         response.put("oldStripeId", scheduleId);
         response.put("newStripeId", subscriptionId);
         response.put("customerId", customerId);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/reserve-invoice-number")
+    public ResponseEntity<Map<String, Object>> reserveInvoiceNumber(
+        @RequestParam String stripeSubscriptionId,
+        @RequestParam(required = false) String stripeCustomerId,
+        @RequestHeader(value = "X-Callback-Secret", required = false) String secret
+    ) {
+        if (callbackSecret != null && !callbackSecret.isBlank()) {
+            if (secret == null || !secret.equals(callbackSecret)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+        }
+
+        Optional<Subscription> subOpt = subscriptionService.findByStripeSubscriptionId(stripeSubscriptionId);
+
+        if (subOpt.isEmpty() && stripeCustomerId != null && !stripeCustomerId.isBlank()) {
+            subOpt = subscriptionService.findByStripeCustomerId(stripeCustomerId);
+        }
+
+        if (subOpt.isEmpty()) {
+            logger.warn("reserve-invoice-number: no subscription found for stripeSubscriptionId={} stripeCustomerId={}",
+                stripeSubscriptionId, stripeCustomerId);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Subscription not found");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        }
+
+        Subscription subscription = subOpt.get();
+        String cuentaCodigo = subscription.getCuenta();
+
+        String invoiceNumber;
+        Optional<Cuenta> cuentaOpt = cuentaService.getCuentaByCodigo(cuentaCodigo);
+        if (cuentaOpt.isPresent()) {
+            invoiceNumber = cuentaService.generateNextInvoiceNumber(cuentaOpt.get().getId());
+        } else {
+            invoiceNumber = cuentaService.generateNextInvoiceNumber("PT");
+        }
+
+        logger.info("Reserved invoice number {} for subscription {} (cuenta={})",
+            invoiceNumber, stripeSubscriptionId, cuentaCodigo);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("invoiceNumber", invoiceNumber);
+        response.put("cuenta", cuentaCodigo);
         return ResponseEntity.ok(response);
     }
 }

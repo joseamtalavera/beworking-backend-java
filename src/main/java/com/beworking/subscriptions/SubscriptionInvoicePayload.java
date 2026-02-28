@@ -15,6 +15,7 @@ public class SubscriptionInvoicePayload {
     private String periodStart;
     private String periodEnd;
     private String status; // "paid", "pending", or "failed"
+    private String stripeInvoiceNumber; // our cuenta-generated number set on the Stripe invoice
 
     public String getStripeSubscriptionId() { return stripeSubscriptionId; }
     public void setStripeSubscriptionId(String stripeSubscriptionId) { this.stripeSubscriptionId = stripeSubscriptionId; }
@@ -54,4 +55,7 @@ public class SubscriptionInvoicePayload {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public String getStripeInvoiceNumber() { return stripeInvoiceNumber; }
+    public void setStripeInvoiceNumber(String stripeInvoiceNumber) { this.stripeInvoiceNumber = stripeInvoiceNumber; }
 }
