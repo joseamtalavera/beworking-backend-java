@@ -328,6 +328,10 @@ public class SubscriptionController {
             if (!request.getActive() && sub.getEndDate() == null) {
                 sub.setEndDate(LocalDate.now());
             }
+            // Cancel in Stripe when deactivating
+            if (!request.getActive() && sub.getStripeSubscriptionId() != null && !sub.getStripeSubscriptionId().isBlank()) {
+                cancelStripeSubscription(sub);
+            }
         }
         sub.setUpdatedAt(LocalDateTime.now());
 
@@ -346,8 +350,29 @@ public class SubscriptionController {
             return ResponseEntity.notFound().build();
         }
 
+        Subscription sub = subOpt.get();
+        if (sub.getStripeSubscriptionId() != null && !sub.getStripeSubscriptionId().isBlank()) {
+            cancelStripeSubscription(sub);
+        }
         subscriptionService.deactivate(id);
         return ResponseEntity.noContent().build();
+    }
+
+    private void cancelStripeSubscription(Subscription sub) {
+        try {
+            String tenant = "GT".equalsIgnoreCase(sub.getCuenta()) ? "gt" : null;
+            String uri = "/api/subscriptions/" + sub.getStripeSubscriptionId();
+            if (tenant != null) {
+                uri += "?tenant=" + tenant;
+            }
+            http.delete()
+                .uri(uri)
+                .retrieve()
+                .toBodilessEntity();
+            logger.info("Cancelled Stripe subscription {} for local subscription {}", sub.getStripeSubscriptionId(), sub.getId());
+        } catch (Exception e) {
+            logger.error("Failed to cancel Stripe subscription {}: {}", sub.getStripeSubscriptionId(), e.getMessage());
+        }
     }
 
     private String mapCountryToIso(String country) {
