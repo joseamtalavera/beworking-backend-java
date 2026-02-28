@@ -52,8 +52,7 @@ public class MonthlyInvoiceScheduler {
      * Invoices all uninvoiced bloqueos for the NEXT month, grouped by contact.
      * Sends a status email to admin on completion or failure.
      */
-    // DISABLED — scheduler created incorrect invoices on 2026-02-28. Do not re-enable without fixing root cause.
-    // @Scheduled(cron = "0 0 5 28 * *")
+    @Scheduled(cron = "0 0 5 28 * *")
     public void invoiceCurrentMonth() {
         YearMonth currentMonth = YearMonth.now().plusMonths(1);
         logger.info("Monthly auto-invoicing started for {}", currentMonth);
