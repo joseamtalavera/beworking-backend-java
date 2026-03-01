@@ -129,6 +129,12 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
+        <!-- AWS SDK v2 S3 for production media storage -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.26.27</version>
+        </dependency>
     </dependencies>
 
     <build>

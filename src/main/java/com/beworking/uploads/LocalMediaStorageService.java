@@ -12,7 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @Profile("dev")
-public class LocalMediaStorageService {
+public class LocalMediaStorageService implements MediaStorageService {
     @Value("${media.local.root:uploads/catalog}")
     private String rootDir;
     public String store(MultipartFile file) throws IOException {
