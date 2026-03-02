@@ -358,7 +358,10 @@ public class InvoiceService {
             throw new IllegalArgumentException("At least one bloqueo must be provided.");
         }
 
-        List<Bloqueo> bloqueos = bloqueoRepository.findAllById(request.getBloqueoIds());
+        List<Bloqueo> bloqueos = bloqueoRepository.findAllById(request.getBloqueoIds())
+            .stream()
+            .sorted(java.util.Comparator.comparing(Bloqueo::getFechaIni, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+            .toList();
         if (bloqueos.size() != request.getBloqueoIds().size()) {
             throw new IllegalArgumentException("Unable to locate all requested bloqueos.");
         }
