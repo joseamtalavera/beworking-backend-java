@@ -778,9 +778,10 @@ public class InvoiceService {
         }
 
         Double tarifa = bloqueo.getTarifa();
-        BigDecimal unitPrice = tarifa != null
-            ? BigDecimal.valueOf(tarifa).setScale(2, RoundingMode.HALF_UP)
-            : BigDecimal.ZERO;
+        String estado = bloqueo.getEstado() != null ? bloqueo.getEstado().toLowerCase() : "";
+        boolean isFree = estado.contains("grat") || estado.contains("free");
+        BigDecimal unitPrice = isFree ? BigDecimal.ZERO
+            : (tarifa != null ? BigDecimal.valueOf(tarifa).setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO);
         BigDecimal lineTotal = unitPrice.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
 
         return new LineComputation(concept, quantity, unitPrice, lineTotal);
