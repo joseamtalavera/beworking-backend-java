@@ -788,10 +788,22 @@ public class InvoiceService {
     }
 
     private static String buildConcept(String productName, String centerName, Bloqueo bloqueo) {
+        StringBuilder sb = new StringBuilder();
         if (productName != null && !productName.isBlank()) {
-            return productName;
+            sb.append(productName);
+        } else {
+            sb.append("Workspace booking");
         }
-        return "Workspace booking";
+        if (bloqueo.getFechaIni() != null) {
+            java.time.format.DateTimeFormatter dateFmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            java.time.format.DateTimeFormatter timeFmt = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
+            sb.append(" · ").append(bloqueo.getFechaIni().format(dateFmt));
+            sb.append(" ").append(bloqueo.getFechaIni().format(timeFmt));
+            if (bloqueo.getFechaFin() != null) {
+                sb.append("-").append(bloqueo.getFechaFin().format(timeFmt));
+            }
+        }
+        return sb.toString();
     }
 
     private static String buildDefaultDescription(List<Bloqueo> bloqueos) {
