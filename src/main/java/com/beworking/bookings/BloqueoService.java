@@ -11,14 +11,18 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 
 @Service
 class BloqueoService {
@@ -30,17 +34,25 @@ class BloqueoService {
     private final ContactProfileRepository contactRepository;
     private final CentroRepository centroRepository;
     private final ProductoRepository productoRepository;
+    private final JdbcTemplate jdbcTemplate;
+    private final RestClient http;
+    private final String paymentsBaseUrl;
 
     BloqueoService(BloqueoRepository bloqueoRepository,
                    ReservaRepository reservaRepository,
                    ContactProfileRepository contactRepository,
                    CentroRepository centroRepository,
-                   ProductoRepository productoRepository) {
+                   ProductoRepository productoRepository,
+                   JdbcTemplate jdbcTemplate,
+                   @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.bloqueoRepository = bloqueoRepository;
         this.reservaRepository = reservaRepository;
         this.contactRepository = contactRepository;
         this.centroRepository = centroRepository;
         this.productoRepository = productoRepository;
+        this.jdbcTemplate = jdbcTemplate;
+        this.http = RestClient.create();
+        this.paymentsBaseUrl = paymentsBaseUrl;
     }
 
     @Transactional(readOnly = true)
@@ -179,6 +191,56 @@ class BloqueoService {
 
     @Transactional
     void deleteBloqueo(Long id) {
+        // Void any linked unpaid Stripe invoices before deleting the bloqueo
+        try {
+            List<Map<String, Object>> linkedInvoices = jdbcTemplate.queryForList(
+                """
+                SELECT f.id, f.estado, f.stripeinvoiceid
+                FROM beworking.facturasdesglose fd
+                JOIN beworking.facturas f ON f.idfactura = fd.idfacturadesglose
+                WHERE fd.idbloqueovinculado = ?
+                """, id);
+
+            for (Map<String, Object> invoice : linkedInvoices) {
+                String estado = (String) invoice.get("estado");
+                String stripeInvoiceId = (String) invoice.get("stripeinvoiceid");
+                Long facturaId = ((Number) invoice.get("id")).longValue();
+
+                boolean isPaid = estado != null && (
+                    estado.equalsIgnoreCase("Pagado") || estado.equalsIgnoreCase("Paid"));
+
+                // Void unpaid Stripe invoice
+                if (!isPaid && stripeInvoiceId != null && !stripeInvoiceId.isBlank()
+                        && paymentsBaseUrl != null && !paymentsBaseUrl.isBlank()) {
+                    try {
+                        http.post()
+                            .uri(paymentsBaseUrl + "/api/void-invoice")
+                            .header("Content-Type", "application/json")
+                            .body(Map.of("invoice_id", stripeInvoiceId))
+                            .retrieve()
+                            .toBodilessEntity();
+                        LOGGER.info("Voided Stripe invoice {} for bloqueo {}", stripeInvoiceId, id);
+                    } catch (Exception ex) {
+                        LOGGER.warn("Failed to void Stripe invoice {} for bloqueo {}: {}",
+                            stripeInvoiceId, id, ex.getMessage());
+                    }
+                }
+
+                // Mark local invoice as voided if not paid
+                if (!isPaid) {
+                    jdbcTemplate.update(
+                        "UPDATE beworking.facturas SET estado = 'Anulado' WHERE id = ?", facturaId);
+                    LOGGER.info("Marked factura {} as Anulado for deleted bloqueo {}", facturaId, id);
+                }
+            }
+
+            // Clean up desglose records linking to this bloqueo
+            jdbcTemplate.update(
+                "DELETE FROM beworking.facturasdesglose WHERE idbloqueovinculado = ?", id);
+        } catch (Exception ex) {
+            LOGGER.warn("Invoice cleanup failed for bloqueo {}: {}", id, ex.getMessage());
+        }
+
         try {
             bloqueoRepository.deleteById(id);
         } catch (EmptyResultDataAccessException ex) {
