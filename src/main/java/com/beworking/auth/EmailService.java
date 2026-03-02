@@ -27,11 +27,46 @@ public class EmailService {
     }
 
     public void sendConfirmationEmail(String to, String token) {
-        String subject = "Confirm your email address";
-        String confirmation = baseUrl + "/api/auth/confirm?token=" + token;
-        String content = "<p>Thank you for registering!</p>"
-                + "<p>Please confirm your email address by clicking the link below:</p>"
-                + "<a href=\"" + confirmation + "\">Confirm Email</a>";
+        String subject = "Confirma tu cuenta \u2014 BeWorking";
+        String confirmationLink = baseUrl + "/api/auth/confirm?token=" + token;
+        String content = "<!doctype html>"
+                + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                + "<title>Confirma tu cuenta</title></head>"
+                + "<body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background:#f7f7f8;\">"
+                + "<tr><td align=\"center\" style=\"padding:24px 0;\">"
+                + "<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:600px;max-width:600px;margin:0 auto;\">"
+                // ── Green gradient header ──
+                + "<tr><td style=\"background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:40px 32px 32px;color:#ffffff;border-radius:14px 14px 0 0;\">"
+                + "<p style=\"margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;\">BEWORKING</p>"
+                + "<h1 style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;line-height:1.2;color:#ffffff;\">Confirma tu cuenta</h1>"
+                + "</td></tr>"
+                // ── Body ──
+                + "<tr><td style=\"background:#ffffff;padding:32px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">"
+                + "<p style=\"margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#333;\">Hola, gracias por registrarte en <strong>BeWorking</strong>.</p>"
+                + "<p style=\"margin:0 0 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Solo queda un paso: confirma tu direcci\u00f3n de correo electr\u00f3nico pulsando el bot\u00f3n de abajo.</p>"
+                // ── CTA button (table-based for Outlook) ──
+                + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto;\">"
+                + "<tr><td align=\"center\" style=\"border-radius:8px;background:#009624;\">"
+                + "<a href=\"" + confirmationLink + "\" style=\"display:inline-block;background:#009624;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;padding:14px 36px;border-radius:8px;\">Confirmar email</a>"
+                + "</td></tr></table>"
+                // ── Info box ──
+                + "<div style=\"margin:28px 0 0;background:#f5faf6;border-radius:10px;padding:16px 20px;border-left:4px solid #009624;\">"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;line-height:1.5;\">Si no has creado una cuenta en BeWorking, puedes ignorar este mensaje.</p>"
+                + "</div>"
+                // ── Contact ──
+                + "<p style=\"margin:28px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#888;text-align:center;\">"
+                + "\u00bfNecesitas ayuda? Escr\u00edbenos por WhatsApp: "
+                + "<a href=\"https://wa.me/34640369759\" style=\"color:#009624;text-decoration:none;font-weight:600;\">+34 640 369 759</a></p>"
+                // ── Footer ──
+                + "<div style=\"margin:28px -32px -32px;background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee;border-radius:0 0 14px 14px;\">"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#aaa;\">\u00a9 BeWorking \u00b7 M\u00e1laga</p>"
+                + "</div>"
+                + "</td></tr>"
+                + "</table>"
+                + "</td></tr></table>"
+                + "</body></html>";
         try {
             logger.info("Attempting to send confirmation email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
@@ -47,11 +82,46 @@ public class EmailService {
     }
 
     public void sendPasswordResetEmail(String to, String token) {
-        String subject = "Reset your password";
+        String subject = "Restablecer contrase\u00f1a \u2014 BeWorking";
         String resetLink = frontendUrl + "/main/reset-password?token=" + token;
-        String content = "<p>You requested a password reset.</p>"
-                + "<p>Click the link below to reset your password. This link will expire in 1 hour.</p>"
-                + "<a href='" + resetLink + "'>Reset Password</a>";
+        String content = "<!doctype html>"
+                + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                + "<title>Restablecer contrase\u00f1a</title></head>"
+                + "<body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background:#f7f7f8;\">"
+                + "<tr><td align=\"center\" style=\"padding:24px 0;\">"
+                + "<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:600px;max-width:600px;margin:0 auto;\">"
+                // ── Green gradient header ──
+                + "<tr><td style=\"background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:40px 32px 32px;color:#ffffff;border-radius:14px 14px 0 0;\">"
+                + "<p style=\"margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;\">BEWORKING</p>"
+                + "<h1 style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;line-height:1.2;color:#ffffff;\">Restablecer contrase\u00f1a</h1>"
+                + "</td></tr>"
+                // ── Body ──
+                + "<tr><td style=\"background:#ffffff;padding:32px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">"
+                + "<p style=\"margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#333;\">Hemos recibido una solicitud para restablecer tu contrase\u00f1a.</p>"
+                + "<p style=\"margin:0 0 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Pulsa el bot\u00f3n de abajo para crear una nueva contrase\u00f1a. Este enlace caducar\u00e1 en 1 hora.</p>"
+                // ── CTA button (table-based for Outlook) ──
+                + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto;\">"
+                + "<tr><td align=\"center\" style=\"border-radius:8px;background:#009624;\">"
+                + "<a href=\"" + resetLink + "\" style=\"display:inline-block;background:#009624;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;padding:14px 36px;border-radius:8px;\">Restablecer contrase\u00f1a</a>"
+                + "</td></tr></table>"
+                // ── Info box ──
+                + "<div style=\"margin:28px 0 0;background:#f5faf6;border-radius:10px;padding:16px 20px;border-left:4px solid #009624;\">"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;line-height:1.5;\">Si no has solicitado restablecer tu contrase\u00f1a, puedes ignorar este mensaje. Tu cuenta sigue segura.</p>"
+                + "</div>"
+                // ── Contact ──
+                + "<p style=\"margin:28px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#888;text-align:center;\">"
+                + "\u00bfNecesitas ayuda? Escr\u00edbenos por WhatsApp: "
+                + "<a href=\"https://wa.me/34640369759\" style=\"color:#009624;text-decoration:none;font-weight:600;\">+34 640 369 759</a></p>"
+                // ── Footer ──
+                + "<div style=\"margin:28px -32px -32px;background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee;border-radius:0 0 14px 14px;\">"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#aaa;\">\u00a9 BeWorking \u00b7 M\u00e1laga</p>"
+                + "</div>"
+                + "</td></tr>"
+                + "</table>"
+                + "</td></tr></table>"
+                + "</body></html>";
         try {
             logger.info("Attempting to send password reset email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
