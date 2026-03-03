@@ -145,7 +145,7 @@ public class SubscriptionService {
         } else {
             subtotal = subscription.getMonthlyAmount();
         }
-        int vatPercent = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
+        int vatPercent = resolveVatPercent(subscription);
         BigDecimal vatAmount = subtotal.multiply(BigDecimal.valueOf(vatPercent))
             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(vatAmount);
@@ -257,7 +257,7 @@ public class SubscriptionService {
 
         // VAT calculation
         BigDecimal subtotal = subscription.getMonthlyAmount();
-        int vatPercent = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
+        int vatPercent = resolveVatPercent(subscription);
         BigDecimal vatAmount = subtotal.multiply(BigDecimal.valueOf(vatPercent))
             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(vatAmount);
@@ -329,6 +329,56 @@ public class SubscriptionService {
      */
     public List<Subscription> findBankTransferDueForMonth(String month) {
         return subscriptionRepository.findBankTransferDueForMonth(month);
+    }
+
+    // ── VAT resolution ──────────────────────────────────────────────────
+
+    private static final java.util.Set<String> EU_VAT_PREFIXES = java.util.Set.of(
+        "AT","BE","BG","CY","CZ","DE","DK","EE","ES","FI","FR","GR",
+        "HR","HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO",
+        "SE","SI","SK"
+    );
+
+    /**
+     * Re-evaluates the correct VAT percentage from the contact's current billing
+     * data and the subscription's cuenta, applying intra-EU reverse charge rules.
+     * Also updates the subscription record if the resolved value differs.
+     */
+    int resolveVatPercent(Subscription subscription) {
+        int fallback = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
+
+        String taxId = null;
+        try {
+            taxId = jdbcTemplate.queryForObject(
+                "SELECT billing_tax_id FROM beworking.contact_profiles WHERE id = ?",
+                String.class, subscription.getContactId());
+        } catch (EmptyResultDataAccessException ignored) {}
+
+        if (taxId == null || taxId.isBlank() || taxId.length() < 3) {
+            return fallback;
+        }
+
+        String customerCountry = taxId.substring(0, 2).toUpperCase();
+        if (!EU_VAT_PREFIXES.contains(customerCountry)) {
+            return fallback;
+        }
+
+        // Supplier country: GT = Estonia (EE), PT/OF = Spain (ES)
+        String cuenta = subscription.getCuenta() != null ? subscription.getCuenta().toUpperCase() : "PT";
+        String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
+
+        // Intra-EU reverse charge: 0% when supplier and customer are in different EU countries
+        int resolved = supplierCountry.equals(customerCountry) ? fallback : 0;
+
+        // Keep subscription record in sync
+        if (subscription.getVatPercent() == null || subscription.getVatPercent() != resolved) {
+            subscription.setVatPercent(resolved);
+            subscriptionRepository.save(subscription);
+            logger.info("Updated subscription {} vatPercent {} → {} (cuenta={}, taxId={})",
+                subscription.getId(), fallback, resolved, cuenta, taxId);
+        }
+
+        return resolved;
     }
 
 }
