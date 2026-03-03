@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import com.beworking.auth.RegisterService;
 import com.beworking.auth.UserRepository;
 import com.beworking.bookings.CentroRepository;
 
@@ -39,12 +40,16 @@ public class ContactProfileService {
     private final UserRepository userRepository;
     private final ViesVatService viesVatService;
     private final CentroRepository centroRepository;
+    private final RegisterService registerService;
 
-    public ContactProfileService(ContactProfileRepository repository, UserRepository userRepository, ViesVatService viesVatService, CentroRepository centroRepository) {
+    public ContactProfileService(ContactProfileRepository repository, UserRepository userRepository,
+                                  ViesVatService viesVatService, CentroRepository centroRepository,
+                                  RegisterService registerService) {
         this.repository = repository;
         this.userRepository = userRepository;
         this.viesVatService = viesVatService;
         this.centroRepository = centroRepository;
+        this.registerService = registerService;
     }
 
     @Transactional(readOnly = true)
@@ -452,16 +457,16 @@ public class ContactProfileService {
         // Save the profile
         ContactProfile savedProfile = repository.save(profile);
         
-        // Link user account to this contact profile and sync avatar
-        if (savedProfile.getEmailPrimary() != null) {
-            userRepository.findByEmail(savedProfile.getEmailPrimary())
-                .ifPresent(user -> {
-                    user.setTenantId(savedProfile.getId());
-                    if (savedProfile.getAvatar() != null) {
-                        user.setAvatar(savedProfile.getAvatar());
-                    }
-                    userRepository.save(user);
-                });
+        // Auto-create or link user account for this contact
+        if (savedProfile.getEmailPrimary() != null && !savedProfile.getEmailPrimary().isBlank()) {
+            String contactName = savedProfile.getContactName() != null && !savedProfile.getContactName().isBlank()
+                ? savedProfile.getContactName() : savedProfile.getName();
+            com.beworking.auth.User user = registerService.createUserForContact(
+                savedProfile.getEmailPrimary(), contactName, savedProfile.getId());
+            if (user != null && savedProfile.getAvatar() != null) {
+                user.setAvatar(savedProfile.getAvatar());
+                userRepository.save(user);
+            }
         }
 
         return savedProfile;

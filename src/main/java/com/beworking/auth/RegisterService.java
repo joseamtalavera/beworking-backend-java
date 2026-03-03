@@ -131,6 +131,61 @@ public class RegisterService {
         return true;
     }
 
+    /**
+     * Creates a user account for an admin-created contact and sends a welcome email.
+     * Returns the existing user if one already exists for this email.
+     */
+    public User createUserForContact(String email, String name, Long contactProfileId) {
+        return createUserForContactInternal(email, name, contactProfileId, true);
+    }
+
+    /**
+     * Creates a user account for an existing contact without sending email.
+     * Used for bulk migration of contacts that already exist.
+     */
+    public User createUserForContactSilent(String email, String name, Long contactProfileId) {
+        return createUserForContactInternal(email, name, contactProfileId, false);
+    }
+
+    private User createUserForContactInternal(String email, String name, Long contactProfileId, boolean sendEmail) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+
+        String normalizedEmail = email.toLowerCase().trim();
+
+        // If user already exists, ensure linkage and return
+        var existing = userRepository.findByEmail(normalizedEmail);
+        if (existing.isPresent()) {
+            User user = existing.get();
+            if (user.getTenantId() == null) {
+                user.setTenantId(contactProfileId);
+                userRepository.save(user);
+            }
+            return user;
+        }
+
+        // Create user with random password (user will set their own via welcome email)
+        String randomPassword = UUID.randomUUID().toString() + UUID.randomUUID().toString();
+        User user = new User(normalizedEmail, passwordEncoder.encode(randomPassword), User.Role.USER);
+        user.setName(name != null ? name.trim() : null);
+        user.setEmailConfirmed(true);
+        user.setTenantId(contactProfileId);
+
+        if (sendEmail) {
+            // Generate token for the welcome email password-set link
+            String rawToken = UUID.randomUUID().toString();
+            user.setConfirmationToken(hashToken(rawToken));
+            user.setConfirmationTokenExpiry(Instant.now().plus(24, ChronoUnit.HOURS));
+            userRepository.save(user);
+            emailService.sendWelcomeEmail(normalizedEmail, rawToken);
+        } else {
+            userRepository.save(user);
+        }
+
+        return user;
+    }
+
     private boolean isNonBlank(String value) {
         return value != null && !value.trim().isEmpty();
     }

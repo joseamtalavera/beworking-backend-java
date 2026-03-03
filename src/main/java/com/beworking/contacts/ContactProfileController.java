@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.beworking.auth.RegisterService;
 import com.beworking.auth.User;
 import com.beworking.auth.UserRepository;
 
@@ -20,15 +21,18 @@ public class ContactProfileController {
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
     private final ViesVatService viesVatService;
+    private final RegisterService registerService;
 
     public ContactProfileController(ContactProfileService contactProfileService,
                                      UserRepository userRepository,
                                      JdbcTemplate jdbcTemplate,
-                                     ViesVatService viesVatService) {
+                                     ViesVatService viesVatService,
+                                     RegisterService registerService) {
         this.contactProfileService = contactProfileService;
         this.userRepository = userRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.viesVatService = viesVatService;
+        this.registerService = registerService;
     }
 
     @GetMapping
@@ -123,6 +127,61 @@ public class ContactProfileController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    @PostMapping("/sync-users")
+    public ResponseEntity<Map<String, Object>> syncContactUsers(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        User adminUser = userRepository.findByEmail(authentication.getName()).orElse(null);
+        if (adminUser == null || adminUser.getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        List<Map<String, Object>> contacts = jdbcTemplate.queryForList(
+            "SELECT id, email_primary, contact_name, name FROM beworking.contact_profiles WHERE COALESCE(TRIM(email_primary), '') != '' ORDER BY id");
+
+        int created = 0;
+        int alreadyLinked = 0;
+        int skipped = 0;
+        java.util.ArrayList<String> errors = new java.util.ArrayList<>();
+
+        for (Map<String, Object> cp : contacts) {
+            String email = (String) cp.get("email_primary");
+            if (email == null || email.isBlank()) {
+                skipped++;
+                continue;
+            }
+            try {
+                var existing = userRepository.findByEmail(email.trim().toLowerCase());
+                if (existing.isPresent()) {
+                    User user = existing.get();
+                    if (user.getTenantId() == null) {
+                        user.setTenantId((Long) cp.get("id"));
+                        userRepository.save(user);
+                    }
+                    alreadyLinked++;
+                } else {
+                    String name = cp.get("contact_name") != null && !((String) cp.get("contact_name")).isBlank()
+                        ? (String) cp.get("contact_name") : (String) cp.get("name");
+                    registerService.createUserForContactSilent(email, name, (Long) cp.get("id"));
+                    created++;
+                }
+            } catch (Exception e) {
+                errors.add(cp.get("id") + ": " + e.getMessage());
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("created", created);
+        result.put("alreadyLinked", alreadyLinked);
+        result.put("skipped", skipped);
+        result.put("total", contacts.size());
+        if (!errors.isEmpty()) {
+            result.put("errors", errors);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @PutMapping("/{id}")
