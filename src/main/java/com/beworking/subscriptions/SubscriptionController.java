@@ -322,6 +322,8 @@ public class SubscriptionController {
             }
         } else if (stripeDetails != null && stripeDetails.containsKey("invoices")) {
             // Pre-existing Stripe subscription: sync all invoices
+            // Do NOT pass stripeInvoiceNumber — Stripe's auto-generated numbers should not
+            // be used; let the system generate proper PT/GT/OF-prefixed numbers.
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> invoices = (List<Map<String, Object>>) stripeDetails.get("invoices");
             if (invoices != null) {
@@ -338,7 +340,6 @@ public class SubscriptionController {
                         payload.setPeriodStart((String) inv.get("periodStart"));
                         payload.setPeriodEnd((String) inv.get("periodEnd"));
                         payload.setStatus((String) inv.get("status"));
-                        payload.setStripeInvoiceNumber((String) inv.get("stripeInvoiceNumber"));
                         subscriptionService.createInvoiceFromSubscription(saved, payload);
                         logger.info("Synced invoice for Stripe invoice {}", inv.get("stripeInvoiceId"));
                     } catch (Exception e) {
@@ -438,6 +439,8 @@ public class SubscriptionController {
         logger.info("Linked Stripe subscription {} (customer={}) to local subscription {}", stripeSubId, customerId, sub.getId());
 
         // Create missing invoices
+        // Do NOT pass stripeInvoiceNumber — Stripe's auto-generated numbers should not
+        // be used; let the system generate proper PT/GT/OF-prefixed numbers.
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> invoices = (List<Map<String, Object>>) stripeDetails.get("invoices");
         int created = 0;
@@ -455,7 +458,6 @@ public class SubscriptionController {
                     payload.setPeriodStart((String) inv.get("periodStart"));
                     payload.setPeriodEnd((String) inv.get("periodEnd"));
                     payload.setStatus((String) inv.get("status"));
-                    payload.setStripeInvoiceNumber((String) inv.get("stripeInvoiceNumber"));
 
                     Map<String, Object> result = subscriptionService.createInvoiceFromSubscription(sub, payload);
                     if (result != null) {
