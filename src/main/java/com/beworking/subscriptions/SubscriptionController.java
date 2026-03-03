@@ -128,6 +128,28 @@ public class SubscriptionController {
         // --- Stripe flow (existing logic) ---
         String stripeSubId = request.getStripeSubscriptionId();
         Map<String, Object> stripeResponse = null;
+        Map<String, Object> stripeDetails = null; // populated when linking a pre-existing Stripe sub
+
+        // If a pre-existing Stripe subscription ID was provided, fetch its details
+        if (stripeSubId != null && !stripeSubId.isBlank()) {
+            try {
+                String tenant = "GT".equalsIgnoreCase(request.getCuenta()) ? "gt" : null;
+                String detailsUri = "/api/subscriptions/" + stripeSubId + "/details";
+                if (tenant != null) detailsUri += "?tenant=" + tenant;
+                @SuppressWarnings("unchecked")
+                Map<String, Object> resp = http.get()
+                    .uri(detailsUri)
+                    .retrieve()
+                    .body(Map.class);
+                stripeDetails = resp;
+                // Auto-fill customer ID from Stripe
+                String customerId = (String) stripeDetails.get("customerId");
+                if (customerId != null) request.setStripeCustomerId(customerId);
+                logger.info("Fetched Stripe details for pre-existing subscription {}", stripeSubId);
+            } catch (Exception e) {
+                logger.warn("Could not fetch Stripe subscription details for {}: {}", stripeSubId, e.getMessage());
+            }
+        }
 
         // If no Stripe subscription ID provided, create one via stripe-service
         if (stripeSubId == null || stripeSubId.isBlank()) {
@@ -275,8 +297,9 @@ public class SubscriptionController {
 
         Subscription saved = subscriptionService.save(sub);
 
-        // Create local Pendiente invoice from the first Stripe invoice
+        // Create local invoices from Stripe data
         if (stripeResponse != null && stripeResponse.containsKey("firstInvoice")) {
+            // Auto-created subscription: create Pendiente invoice from first invoice
             try {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> firstInvoice = (Map<String, Object>) stripeResponse.get("firstInvoice");
@@ -296,6 +319,32 @@ public class SubscriptionController {
                 }
             } catch (Exception e) {
                 logger.warn("Failed to create local Pendiente invoice: {}", e.getMessage(), e);
+            }
+        } else if (stripeDetails != null && stripeDetails.containsKey("invoices")) {
+            // Pre-existing Stripe subscription: sync all invoices
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> invoices = (List<Map<String, Object>>) stripeDetails.get("invoices");
+            if (invoices != null) {
+                for (Map<String, Object> inv : invoices) {
+                    try {
+                        SubscriptionInvoicePayload payload = new SubscriptionInvoicePayload();
+                        payload.setStripeSubscriptionId(saved.getStripeSubscriptionId());
+                        payload.setStripeCustomerId(saved.getStripeCustomerId());
+                        payload.setStripeInvoiceId((String) inv.get("stripeInvoiceId"));
+                        payload.setStripePaymentIntentId((String) inv.get("stripePaymentIntentId"));
+                        payload.setSubtotalCents(toInteger(inv.get("subtotalCents")));
+                        payload.setTaxCents(toInteger(inv.get("taxCents")));
+                        payload.setInvoicePdf((String) inv.get("invoicePdf"));
+                        payload.setPeriodStart((String) inv.get("periodStart"));
+                        payload.setPeriodEnd((String) inv.get("periodEnd"));
+                        payload.setStatus((String) inv.get("status"));
+                        payload.setStripeInvoiceNumber((String) inv.get("stripeInvoiceNumber"));
+                        subscriptionService.createInvoiceFromSubscription(saved, payload);
+                        logger.info("Synced invoice for Stripe invoice {}", inv.get("stripeInvoiceId"));
+                    } catch (Exception e) {
+                        logger.warn("Failed to sync invoice {}: {}", inv.get("stripeInvoiceId"), e.getMessage());
+                    }
+                }
             }
         }
 
@@ -318,6 +367,8 @@ public class SubscriptionController {
         }
 
         Subscription sub = subOpt.get();
+        if (request.getStripeSubscriptionId() != null) sub.setStripeSubscriptionId(request.getStripeSubscriptionId());
+        if (request.getStripeCustomerId() != null) sub.setStripeCustomerId(request.getStripeCustomerId());
         if (request.getCuenta() != null) sub.setCuenta(request.getCuenta());
         if (request.getDescription() != null) sub.setDescription(request.getDescription());
         if (request.getMonthlyAmount() != null) sub.setMonthlyAmount(request.getMonthlyAmount());
@@ -337,6 +388,93 @@ public class SubscriptionController {
 
         Subscription saved = subscriptionService.save(sub);
         return ResponseEntity.ok(saved);
+    }
+
+    @PostMapping("/{id}/link-stripe")
+    public ResponseEntity<?> linkStripe(
+        Authentication authentication,
+        @PathVariable Integer id,
+        @RequestBody Map<String, String> body
+    ) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        String stripeSubId = body.get("stripeSubscriptionId");
+        if (stripeSubId == null || stripeSubId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "stripeSubscriptionId is required"));
+        }
+
+        Optional<Subscription> subOpt = subscriptionService.findById(id);
+        if (subOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Subscription sub = subOpt.get();
+        String tenant = "GT".equalsIgnoreCase(sub.getCuenta()) ? "gt" : null;
+
+        // Fetch subscription details and invoices from stripe-service
+        Map<String, Object> stripeDetails;
+        try {
+            String uri = "/api/subscriptions/" + stripeSubId + "/details";
+            if (tenant != null) uri += "?tenant=" + tenant;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> resp = http.get()
+                .uri(uri)
+                .retrieve()
+                .body(Map.class);
+            stripeDetails = resp;
+        } catch (Exception e) {
+            logger.error("Failed to fetch Stripe subscription details: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", "Failed to fetch from Stripe: " + e.getMessage()));
+        }
+
+        // Link Stripe IDs
+        String customerId = (String) stripeDetails.get("customerId");
+        sub.setStripeSubscriptionId(stripeSubId);
+        if (customerId != null) sub.setStripeCustomerId(customerId);
+        sub.setUpdatedAt(LocalDateTime.now());
+        subscriptionService.save(sub);
+        logger.info("Linked Stripe subscription {} (customer={}) to local subscription {}", stripeSubId, customerId, sub.getId());
+
+        // Create missing invoices
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> invoices = (List<Map<String, Object>>) stripeDetails.get("invoices");
+        int created = 0;
+        if (invoices != null) {
+            for (Map<String, Object> inv : invoices) {
+                try {
+                    SubscriptionInvoicePayload payload = new SubscriptionInvoicePayload();
+                    payload.setStripeSubscriptionId(stripeSubId);
+                    payload.setStripeCustomerId(customerId);
+                    payload.setStripeInvoiceId((String) inv.get("stripeInvoiceId"));
+                    payload.setStripePaymentIntentId((String) inv.get("stripePaymentIntentId"));
+                    payload.setSubtotalCents(toInteger(inv.get("subtotalCents")));
+                    payload.setTaxCents(toInteger(inv.get("taxCents")));
+                    payload.setInvoicePdf((String) inv.get("invoicePdf"));
+                    payload.setPeriodStart((String) inv.get("periodStart"));
+                    payload.setPeriodEnd((String) inv.get("periodEnd"));
+                    payload.setStatus((String) inv.get("status"));
+                    payload.setStripeInvoiceNumber((String) inv.get("stripeInvoiceNumber"));
+
+                    Map<String, Object> result = subscriptionService.createInvoiceFromSubscription(sub, payload);
+                    if (result != null) {
+                        created++;
+                        logger.info("Created invoice {} for Stripe invoice {}", result.get("invoiceNumber"), inv.get("stripeInvoiceId"));
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to create invoice for Stripe invoice {}: {}", inv.get("stripeInvoiceId"), e.getMessage());
+                }
+            }
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("subscription", sub);
+        response.put("stripeSubscriptionId", stripeSubId);
+        response.put("stripeCustomerId", customerId);
+        response.put("invoicesCreated", created);
+        response.put("invoicesTotal", invoices != null ? invoices.size() : 0);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{id}")
