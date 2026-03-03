@@ -4,6 +4,7 @@ import com.beworking.rooms.Room;
 import com.beworking.rooms.RoomAmenity;
 import com.beworking.rooms.RoomImage;
 import com.beworking.rooms.RoomRepository;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import java.util.List;
 import java.util.Optional;
@@ -18,9 +19,11 @@ import org.springframework.stereotype.Service;
 public class SpaceCatalogService {
 
     private final RoomRepository roomRepository;
+    private final EntityManager entityManager;
 
-    public SpaceCatalogService(RoomRepository roomRepository) {
+    public SpaceCatalogService(RoomRepository roomRepository, EntityManager entityManager) {
         this.roomRepository = roomRepository;
+        this.entityManager = entityManager;
     }
 
     /**
@@ -54,7 +57,16 @@ public class SpaceCatalogService {
             ? roomRepository.findById(payload.id()).orElse(new Room())
             : new Room();
 
-        apply(room, payload);
+        applyScalars(room, payload);
+
+        // Clear children and flush DELETEs before INSERTing new ones.
+        // Without the flush Hibernate may INSERT (IDENTITY) before the
+        // orphan-removal DELETEs execute, causing duplicate-key errors.
+        room.getImages().clear();
+        room.getAmenities().clear();
+        entityManager.flush();
+
+        applyChildren(room, payload);
         Room saved = roomRepository.save(room);
         return toDto(saved);
     }
@@ -69,7 +81,7 @@ public class SpaceCatalogService {
     /**
      * Copies DTO values into a managed {@link Room} entity.
      */
-    private void apply(Room room, SpaceCatalogDto dto) {
+    private void applyScalars(Room room, SpaceCatalogDto dto) {
         room.setCode(dto.code());
         room.setCentroCode(dto.centroCode());
         room.setName(dto.displayName());
@@ -99,8 +111,9 @@ public class SpaceCatalogService {
         room.setInstantBooking(Boolean.TRUE.equals(dto.instantBooking()));
         room.setTags(dto.tags() == null ? null : String.join(",", dto.tags()));
         room.setHeroImage(dto.heroImage());
+    }
 
-        room.getImages().clear();
+    private void applyChildren(Room room, SpaceCatalogDto dto) {
         if (dto.images() != null) {
             dto.images().forEach(imageDto -> {
                 RoomImage image = new RoomImage();
@@ -113,7 +126,6 @@ public class SpaceCatalogService {
             });
         }
 
-        room.getAmenities().clear();
         if (dto.amenities() != null) {
             dto.amenities().forEach(code -> {
                 RoomAmenity amenity = new RoomAmenity();
