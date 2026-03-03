@@ -1425,9 +1425,14 @@ public class InvoiceService {
             }
 
             // Stripe integration: charge saved card or send Stripe invoice
+            // Skip if the caller already created a Stripe invoice (prevents duplicate)
             String paymentMethod = null;
             String stripeError = null;
-            if (paymentsBaseUrl != null && !paymentsBaseUrl.isBlank() && request.getClientId() != null) {
+            boolean stripeAlreadyHandled = request.getStripeInvoiceId() != null
+                && !request.getStripeInvoiceId().isBlank();
+            if (!stripeAlreadyHandled
+                    && paymentsBaseUrl != null && !paymentsBaseUrl.isBlank()
+                    && request.getClientId() != null) {
                 String contactEmail = getContactEmail(request.getClientId());
                 if (contactEmail != null && !contactEmail.isBlank()) {
                     String tenant = mapCuentaToTenant(request.getCuenta());
