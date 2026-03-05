@@ -487,7 +487,14 @@ public class ContactProfileService {
         }
 
         if (request.getEmail() != null && !request.getEmail().isBlank()) {
-            profile.setEmailPrimary(request.getEmail().trim());
+            String newEmail = request.getEmail().trim();
+            profile.setEmailPrimary(newEmail);
+            // Always sync login email: find user by tenantId and update their email
+            userRepository.findFirstByTenantIdOrderByIdAsc(profile.getId())
+                .ifPresent(user -> {
+                    user.setEmail(newEmail);
+                    userRepository.save(user);
+                });
         }
 
         if (request.getPrimaryContact() != null) {
@@ -502,14 +509,11 @@ public class ContactProfileService {
             profile.setAvatar(blankToNull(request.getAvatar()));
         }
 
-        // Link user account to this contact profile and sync avatar
-        if (profile.getEmailPrimary() != null) {
-            userRepository.findByEmail(profile.getEmailPrimary())
+        // Sync avatar to user account
+        if (profile.getAvatar() != null) {
+            userRepository.findFirstByTenantIdOrderByIdAsc(profile.getId())
                 .ifPresent(user -> {
-                    user.setTenantId(profile.getId());
-                    if (profile.getAvatar() != null) {
-                        user.setAvatar(profile.getAvatar());
-                    }
+                    user.setAvatar(profile.getAvatar());
                     userRepository.save(user);
                 });
         }
