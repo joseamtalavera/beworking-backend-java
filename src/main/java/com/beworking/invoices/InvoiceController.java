@@ -81,7 +81,11 @@ public class InvoiceController {
             } else {
                 restrictedContactId = invoiceService.findContactIdByEmail(user.getEmail()).orElse(null);
             }
-            if (effectiveEmail == null || effectiveEmail.trim().isEmpty()) {
+            if (restrictedContactId != null) {
+                // contactId is authoritative — drop the email filter to avoid conflicts
+                // when login email differs from the email stored on the contact profile
+                effectiveEmail = null;
+            } else if (effectiveEmail == null || effectiveEmail.trim().isEmpty()) {
                 effectiveEmail = user.getEmail();
             }
         }
