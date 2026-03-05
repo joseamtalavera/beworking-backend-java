@@ -39,7 +39,7 @@ public class DailyReconciliationScheduler {
         this.http = RestClient.create();
     }
 
-    @Scheduled(cron = "0 0 8 * * *")
+    @Scheduled(cron = "0 0 5 * * *")
     public void runDailyReconciliation() {
         logger.info("Daily reconciliation started");
 

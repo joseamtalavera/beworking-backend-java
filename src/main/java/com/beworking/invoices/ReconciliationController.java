@@ -5,6 +5,7 @@ import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -13,9 +14,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReconciliationController {
 
     private final JdbcTemplate jdbcTemplate;
+    private final DailyReconciliationScheduler scheduler;
 
-    public ReconciliationController(JdbcTemplate jdbcTemplate) {
+    public ReconciliationController(JdbcTemplate jdbcTemplate,
+                                    DailyReconciliationScheduler scheduler) {
         this.jdbcTemplate = jdbcTemplate;
+        this.scheduler = scheduler;
     }
 
     @GetMapping("/latest")
@@ -37,5 +41,11 @@ public class ReconciliationController {
             ORDER BY account
             """);
         return ResponseEntity.ok(rows);
+    }
+
+    @PostMapping("/run")
+    public ResponseEntity<Map<String, String>> triggerRun() {
+        scheduler.runDailyReconciliation();
+        return ResponseEntity.ok(Map.of("status", "ok", "message", "Reconciliation triggered"));
     }
 }
