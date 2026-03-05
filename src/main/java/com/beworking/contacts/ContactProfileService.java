@@ -270,12 +270,14 @@ public class ContactProfileService {
             profile.getName()
         );
 
-        String contactEmail = firstNonBlank(
-            profile.getEmailPrimary(),
-            profile.getEmailSecondary(),
-            profile.getEmailTertiary(),
-            profile.getRepresentativeEmail()
-        );
+        String contactEmail = userRepository.findFirstByTenantIdOrderByIdAsc(profile.getId())
+            .map(com.beworking.auth.User::getEmail)
+            .orElseGet(() -> firstNonBlank(
+                profile.getEmailPrimary(),
+                profile.getEmailSecondary(),
+                profile.getEmailTertiary(),
+                profile.getRepresentativeEmail()
+            ));
 
         String phone = firstNonBlank(
             profile.getPhonePrimary(),
@@ -300,7 +302,7 @@ public class ContactProfileService {
         ContactProfileResponse.Contact contact = new ContactProfileResponse.Contact(contactName, contactEmail);
         ContactProfileResponse.Billing billing = new ContactProfileResponse.Billing(
             firstNonBlank(profile.getBillingName(), profile.getName()),
-            firstNonBlank(profile.getEmailPrimary(), profile.getEmailSecondary(), profile.getEmailTertiary()),
+            null,
             profile.getBillingAddress(),
             profile.getBillingPostalCode(),
             profile.getBillingProvince(),
