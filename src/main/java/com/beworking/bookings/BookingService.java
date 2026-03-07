@@ -123,7 +123,7 @@ class BookingService {
                 newContact.setBillingCountry(request.getBillingCountry());
                 newContact.setBillingPostalCode(request.getBillingPostalCode());
                 newContact.setTenantType("Por Horas");
-                newContact.setStatus("Convertido");
+                newContact.setStatus("Activo");
                 newContact.setActive(true);
                 newContact.setChannel("Web");
                 newContact.setCreatedAt(java.time.LocalDateTime.now());
