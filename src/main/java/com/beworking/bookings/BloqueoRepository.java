@@ -83,7 +83,7 @@ public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
                   AND LOWER(b.estado) NOT LIKE '%pag%'
               )
           )
-        ORDER BY b.fechaIni ASC
+        ORDER BY b.fechaIni DESC
     """)
     List<Bloqueo> findUninvoicedByContact(@Param("contactId") Long contactId);
 
