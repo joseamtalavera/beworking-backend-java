@@ -336,6 +336,37 @@ public class AuthController {
             .body(successHtml);
     }
 
+    @PutMapping("/me/password")
+    public ResponseEntity<?> changePassword(Authentication authentication, @RequestBody Map<String, String> request) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+
+        String currentPassword = request.get("currentPassword");
+        String newPassword = request.get("newPassword");
+
+        if (currentPassword == null || currentPassword.isBlank() || newPassword == null || newPassword.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", "Current password and new password are required"));
+        }
+
+        String email = authentication.getName();
+        var userOpt = loginService.authenticate(email, currentPassword);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Current password is incorrect"));
+        }
+
+        boolean changed = registerService.changePassword(email, newPassword);
+        if (changed) {
+            return ResponseEntity.ok(Map.of("message", "Password changed successfully"));
+        } else {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", "Password must be at least 8 characters and include uppercase, lowercase, number, and special character"));
+        }
+    }
+
     @PostMapping("/forgot-password")
     public ResponseEntity<String> forgotPassword(@RequestBody Map<String, String> payload) {
         String email = payload.get("email");

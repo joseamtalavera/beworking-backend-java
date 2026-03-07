@@ -186,6 +186,20 @@ public class RegisterService {
         return user;
     }
 
+    public boolean changePassword(String email, String newPassword) {
+        if (!isPasswordValid(newPassword)) {
+            return false;
+        }
+        var userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return false;
+        }
+        User user = userOpt.get();
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        return true;
+    }
+
     private boolean isNonBlank(String value) {
         return value != null && !value.trim().isEmpty();
     }
