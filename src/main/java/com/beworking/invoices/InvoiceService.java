@@ -976,6 +976,19 @@ public class InvoiceService {
             originalId
         );
 
+        // Revert linked bloqueos from Invoiced back to Confirmado
+        jdbcTemplate.update(
+            """
+            UPDATE beworking.bloqueos SET estado = 'Confirmado'
+            WHERE estado = 'Invoiced'
+              AND id IN (
+                SELECT fd.idbloqueovinculado FROM beworking.facturasdesglose fd
+                WHERE fd.idfacturadesglose = ? AND fd.idbloqueovinculado IS NOT NULL
+              )
+            """,
+            origLegacy
+        );
+
         // Stripe: refund if paid, void invoice if not paid
         String stripeRefundId = null;
         String stripeVoidedInvoiceId = null;
