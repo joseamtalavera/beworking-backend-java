@@ -17,6 +17,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import com.beworking.contacts.ContactProfileRepository;
 import java.util.Optional;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -144,7 +145,7 @@ public class AuthControllerTest {
     @Test
     void testRegister_Success() throws Exception {
         String json = "{\"name\":\"New User\",\"email\":\"newuser@example.com\",\"password\":\"newpassword\"}";
-        when(registerService.registerUser("New User", "newuser@example.com", "newpassword")).thenReturn(true);
+        when(registerService.registerUserWithTrial(any(RegisterRequest.class))).thenReturn(new User("newuser@example.com", "encoded", User.Role.USER));
 
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -158,7 +159,7 @@ public class AuthControllerTest {
     void testRegister_Conflict() throws Exception {
         // lets assume that the user already exists
         String json = "{\"name\": \"Existing User\", \"email\": \"existing@example.com\", \"password\": \"existingpassword\"}";
-        when(registerService.registerUser("Existing User", "existing@example.com", "existingpassword")).thenReturn(false);
+        when(registerService.registerUserWithTrial(any(RegisterRequest.class))).thenReturn(null);
 
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)

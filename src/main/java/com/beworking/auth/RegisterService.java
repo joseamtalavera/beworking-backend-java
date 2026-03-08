@@ -37,56 +37,6 @@ public class RegisterService {
     }
 
     /**
-     * Creates a new user account when inputs are valid and the email is unused.
-     */
-    public boolean registerUser(String name, String email, String password) {
-        // Validate required inputs and password complexity before any I/O.
-        if (!isNonBlank(name) || !isNonBlank(email) || !isPasswordValid(password)) {
-            return false;
-        }
-
-        String normalizedEmail = email.toLowerCase().trim();
-
-        // Enforce unique email address.
-        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
-            return false;
-        }
-
-        User user = new User(normalizedEmail, passwordEncoder.encode(password), User.Role.USER);
-        user.setName(name.trim());
-        user.setEmailConfirmed(false);
-        String rawToken = UUID.randomUUID().toString();
-        user.setConfirmationToken(hashToken(rawToken));
-        user.setConfirmationTokenExpiry(Instant.now().plus(24, ChronoUnit.HOURS));
-
-        // Auto-link to existing contact profile, or create a new one
-        var existingProfile = contactProfileRepository
-            .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
-                normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail);
-        if (existingProfile.isPresent()) {
-            user.setTenantId(existingProfile.get().getId());
-        } else {
-            ContactProfile cp = new ContactProfile();
-            cp.setId(System.currentTimeMillis());
-            cp.setName(name.trim());
-            cp.setEmailPrimary(normalizedEmail);
-            cp.setStatus("Potencial");
-            cp.setActive(true);
-            cp.setCreatedAt(LocalDateTime.now());
-            cp.setStatusChangedAt(LocalDateTime.now());
-            cp.setChannel("Self-registration");
-            contactProfileRepository.save(cp);
-            user.setTenantId(cp.getId());
-        }
-
-        userRepository.save(user);
-
-        // Fire-and-forget confirmation email after persistence.
-        emailService.sendConfirmationEmail(email, rawToken);
-        return true;
-    }
-
-    /**
      * Creates a new user account with a trial subscription when inputs are valid and the email is unused.
      * Also creates a Subscription record and populates ContactProfile with billing data.
      */
@@ -151,7 +101,7 @@ public class RegisterService {
             java.math.BigDecimal amount = switch (request.getPlan().toLowerCase()) {
                 case "basis" -> new java.math.BigDecimal("15.00");
                 case "pro" -> new java.math.BigDecimal("25.00");
-                case "max" -> new java.math.BigDecimal("49.90");
+                case "max" -> new java.math.BigDecimal("90.00");
                 default -> new java.math.BigDecimal("15.00");
             };
 

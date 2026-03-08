@@ -132,8 +132,8 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new AuthResponse("Turnstile verification failed", null, null));
         }
-        boolean created = registerService.registerUser(request.getName(), request.getEmail(), request.getPassword());
-        if (created) {
+        User created = registerService.registerUserWithTrial(request);
+        if (created != null) {
             return ResponseEntity.ok(new AuthResponse("User registered successfully", null, "USER"));
         } else {
             return ResponseEntity.status(HttpStatus.CONFLICT)
