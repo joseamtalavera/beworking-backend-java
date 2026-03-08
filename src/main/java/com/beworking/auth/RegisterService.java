@@ -313,7 +313,7 @@ public class RegisterService {
 
             String jsonBody = String.format(
                 "{\"setup_intent_id\":\"%s\",\"monthly_amount\":%d,\"currency\":\"%s\","
-                + "\"trial_period_days\":%d,\"description\":\"%s\",\"plan\":\"%s\",\"tenant\":\"gt\"}",
+                + "\"trial_period_days\":%d,\"description\":\"%s\",\"plan\":\"%s\",\"tenant\":\"beworking\"}",
                 setupIntentId.replace("\"", "\\\""),
                 monthlyAmountCents,
                 currency.replace("\"", "\\\""),
