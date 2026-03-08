@@ -172,7 +172,7 @@ public class AuthController {
                 : "http://beworking-stripe-service:8081";
 
             String jsonBody = String.format(
-                "{\"customer_email\":\"%s\",\"customer_name\":\"%s\"}",
+                "{\"customer_email\":\"%s\",\"customer_name\":\"%s\",\"tenant\":\"gt\"}",
                 email.toLowerCase().trim().replace("\"", "\\\""),
                 name.trim().replace("\"", "\\\"")
             );

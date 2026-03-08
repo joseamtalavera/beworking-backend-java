@@ -8,12 +8,16 @@ import com.beworking.subscriptions.SubscriptionRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -21,6 +25,8 @@ import java.util.UUID;
  */
 @Service
 public class RegisterService {
+    private static final Logger logger = LoggerFactory.getLogger(RegisterService.class);
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
@@ -118,14 +124,30 @@ public class RegisterService {
             sub.setDescription("BeWorking " + planLabel);
             sub.setBillingMethod("stripe");
             sub.setStripeCustomerId(request.getStripeCustomerId());
-            sub.setStartDate(LocalDate.now());
-            sub.setEndDate(LocalDate.now().plusDays(30)); // Trial end
+            sub.setStartDate(LocalDate.now().plusDays(30)); // Billing starts after 30-day trial
+            sub.setEndDate(null); // Ongoing subscription, no fixed end
             sub.setActive(true);
             sub.setCreatedAt(LocalDateTime.now());
             sub.setVatNumber(request.getTaxId());
             if (request.getTaxId() != null && !request.getTaxId().isBlank()) {
                 sub.setVatPercent(0); // EU VAT reverse charge
             }
+
+            // Create Stripe trial subscription
+            if (request.getSetupIntentId() != null && !request.getSetupIntentId().isBlank()) {
+                String stripeSubId = createStripeTrialSubscription(
+                    request.getSetupIntentId(),
+                    amount.multiply(new java.math.BigDecimal("100")).intValue(),
+                    sub.getCurrency().toLowerCase(),
+                    30,
+                    "BeWorking " + planLabel,
+                    planKey
+                );
+                if (stripeSubId != null) {
+                    sub.setStripeSubscriptionId(stripeSubId);
+                }
+            }
+
             subscriptionRepository.save(sub);
         }
 
@@ -135,6 +157,10 @@ public class RegisterService {
             request.getCompany(), request.getTaxId(),
             request.getPlan(), request.getLocation()
         );
+
+        // Send welcome email to the user
+        String planLabel = request.getPlan() != null ? request.getPlan() : "Basic";
+        emailService.sendTrialWelcomeEmail(normalizedEmail, name.trim(), planLabel, request.getLocation());
 
         return user;
     }
@@ -271,6 +297,53 @@ public class RegisterService {
                 && password.matches(".*[A-Z].*")
                 && password.matches(".*\\d.*")
                 && password.matches(".*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?].*");
+    }
+
+    /**
+     * Calls the Stripe service to create a trial subscription.
+     * Returns the Stripe subscription ID, or null on failure.
+     */
+    private String createStripeTrialSubscription(String setupIntentId, int monthlyAmountCents,
+                                                  String currency, int trialDays,
+                                                  String description, String plan) {
+        try {
+            String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
+                ? System.getenv("STRIPE_SERVICE_URL")
+                : "http://beworking-stripe-service:8081";
+
+            String jsonBody = String.format(
+                "{\"setup_intent_id\":\"%s\",\"monthly_amount\":%d,\"currency\":\"%s\","
+                + "\"trial_period_days\":%d,\"description\":\"%s\",\"plan\":\"%s\",\"tenant\":\"gt\"}",
+                setupIntentId.replace("\"", "\\\""),
+                monthlyAmountCents,
+                currency.replace("\"", "\\\""),
+                trialDays,
+                description.replace("\"", "\\\""),
+                plan.replace("\"", "\\\"")
+            );
+
+            var client = new org.springframework.web.client.RestTemplate();
+            var headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            var entity = new org.springframework.http.HttpEntity<>(jsonBody, headers);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = client.postForObject(
+                stripeServiceUrl + "/api/subscriptions/trial",
+                entity,
+                Map.class
+            );
+
+            if (response != null && response.containsKey("subscriptionId")) {
+                String subId = (String) response.get("subscriptionId");
+                logger.info("Created Stripe trial subscription {} for setupIntent {}", subId, setupIntentId);
+                return subId;
+            }
+        } catch (Exception e) {
+            logger.error("Failed to create Stripe trial subscription for setupIntent {}: {}",
+                setupIntentId, e.getMessage(), e);
+        }
+        return null;
     }
 
     private String hashToken(String token) {

@@ -186,6 +186,79 @@ public class EmailService {
     }
 
     @Async
+    public void sendTrialWelcomeEmail(String to, String name, String plan, String location) {
+        String planLabel = plan != null ? switch (plan.toLowerCase()) {
+            case "basic" -> "Basic";
+            case "pro" -> "Pro";
+            case "max" -> "Max";
+            default -> plan;
+        } : "Basic";
+
+        String locationLabel = location != null ? switch (location.toLowerCase()) {
+            case "malaga" -> "Málaga";
+            case "sevilla" -> "Sevilla";
+            default -> location;
+        } : "";
+
+        String loginUrl = frontendUrl + "/main/login";
+
+        String subject = "Bienvenido a BeWorking — Tu periodo de prueba ha comenzado";
+        String content = "<!doctype html>"
+                + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                + "<title>Bienvenido a BeWorking</title></head>"
+                + "<body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background:#f7f7f8;\">"
+                + "<tr><td align=\"center\" style=\"padding:24px 0;\">"
+                + "<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:600px;max-width:600px;margin:0 auto;\">"
+                // Header
+                + "<tr><td style=\"background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:40px 32px 32px;color:#ffffff;border-radius:14px 14px 0 0;\">"
+                + "<p style=\"margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;\">BEWORKING</p>"
+                + "<h1 style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;line-height:1.2;color:#ffffff;\">Bienvenido, " + (name != null ? name : "") + "</h1>"
+                + "</td></tr>"
+                // Body
+                + "<tr><td style=\"background:#ffffff;padding:32px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">"
+                + "<p style=\"margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#333;\">Tu registro en <strong>BeWorking</strong> se ha completado correctamente.</p>"
+                + "<p style=\"margin:0 0 20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Tu periodo de prueba gratuito de <strong>30 d\u00edas</strong> ya est\u00e1 activo. Durante este tiempo podr\u00e1s disfrutar de todos los servicios de tu oficina virtual.</p>"
+                // Plan info box
+                + "<div style=\"margin:0 0 20px;background:#f5faf6;border-radius:10px;padding:16px 20px;border-left:4px solid #009624;\">"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Plan:</strong> " + planLabel + "</p>"
+                + (locationLabel.isEmpty() ? "" : "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Sede:</strong> " + locationLabel + "</p>")
+                + "<p style=\"margin:6px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Trial:</strong> 30 d\u00edas gratis</p>"
+                + "</div>"
+                + "<p style=\"margin:0 0 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Ya puedes acceder a tu panel de control con el email y contrase\u00f1a que has elegido.</p>"
+                // CTA button
+                + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto;\">"
+                + "<tr><td align=\"center\" style=\"border-radius:8px;background:#009624;\">"
+                + "<a href=\"" + loginUrl + "\" style=\"display:inline-block;background:#009624;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;padding:14px 36px;border-radius:8px;\">Acceder a mi cuenta</a>"
+                + "</td></tr></table>"
+                // Contact
+                + "<p style=\"margin:28px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#888;text-align:center;\">"
+                + "\u00bfNecesitas ayuda? Escr\u00edbenos por WhatsApp: "
+                + "<a href=\"https://wa.me/34640369759\" style=\"color:#009624;text-decoration:none;font-weight:600;\">+34 640 369 759</a></p>"
+                // Footer
+                + "<div style=\"margin:28px -32px -32px;background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee;border-radius:0 0 14px 14px;\">"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#aaa;\">\u00a9 BeWorking \u00b7 M\u00e1laga</p>"
+                + "</div>"
+                + "</td></tr>"
+                + "</table>"
+                + "</td></tr></table>"
+                + "</body></html>";
+        try {
+            logger.info("Attempting to send trial welcome email to {}", to);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(content, true);
+            mailSender.send(message);
+            logger.info("Trial welcome email sent successfully to {}", to);
+        } catch (Exception e) {
+            logger.error("Failed to send trial welcome email to {}: {}", to, e.getMessage(), e);
+        }
+    }
+
+    @Async
     public void sendRegistrationAdminNotification(String name, String email, String phone,
                                                    String company, String taxId, String plan, String location) {
         String planLabel = plan != null ? switch (plan.toLowerCase()) {
