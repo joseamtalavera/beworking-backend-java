@@ -2,6 +2,7 @@ package com.beworking.auth;
 
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
+import com.beworking.plans.PlanRepository;
 import com.beworking.subscriptions.Subscription;
 import com.beworking.subscriptions.SubscriptionRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,15 +26,17 @@ public class RegisterService {
     private final EmailService emailService;
     private final ContactProfileRepository contactProfileRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final PlanRepository planRepository;
 
     public RegisterService(UserRepository userRepository, PasswordEncoder passwordEncoder,
                            EmailService emailService, ContactProfileRepository contactProfileRepository,
-                           SubscriptionRepository subscriptionRepository) {
+                           SubscriptionRepository subscriptionRepository, PlanRepository planRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.contactProfileRepository = contactProfileRepository;
         this.subscriptionRepository = subscriptionRepository;
+        this.planRepository = planRepository;
     }
 
     /**
@@ -98,18 +101,21 @@ public class RegisterService {
 
         // Create subscription record if plan is provided
         if (request.getPlan() != null && !request.getPlan().isBlank()) {
-            java.math.BigDecimal amount = switch (request.getPlan().toLowerCase()) {
-                case "basis" -> new java.math.BigDecimal("15.00");
-                case "pro" -> new java.math.BigDecimal("25.00");
-                case "max" -> new java.math.BigDecimal("90.00");
-                default -> new java.math.BigDecimal("15.00");
-            };
+            String planKey = request.getPlan().toLowerCase();
+            // "basis" is legacy alias for "basic"
+            if ("basis".equals(planKey)) planKey = "basic";
+
+            var planOpt = planRepository.findByPlanKey(planKey);
+            java.math.BigDecimal amount = planOpt.map(com.beworking.plans.Plan::getPrice)
+                    .orElse(new java.math.BigDecimal("15.00"));
+            String planLabel = planOpt.map(com.beworking.plans.Plan::getName)
+                    .orElse(planKey.substring(0, 1).toUpperCase() + planKey.substring(1));
 
             Subscription sub = new Subscription();
             sub.setContactId(cp.getId());
             sub.setMonthlyAmount(amount);
-            sub.setCurrency("EUR");
-            sub.setDescription("BeWorking " + request.getPlan().substring(0, 1).toUpperCase() + request.getPlan().substring(1));
+            sub.setCurrency(planOpt.map(com.beworking.plans.Plan::getCurrency).orElse("EUR"));
+            sub.setDescription("BeWorking " + planLabel);
             sub.setBillingMethod("stripe");
             sub.setStripeCustomerId(request.getStripeCustomerId());
             sub.setStartDate(LocalDate.now());
