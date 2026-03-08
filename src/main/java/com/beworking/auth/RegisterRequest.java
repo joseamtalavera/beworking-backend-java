@@ -25,6 +25,7 @@ public class RegisterRequest {
     private String plan;          // "basis", "pro", or "max"
     private String setupIntentId; // Stripe SetupIntent ID
     private String stripeCustomerId; // Stripe Customer ID
+    private String location;         // "malaga" or "sevilla"
 
     public RegisterRequest() {
 
@@ -75,4 +76,7 @@ public class RegisterRequest {
 
     public String getStripeCustomerId() { return stripeCustomerId; }
     public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
+
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
 }

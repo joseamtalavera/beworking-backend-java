@@ -123,6 +123,13 @@ public class RegisterService {
             subscriptionRepository.save(sub);
         }
 
+        // Send admin notification email
+        emailService.sendRegistrationAdminNotification(
+            name, normalizedEmail, request.getPhone(),
+            request.getCompany(), request.getTaxId(),
+            request.getPlan(), request.getLocation()
+        );
+
         return user;
     }
 

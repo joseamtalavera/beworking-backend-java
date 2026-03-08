@@ -186,6 +186,141 @@ public class EmailService {
     }
 
     @Async
+    public void sendRegistrationAdminNotification(String name, String email, String phone,
+                                                   String company, String taxId, String plan, String location) {
+        String planLabel = plan != null ? switch (plan.toLowerCase()) {
+            case "basic" -> "Basic — 15 €/mes";
+            case "pro" -> "Pro — 25 €/mes";
+            case "max" -> "Max — 90 €/mes";
+            default -> plan;
+        } : "—";
+
+        String locationLabel = location != null ? switch (location.toLowerCase()) {
+            case "malaga" -> "Málaga — C/ Alejandro Dumas 17";
+            case "sevilla" -> "Sevilla — Av. de la Constitución";
+            default -> location;
+        } : "—";
+
+        // Build Gmail search link for follow-up
+        String gmailSearch = "https://mail.google.com/mail/u/0/#search/" +
+                java.net.URLEncoder.encode("from:" + email, java.nio.charset.StandardCharsets.UTF_8);
+        // WhatsApp link
+        String waLink = phone != null && !phone.isBlank()
+                ? "https://api.whatsapp.com/send?phone=" + phone.replaceAll("[^0-9+]", "").replace("+", "")
+                : "#";
+
+        String content = String.format("""
+        <!doctype html>
+        <html lang="es">
+        <head>
+          <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>Nuevo registro</title>
+          <style>
+            @media (max-width:600px){.container{width:100%%!important}.btn-td{display:block!important;width:100%%!important;padding:0 0 10px!important}.btn-td .btn{display:inline-block!important;margin:0 auto!important}}
+            .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.2);color:#fff;font-weight:700;font-size:12px}
+            .btn{background:#009e5c;color:#fff !important;text-decoration:none;padding:10px 14px;border-radius:10px;display:inline-block;font-weight:700;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:13px}
+            .row{padding:10px 0;border-bottom:1px dashed #eee}
+            .label{color:#667085;font-size:12px;letter-spacing:.3px;text-transform:uppercase;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif}
+            .val{font-size:16px;font-weight:700;color:#111;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif}
+          </style>
+        </head>
+        <body style="margin:0;padding:0;background:#f7f7f8;">
+          <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0">
+            <tr>
+              <td align="center">
+                <table class="container" role="presentation" width="620" cellspacing="0" cellpadding="0" border="0" style="width:620px;max-width:620px;margin:0 auto;">
+                  <tr>
+                    <td style="background:linear-gradient(135deg,#009624 0%%,#00c853 100%%);padding:22px 24px;color:#fff;border-radius:14px 14px 0 0;">
+                      <div class="badge">BeWorking</div>
+                      <div style="font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:22px;font-weight:800;margin-top:10px;">
+                        Nuevo registro con trial
+                      </div>
+                      <div style="opacity:.9;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;margin-top:4px;">
+                        Un usuario se ha registrado con periodo de prueba
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="background:#fff;padding:18px 24px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;">
+                      <div class="row">
+                        <div class="label">Nombre</div>
+                        <div class="val">%s</div>
+                      </div>
+                      <div class="row">
+                        <div class="label">Email</div>
+                        <div class="val"><a href="mailto:%s" style="color:#111;text-decoration:none;">%s</a></div>
+                      </div>
+                      <div class="row">
+                        <div class="label">Teléfono</div>
+                        <div class="val"><a href="tel:%s" style="color:#111;text-decoration:none;">%s</a></div>
+                      </div>
+                      <div class="row">
+                        <div class="label">Empresa</div>
+                        <div class="val">%s</div>
+                      </div>
+                      <div class="row">
+                        <div class="label">CIF / NIF</div>
+                        <div class="val">%s</div>
+                      </div>
+                      <div class="row">
+                        <div class="label">Plan</div>
+                        <div class="val">%s</div>
+                      </div>
+                      <div class="row" style="border-bottom:0;">
+                        <div class="label">Sede</div>
+                        <div class="val">%s</div>
+                      </div>
+
+                      <div style="padding-top:16px;text-align:center;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;border-collapse:separate;border-spacing:0;">
+                          <tr>
+                            <td style="padding:0 6px;">
+                              <a class="btn" href="%s">Ver en Gmail</a>
+                            </td>
+                            <td style="padding:0 6px;">
+                              <a class="btn" href="tel:%s">Llamar</a>
+                            </td>
+                            <td style="padding:0 6px;">
+                              <a class="btn" href="%s">WhatsApp</a>
+                            </td>
+                            <td style="padding:0 6px;">
+                              <a class="btn" href="mailto:%s">Responder</a>
+                            </td>
+                          </tr>
+                        </table>
+                      </div>
+
+                      <div style="height:14px;"></div>
+                      <div style="font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:12px;color:#9aa0a6;text-align:center;">
+                        Tip: verifica el pago en Stripe y etiqueta como <strong>Trial</strong> en CRM.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+        """,
+        name != null ? name : "—",
+        email, email,
+        phone != null && !phone.isBlank() ? phone : "—",
+        phone != null && !phone.isBlank() ? phone : "—",
+        company != null && !company.isBlank() ? company : "—",
+        taxId != null && !taxId.isBlank() ? taxId : "—",
+        planLabel,
+        locationLabel,
+        gmailSearch,
+        phone != null && !phone.isBlank() ? phone : "",
+        waLink,
+        email
+        );
+
+        sendHtml("info@be-working.com", "\uD83D\uDFE2 Nuevo registro — " + (name != null ? name : email), content);
+    }
+
+    @Async
     public void sendHtml(String to, String subject, String htmlContent) {
         sendHtml(to, subject, htmlContent, null);
     }
