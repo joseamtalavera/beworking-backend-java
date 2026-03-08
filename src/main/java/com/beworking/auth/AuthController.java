@@ -116,6 +116,15 @@ public class AuthController {
         }
     }
 
+    @GetMapping("/check-email")
+    public ResponseEntity<?> checkEmail(@RequestParam("email") String email) {
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("available", false));
+        }
+        boolean exists = userRepository.findByEmail(email.toLowerCase().trim()).isPresent();
+        return ResponseEntity.ok(Map.of("available", !exists));
+    }
+
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
         var turnstileResult = turnstileService.verify(request.getTurnstileToken(), httpRequest.getRemoteAddr());
@@ -129,6 +138,59 @@ public class AuthController {
         } else {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(new AuthResponse("User already exists", null, null));
+        }
+    }
+
+    @PostMapping("/register-with-trial")
+    public ResponseEntity<AuthResponse> registerWithTrial(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
+        var turnstileResult = turnstileService.verify(request.getTurnstileToken(), httpRequest.getRemoteAddr());
+        if (!turnstileResult.isSuccess()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new AuthResponse("Turnstile verification failed", null, null));
+        }
+
+        var result = registerService.registerUserWithTrial(request);
+        if (result == null) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new AuthResponse("User already exists or invalid data", null, null));
+        }
+
+        return ResponseEntity.ok(new AuthResponse("User registered with trial", null, "USER"));
+    }
+
+    @PostMapping("/setup-intent")
+    public ResponseEntity<?> createSetupIntent(@RequestBody Map<String, String> request) {
+        String email = request.get("email");
+        String name = request.get("name");
+        if (email == null || email.isBlank() || name == null || name.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Email and name are required"));
+        }
+
+        try {
+            String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
+                ? System.getenv("STRIPE_SERVICE_URL")
+                : "http://beworking-stripe-service:8081";
+
+            String jsonBody = String.format(
+                "{\"customer_email\":\"%s\",\"customer_name\":\"%s\"}",
+                email.toLowerCase().trim().replace("\"", "\\\""),
+                name.trim().replace("\"", "\\\"")
+            );
+
+            var client = new org.springframework.web.client.RestTemplate();
+            var headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            var entity = new org.springframework.http.HttpEntity<>(jsonBody, headers);
+            var response = client.postForObject(
+                stripeServiceUrl + "/api/setup-intents",
+                entity,
+                Map.class
+            );
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(Map.of("error", "Failed to create setup intent: " + e.getMessage()));
         }
     }
 

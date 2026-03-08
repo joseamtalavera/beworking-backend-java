@@ -18,6 +18,14 @@ public class RegisterRequest {
 
     private String turnstileToken;
 
+    // Optional fields for trial registration flow
+    private String phone;
+    private String company;
+    private String taxId;
+    private String plan;          // "basis", "pro", or "max"
+    private String setupIntentId; // Stripe SetupIntent ID
+    private String stripeCustomerId; // Stripe Customer ID
+
     public RegisterRequest() {
 
     }
@@ -49,4 +57,22 @@ public class RegisterRequest {
 
     public String getTurnstileToken() { return turnstileToken; }
     public void setTurnstileToken(String turnstileToken) { this.turnstileToken = turnstileToken; }
+
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+
+    public String getCompany() { return company; }
+    public void setCompany(String company) { this.company = company; }
+
+    public String getTaxId() { return taxId; }
+    public void setTaxId(String taxId) { this.taxId = taxId; }
+
+    public String getPlan() { return plan; }
+    public void setPlan(String plan) { this.plan = plan; }
+
+    public String getSetupIntentId() { return setupIntentId; }
+    public void setSetupIntentId(String setupIntentId) { this.setupIntentId = setupIntentId; }
+
+    public String getStripeCustomerId() { return stripeCustomerId; }
+    public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
 }

@@ -2,12 +2,15 @@ package com.beworking.auth;
 
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
+import com.beworking.subscriptions.Subscription;
+import com.beworking.subscriptions.SubscriptionRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -21,13 +24,16 @@ public class RegisterService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final ContactProfileRepository contactProfileRepository;
+    private final SubscriptionRepository subscriptionRepository;
 
     public RegisterService(UserRepository userRepository, PasswordEncoder passwordEncoder,
-                           EmailService emailService, ContactProfileRepository contactProfileRepository) {
+                           EmailService emailService, ContactProfileRepository contactProfileRepository,
+                           SubscriptionRepository subscriptionRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.contactProfileRepository = contactProfileRepository;
+        this.subscriptionRepository = subscriptionRepository;
     }
 
     /**
@@ -78,6 +84,96 @@ public class RegisterService {
         // Fire-and-forget confirmation email after persistence.
         emailService.sendConfirmationEmail(email, rawToken);
         return true;
+    }
+
+    /**
+     * Creates a new user account with a trial subscription when inputs are valid and the email is unused.
+     * Also creates a Subscription record and populates ContactProfile with billing data.
+     */
+    public User registerUserWithTrial(RegisterRequest request) {
+        String name = request.getName();
+        String email = request.getEmail();
+        String password = request.getPassword();
+
+        if (!isNonBlank(name) || !isNonBlank(email) || !isPasswordValid(password)) {
+            return null;
+        }
+
+        String normalizedEmail = email.toLowerCase().trim();
+
+        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
+            return null;
+        }
+
+        User user = new User(normalizedEmail, passwordEncoder.encode(password), User.Role.USER);
+        user.setName(name.trim());
+        user.setPhone(request.getPhone());
+        user.setEmailConfirmed(true); // Auto-confirm: payment method already proves identity
+        user.setStripeCustomerId(request.getStripeCustomerId());
+
+        // Auto-link or create ContactProfile with billing data
+        var existingProfile = contactProfileRepository
+            .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail);
+
+        ContactProfile cp;
+        if (existingProfile.isPresent()) {
+            cp = existingProfile.get();
+            user.setTenantId(cp.getId());
+        } else {
+            cp = new ContactProfile();
+            cp.setId(System.currentTimeMillis());
+            cp.setName(name.trim());
+            cp.setEmailPrimary(normalizedEmail);
+            cp.setStatus("Trial");
+            cp.setActive(true);
+            cp.setCreatedAt(LocalDateTime.now());
+            cp.setStatusChangedAt(LocalDateTime.now());
+            cp.setChannel("Self-registration-trial");
+            user.setTenantId(cp.getId());
+        }
+
+        // Update contact with company/billing data if provided
+        if (request.getCompany() != null && !request.getCompany().isBlank()) {
+            cp.setBillingName(request.getCompany().trim());
+        }
+        if (request.getTaxId() != null && !request.getTaxId().isBlank()) {
+            cp.setBillingTaxId(request.getTaxId().trim());
+        }
+        if (request.getPhone() != null && !request.getPhone().isBlank()) {
+            cp.setPhonePrimary(request.getPhone().trim());
+        }
+        contactProfileRepository.save(cp);
+        userRepository.save(user);
+
+        // Create subscription record if plan is provided
+        if (request.getPlan() != null && !request.getPlan().isBlank()) {
+            java.math.BigDecimal amount = switch (request.getPlan().toLowerCase()) {
+                case "basis" -> new java.math.BigDecimal("15.00");
+                case "pro" -> new java.math.BigDecimal("25.00");
+                case "max" -> new java.math.BigDecimal("49.90");
+                default -> new java.math.BigDecimal("15.00");
+            };
+
+            Subscription sub = new Subscription();
+            sub.setContactId(cp.getId());
+            sub.setMonthlyAmount(amount);
+            sub.setCurrency("EUR");
+            sub.setDescription("BeWorking " + request.getPlan().substring(0, 1).toUpperCase() + request.getPlan().substring(1));
+            sub.setBillingMethod("stripe");
+            sub.setStripeCustomerId(request.getStripeCustomerId());
+            sub.setStartDate(LocalDate.now());
+            sub.setEndDate(LocalDate.now().plusDays(30)); // Trial end
+            sub.setActive(true);
+            sub.setCreatedAt(LocalDateTime.now());
+            sub.setVatNumber(request.getTaxId());
+            if (request.getTaxId() != null && !request.getTaxId().isBlank()) {
+                sub.setVatPercent(0); // EU VAT reverse charge
+            }
+            subscriptionRepository.save(sub);
+        }
+
+        return user;
     }
 
     /**
