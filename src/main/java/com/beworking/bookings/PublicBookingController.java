@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,11 +17,16 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.MediaType;
 
 @RestController
 @RequestMapping("/api/public")
 public class PublicBookingController {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(PublicBookingController.class);
     private static final String FREE_PRODUCT_NAME = "MA1A1";
     private static final String FREE_TENANT_TYPE_VIRTUAL = "Usuario Virtual";
     private static final String FREE_TENANT_TYPE_DESK = "Usuario Mesa";
@@ -46,14 +53,36 @@ public class PublicBookingController {
             CreateReservaResponse response = bookingService.createPublicBooking(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (BookingConflictException conflictException) {
+            tryRefundPaymentIntent(request.getStripePaymentIntentId(), "slot conflict");
             Map<String, Object> body = new HashMap<>();
             body.put("message", conflictException.getMessage());
             body.put("conflicts", conflictException.getConflicts());
+            body.put("refunded", request.getStripePaymentIntentId() != null);
             return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
         } catch (IllegalArgumentException illegalArgumentException) {
+            tryRefundPaymentIntent(request.getStripePaymentIntentId(), illegalArgumentException.getMessage());
             Map<String, Object> body = new HashMap<>();
             body.put("message", illegalArgumentException.getMessage());
+            body.put("refunded", request.getStripePaymentIntentId() != null);
             return ResponseEntity.badRequest().body(body);
+        }
+    }
+
+    private void tryRefundPaymentIntent(String paymentIntentId, String reason) {
+        if (paymentIntentId == null || paymentIntentId.isBlank()) return;
+        try {
+            String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
+                ? System.getenv("STRIPE_SERVICE_URL")
+                : "http://beworking-stripe-service:8081";
+            RestTemplate restTemplate = new RestTemplate();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            String body = String.format("{\"payment_intent_id\":\"%s\"}", paymentIntentId);
+            HttpEntity<String> entity = new HttpEntity<>(body, headers);
+            restTemplate.postForObject(stripeServiceUrl + "/api/refunds", entity, Map.class);
+            LOGGER.info("Auto-refunded payment intent {} due to: {}", paymentIntentId, reason);
+        } catch (Exception e) {
+            LOGGER.error("Failed to auto-refund payment intent {} — manual refund required. Reason: {}", paymentIntentId, e.getMessage());
         }
     }
 
