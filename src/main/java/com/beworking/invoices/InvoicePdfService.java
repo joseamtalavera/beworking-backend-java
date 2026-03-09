@@ -92,6 +92,17 @@ public class InvoicePdfService {
         }
 
         List<LineItem> lines = fetchLines(invoiceId);
+
+        // Fallback for old invoices with no desglose rows: synthesise a single line from header data
+        if (lines.isEmpty() && header.total() != null && header.total().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal vatPct = header.vatPercent() != null ? header.vatPercent() : BigDecimal.ZERO;
+            BigDecimal divisor = BigDecimal.ONE.add(vatPct.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
+            BigDecimal syntheticSubtotal = header.total().divide(divisor, 2, RoundingMode.HALF_UP);
+            String concept = header.description() != null && !header.description().isBlank()
+                ? header.description() : "Servicio mensual";
+            lines = List.of(new LineItem(concept, BigDecimal.ONE, syntheticSubtotal, syntheticSubtotal));
+        }
+
         ClientInfo clientInfo = fetchClientInfo(header.clientId());
         String centerName = fetchCenterName(header.centerId());
 
