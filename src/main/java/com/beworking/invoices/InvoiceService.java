@@ -36,7 +36,7 @@ import org.springframework.web.client.RestClient;
 @Service
 public class InvoiceService {
 
-    private static final int MAX_PAGE_SIZE = 200;
+    private static final int MAX_PAGE_SIZE = 5000;
     private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private final JdbcTemplate jdbcTemplate;
