@@ -621,6 +621,16 @@ public class ContactProfileService {
             // no records or table doesn't exist
         }
 
+        // Delete linked user account (matched by email_primary) so the email can be re-registered
+        try {
+            entityManager.createNativeQuery(
+                "DELETE FROM beworking.users WHERE email = (SELECT email_primary FROM beworking.contact_profiles WHERE id = ?)")
+                .setParameter(1, id)
+                .executeUpdate();
+        } catch (Exception e) {
+            // no linked user account
+        }
+
         repository.deleteById(id);
         return true;
     }
