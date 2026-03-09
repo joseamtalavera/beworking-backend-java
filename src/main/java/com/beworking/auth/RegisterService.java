@@ -85,6 +85,7 @@ public class RegisterService {
             cp.setName(name.trim());
             cp.setEmailPrimary(normalizedEmail);
             cp.setStatus("Trial");
+            cp.setTenantType("Oficina Virtual");
             cp.setActive(true);
             cp.setCreatedAt(LocalDateTime.now());
             cp.setStatusChangedAt(LocalDateTime.now());
