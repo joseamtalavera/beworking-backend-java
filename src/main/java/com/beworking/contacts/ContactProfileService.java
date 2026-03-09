@@ -20,9 +20,14 @@ import jakarta.persistence.PersistenceContext;
 import com.beworking.auth.RegisterService;
 import com.beworking.auth.UserRepository;
 import com.beworking.bookings.CentroRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.client.RestTemplate;
 
 @Service
 public class ContactProfileService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ContactProfileService.class);
 
     public static class ContactProfileNotFoundException extends RuntimeException {
         public ContactProfileNotFoundException(Long id) {
@@ -611,6 +616,31 @@ public class ContactProfileService {
                 .executeUpdate();
         } catch (Exception e) {
             // no records or table doesn't exist
+        }
+
+        // Cancel Stripe subscriptions before deleting from DB
+        try {
+            @SuppressWarnings("unchecked")
+            List<String> stripeSubIds = entityManager.createNativeQuery(
+                "SELECT stripe_subscription_id FROM beworking.subscriptions WHERE contact_id = ?")
+                .setParameter(1, id)
+                .getResultList();
+            if (!stripeSubIds.isEmpty()) {
+                String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
+                    ? System.getenv("STRIPE_SERVICE_URL")
+                    : "http://beworking-stripe-service:8081";
+                RestTemplate restTemplate = new RestTemplate();
+                for (String subId : stripeSubIds) {
+                    try {
+                        restTemplate.delete(stripeServiceUrl + "/api/subscriptions/" + subId + "?tenant=beworking");
+                        LOGGER.info("Cancelled Stripe subscription {} for contact {}", subId, id);
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to cancel Stripe subscription {} for contact {} — manual cancellation required: {}", subId, id, e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to look up Stripe subscriptions for contact {}: {}", id, e.getMessage());
         }
 
         try {
