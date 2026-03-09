@@ -52,12 +52,26 @@ public class ViesVatService {
     }
 
     public VatValidationResult validate(String taxId) {
+        return validate(taxId, null);
+    }
+
+    public VatValidationResult validate(String taxId, String countryHint) {
         if (taxId == null || taxId.isBlank()) {
             return VatValidationResult.invalid("Empty VAT number");
         }
 
         String normalized = taxId.trim().toUpperCase().replaceAll("\\s+", "");
         Matcher m = EU_VAT_PATTERN.matcher(normalized);
+
+        // If no country prefix but a valid country hint is provided, prepend it
+        if (!m.matches() && countryHint != null && !countryHint.isBlank()) {
+            String hint = countryHint.trim().toUpperCase();
+            if (EU_COUNTRIES.contains(hint)) {
+                normalized = hint + normalized;
+                m = EU_VAT_PATTERN.matcher(normalized);
+            }
+        }
+
         if (!m.matches()) {
             return VatValidationResult.invalid("Not a valid EU VAT format");
         }

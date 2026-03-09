@@ -250,8 +250,10 @@ public class ContactProfileController {
     }
 
     @GetMapping("/vat/validate")
-    public ResponseEntity<Map<String, Object>> validateVat(@RequestParam String vatNumber) {
-        ViesVatService.VatValidationResult result = viesVatService.validate(vatNumber);
+    public ResponseEntity<Map<String, Object>> validateVat(
+            @RequestParam String vatNumber,
+            @RequestParam(required = false) String countryHint) {
+        ViesVatService.VatValidationResult result = viesVatService.validate(vatNumber, countryHint);
         Map<String, Object> body = new HashMap<>();
         body.put("valid", result.valid());
         body.put("name", result.name());
