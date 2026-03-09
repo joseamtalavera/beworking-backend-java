@@ -583,47 +583,46 @@ public class ContactProfileService {
 
     @Transactional
     public boolean deleteContactProfile(Long id) {
-        try {
-            // Check if the profile exists
-            if (!repository.existsById(id)) {
-                return false;
-            }
-            
-            // Delete related records first to avoid foreign key constraints
-            // Delete from bloqueos table first (if it exists)
-            try {
-                entityManager.createNativeQuery("DELETE FROM beworking.bloqueos WHERE id_cliente = ?")
-                    .setParameter(1, id)
-                    .executeUpdate();
-            } catch (Exception e) {
-                // Table might not exist or no records, continue
-            }
-            
-            // Delete from reservas table
-            try {
-                entityManager.createNativeQuery("DELETE FROM beworking.reservas WHERE id_cliente = ?")
-                    .setParameter(1, id)
-                    .executeUpdate();
-            } catch (Exception e) {
-                // Table might not exist or no records, continue
-            }
-            
-            // Delete from facturasdesglose table (if it exists)
-            try {
-                entityManager.createNativeQuery("DELETE FROM beworking.facturasdesglose WHERE idbloqueovinculado IN (SELECT id FROM beworking.bloqueos WHERE id_cliente = ?)")
-                    .setParameter(1, id)
-                    .executeUpdate();
-            } catch (Exception e) {
-                // Table might not exist or no records, continue
-            }
-            
-            // Now delete the profile
-            repository.deleteById(id);
-            return true;
-        } catch (Exception e) {
-            // Log the error if needed
+        if (!repository.existsById(id)) {
             return false;
         }
+
+        // facturasdesglose must be deleted BEFORE bloqueos (FK on idbloqueovinculado)
+        try {
+            entityManager.createNativeQuery(
+                "DELETE FROM beworking.facturasdesglose WHERE idbloqueovinculado IN (SELECT id FROM beworking.bloqueos WHERE id_cliente = ?)")
+                .setParameter(1, id)
+                .executeUpdate();
+        } catch (Exception e) {
+            // no records or table doesn't exist
+        }
+
+        try {
+            entityManager.createNativeQuery("DELETE FROM beworking.bloqueos WHERE id_cliente = ?")
+                .setParameter(1, id)
+                .executeUpdate();
+        } catch (Exception e) {
+            // no records or table doesn't exist
+        }
+
+        try {
+            entityManager.createNativeQuery("DELETE FROM beworking.reservas WHERE id_cliente = ?")
+                .setParameter(1, id)
+                .executeUpdate();
+        } catch (Exception e) {
+            // no records or table doesn't exist
+        }
+
+        try {
+            entityManager.createNativeQuery("DELETE FROM beworking.subscriptions WHERE contact_id = ?")
+                .setParameter(1, id)
+                .executeUpdate();
+        } catch (Exception e) {
+            // no records or table doesn't exist
+        }
+
+        repository.deleteById(id);
+        return true;
     }
 
     @Transactional(readOnly = true)
