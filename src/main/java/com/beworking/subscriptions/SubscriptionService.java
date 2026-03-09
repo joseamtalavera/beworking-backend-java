@@ -37,6 +37,12 @@ public class SubscriptionService {
         return subscriptionRepository.findAll();
     }
 
+    public int updateContactStatusIfTrial(Long contactId, String newStatus) {
+        return jdbcTemplate.update(
+            "UPDATE beworking.contact_profiles SET status = ?, status_changed_at = NOW() WHERE id = ? AND status = 'Trial'",
+            newStatus, contactId);
+    }
+
     public List<Subscription> findByContactId(Long contactId) {
         return subscriptionRepository.findByContactId(contactId);
     }

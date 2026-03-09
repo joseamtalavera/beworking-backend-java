@@ -149,6 +149,51 @@ public class SubscriptionWebhookController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/subscription-trial-converted")
+    public ResponseEntity<Map<String, Object>> trialConverted(
+        @RequestBody Map<String, String> payload,
+        @RequestHeader(value = "X-Callback-Secret", required = false) String secret
+    ) {
+        if (callbackSecret != null && !callbackSecret.isBlank()) {
+            if (secret == null || !secret.equals(callbackSecret)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+        }
+
+        String subscriptionId = payload.get("subscriptionId");
+        String customerId = payload.get("customerId");
+
+        if (subscriptionId == null || subscriptionId.isBlank()) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "subscriptionId is required");
+            return ResponseEntity.badRequest().body(error);
+        }
+
+        Optional<Subscription> subOpt = subscriptionService.findByStripeSubscriptionId(subscriptionId);
+        if (subOpt.isEmpty() && customerId != null && !customerId.isBlank()) {
+            subOpt = subscriptionService.findByStripeCustomerId(customerId);
+        }
+
+        if (subOpt.isEmpty()) {
+            logger.warn("trial-converted: no subscription found for subscriptionId={} customerId={}", subscriptionId, customerId);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Subscription not found");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        }
+
+        Subscription subscription = subOpt.get();
+        Long contactId = subscription.getContactId();
+
+        int updated = subscriptionService.updateContactStatusIfTrial(contactId, "Activo");
+        logger.info("Trial converted — subscriptionId={} contactId={} rows updated={}", subscriptionId, contactId, updated);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("contactId", contactId);
+        response.put("status", "Activo");
+        response.put("updated", updated);
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/reserve-invoice-number")
     public ResponseEntity<Map<String, Object>> reserveInvoiceNumber(
         @RequestParam String stripeSubscriptionId,
