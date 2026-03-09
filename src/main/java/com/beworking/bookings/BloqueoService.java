@@ -189,6 +189,28 @@ class BloqueoService {
     }
 
     @Transactional
+    void cancelFreeBloqueo(Long id, Long tenantId) {
+        Bloqueo bloqueo = bloqueoRepository.findById(id)
+            .orElseThrow(() -> new EntityNotFoundException("Bloqueo not found: " + id));
+
+        // Only the owner can cancel
+        if (bloqueo.getCliente() == null || !bloqueo.getCliente().getId().equals(tenantId)) {
+            throw new SecurityException("Not authorized to cancel this booking");
+        }
+
+        // Only free bookings (tarifa == 0 or null, no Stripe payment data)
+        Double tarifa = bloqueo.getTarifa();
+        String nota = bloqueo.getNota();
+        boolean isPaid = (tarifa != null && tarifa > 0)
+            || (nota != null && nota.toLowerCase().contains("stripe"));
+        if (isPaid) {
+            throw new IllegalStateException("Only free bookings can be cancelled by the user");
+        }
+
+        deleteBloqueo(id);
+    }
+
+    @Transactional
     void deleteBloqueo(Long id) {
         // Void any linked unpaid Stripe invoices before deleting the bloqueo
         try {

@@ -144,6 +144,32 @@ public class BloqueoController {
         }
     }
 
+    @DeleteMapping("/{id}/cancel")
+    public ResponseEntity<Void> cancelFreeBloqueo(Authentication authentication, @PathVariable Long id) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(401).build();
+        }
+        Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(401).build();
+        }
+        User user = userOpt.get();
+        Long tenantId = user.getTenantId();
+        if (tenantId == null) {
+            return ResponseEntity.status(403).build();
+        }
+        try {
+            bloqueoService.cancelFreeBloqueo(id, tenantId);
+            return ResponseEntity.noContent().build();
+        } catch (jakarta.persistence.EntityNotFoundException ex) {
+            return ResponseEntity.status(404).build();
+        } catch (SecurityException ex) {
+            return ResponseEntity.status(403).build();
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(403).build();
+        }
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteBloqueo(Authentication authentication, @PathVariable Long id) {
         if (authentication == null || !authentication.isAuthenticated()) {
