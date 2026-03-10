@@ -3,6 +3,7 @@ package com.beworking.bookings;
 import com.beworking.auth.User;
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
+import com.beworking.auth.EmailService;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -37,17 +38,20 @@ class BookingService {
     private final ContactProfileRepository contactRepository;
     private final CentroRepository centroRepository;
     private final ProductoRepository productoRepository;
+    private final EmailService emailService;
 
     BookingService(ReservaRepository reservaRepository,
                    BloqueoRepository bloqueoRepository,
                    ContactProfileRepository contactRepository,
                    CentroRepository centroRepository,
-                   ProductoRepository productoRepository) {
+                   ProductoRepository productoRepository, 
+                   EmailService emailService) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
         this.centroRepository = centroRepository;
         this.productoRepository = productoRepository;
+        this.emailService = emailService;
     }
 
     @Transactional(readOnly = true)
@@ -182,7 +186,27 @@ class BookingService {
 
         reservaRequest.setNote(note);
 
-        return createReserva(reservaRequest, null);
+        CreateReservaResponse response = createReserva(reservaRequest, null);
+
+        try {
+            String html = "<h2>Nueva Reserva</h2>"
+                + "<p><b>Cliente:</b> " + request.getFirstName() + " " + request.getLastName() + "</p>"
+                + "<p><b>Email:</b> " + request.getEmail() + "</p>"
+                + "<p><b>Teléfono:</b> " + (request.getPhone() != null ? request.getPhone() : "-") + "</p>"
+                + "<p><b>Producto:</b> " + request.getProductName() + "</p>"
+                + "<p><b>Fecha:</b> " + request.getDate() + "</p>"
+                + "<p><b>Horario:</b> " + request.getStartTime() + " - " + request.getEndTime() + "</p>"
+                + "<p><b>Asistentes:</b> " + (request.getAttendees() != null ? request.getAttendees() : "-") + "</p>"
+                + "<p><b>Estado:</b> " + reservaRequest.getStatus() + "</p>"
+                + "<p><b>Nota:</b> " + (note != null ? note : "-") + "</p>";
+
+            emailService.sendHtml("info@be-working.com", "Nueva Reserva - " + request.getProductName(), html);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to send booking notification email", e);
+        }
+
+        return response;
+
     }
 
     @Transactional
