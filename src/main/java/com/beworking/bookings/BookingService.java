@@ -157,7 +157,7 @@ class BookingService {
             if (FREE_TENANT_TYPE_DESK.equalsIgnoreCase(tenantType)) {
                 isFreeEligible = true;
                 note = "Free booking (desk user)";
-                reservaRequest.setStatus("Paid");
+                reservaRequest.setStatus("Free");
             } else if (FREE_TENANT_TYPE_VIRTUAL.equalsIgnoreCase(tenantType)) {
                 YearMonth currentMonth = YearMonth.now();
                 LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
@@ -168,7 +168,7 @@ class BookingService {
                 if (usedThisMonth < FREE_MONTHLY_LIMIT) {
                     isFreeEligible = true;
                     note = "Free booking (" + (usedThisMonth + 1) + " of " + FREE_MONTHLY_LIMIT + ")";
-                    reservaRequest.setStatus("Paid");
+                    reservaRequest.setStatus("Free");
                 }
             }
         }
