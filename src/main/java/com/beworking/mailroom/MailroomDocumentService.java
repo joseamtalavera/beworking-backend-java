@@ -213,6 +213,12 @@ public class MailroomDocumentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Mailroom document not found"));
     }
 
+    @Transactional
+    public void deleteDocument(UUID documentId) {
+        MailroomDocument document = getDocumentOrThrow(documentId);
+        repository.delete(document);
+    }
+
     public MailroomDocumentDownload getDocumentDownload(UUID documentId) {
         MailroomDocument document = getDocumentOrThrow(documentId);
         var resource = fileStorageService.loadAsResource(document.getStoredFileName());
