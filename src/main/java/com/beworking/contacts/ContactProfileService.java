@@ -494,12 +494,6 @@ public class ContactProfileService {
         if (request.getEmail() != null && !request.getEmail().isBlank()) {
             String newEmail = request.getEmail().trim();
             profile.setEmailPrimary(newEmail);
-            // Always sync login email: find user by tenantId and update their email
-            userRepository.findFirstByTenantIdOrderByIdAsc(profile.getId())
-                .ifPresent(user -> {
-                    user.setEmail(newEmail);
-                    userRepository.save(user);
-                });
         }
 
         if (request.getPrimaryContact() != null) {
@@ -514,14 +508,32 @@ public class ContactProfileService {
             profile.setAvatar(blankToNull(request.getAvatar()));
         }
 
-        // Sync avatar to user account
-        if (profile.getAvatar() != null) {
-            userRepository.findFirstByTenantIdOrderByIdAsc(profile.getId())
-                .ifPresent(user -> {
+        // Sync key fields to linked user account
+        userRepository.findFirstByTenantIdOrderByIdAsc(profile.getId())
+            .ifPresent(user -> {
+                boolean changed = false;
+                if (request.getEmail() != null && !request.getEmail().isBlank()) {
+                    user.setEmail(request.getEmail().trim());
+                    changed = true;
+                }
+                String syncName = profile.getContactName() != null && !profile.getContactName().isBlank()
+                    ? profile.getContactName() : profile.getName();
+                if (syncName != null && !syncName.equals(user.getName())) {
+                    user.setName(syncName);
+                    changed = true;
+                }
+                if (profile.getPhonePrimary() != null && !profile.getPhonePrimary().equals(user.getPhone())) {
+                    user.setPhone(profile.getPhonePrimary());
+                    changed = true;
+                }
+                if (profile.getAvatar() != null && !profile.getAvatar().equals(user.getAvatar())) {
                     user.setAvatar(profile.getAvatar());
+                    changed = true;
+                }
+                if (changed) {
                     userRepository.save(user);
-                });
-        }
+                }
+            });
 
         if (request.getStatus() != null) {
             String normalizedStatus = blankToNull(request.getStatus());
