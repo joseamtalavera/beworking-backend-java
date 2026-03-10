@@ -103,6 +103,18 @@ public class RegisterService {
         if (request.getPhone() != null && !request.getPhone().isBlank()) {
             cp.setPhonePrimary(request.getPhone().trim());
         }
+
+        // Auto-populate billing address from selected location
+        if (request.getLocation() != null && !request.getLocation().isBlank()) {
+            String loc = request.getLocation().toLowerCase().trim();
+            if ("malaga".equals(loc)) {
+                cp.setBillingAddress("Calle Alejandro Dumas, 17 · Oficinas");
+                cp.setBillingCity("Málaga");
+                cp.setBillingPostalCode("29004");
+                cp.setBillingProvince("Málaga");
+                cp.setBillingCountry("España");
+            }
+        }
         contactProfileRepository.save(cp);
         userRepository.save(user);
 
