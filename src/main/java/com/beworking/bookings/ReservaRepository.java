@@ -42,6 +42,7 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
           AND r.producto.id = :productoId
           AND r.creacionFecha >= :monthStart
           AND r.creacionFecha < :monthEnd
+          AND r.bloqueos IS NOT EMPTY
     """)
     long countByContactAndProductInMonth(@Param("contactId") Long contactId,
                                          @Param("productoId") Long productoId,
