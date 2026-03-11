@@ -513,8 +513,13 @@ public class ContactProfileService {
             .ifPresent(user -> {
                 boolean changed = false;
                 if (request.getEmail() != null && !request.getEmail().isBlank()) {
-                    user.setEmail(request.getEmail().trim());
-                    changed = true;
+                    String newEmail = request.getEmail().trim();
+                    // Only sync email if it's not already taken by another user
+                    if (newEmail.equalsIgnoreCase(user.getEmail()) ||
+                        userRepository.findByEmail(newEmail.toLowerCase()).isEmpty()) {
+                        user.setEmail(newEmail);
+                        changed = true;
+                    }
                 }
                 String syncName = profile.getContactName() != null && !profile.getContactName().isBlank()
                     ? profile.getContactName() : profile.getName();

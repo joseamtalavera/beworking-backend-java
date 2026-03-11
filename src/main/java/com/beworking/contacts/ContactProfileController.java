@@ -11,12 +11,15 @@ import org.springframework.web.bind.annotation.*;
 import com.beworking.auth.RegisterService;
 import com.beworking.auth.User;
 import com.beworking.auth.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api/contact-profiles")
 @CrossOrigin(origins = {"http://localhost:5173", "http://localhost:5174"})
 public class ContactProfileController {
 
+    private static final Logger logger = LoggerFactory.getLogger(ContactProfileController.class);
     private final ContactProfileService contactProfileService;
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
@@ -195,6 +198,7 @@ public class ContactProfileController {
         } catch (ContactProfileService.ContactProfileNotFoundException e) {
             return ResponseEntity.notFound().build();
         } catch (Exception e) {
+            logger.error("Failed to update contact profile {}: {}", id, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
