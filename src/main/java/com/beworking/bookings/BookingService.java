@@ -4,7 +4,10 @@ import com.beworking.auth.User;
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
 import com.beworking.auth.EmailService;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -21,6 +24,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,25 +37,30 @@ class BookingService {
     private static final String FREE_TENANT_TYPE_DESK = "Usuario Mesa";
     private static final int FREE_MONTHLY_LIMIT = 5;
 
+    private static final BigDecimal VAT_RATE = new BigDecimal("0.21");
+
     private final ReservaRepository reservaRepository;
     private final BloqueoRepository bloqueoRepository;
     private final ContactProfileRepository contactRepository;
     private final CentroRepository centroRepository;
     private final ProductoRepository productoRepository;
     private final EmailService emailService;
+    private final JdbcTemplate jdbcTemplate;
 
     BookingService(ReservaRepository reservaRepository,
                    BloqueoRepository bloqueoRepository,
                    ContactProfileRepository contactRepository,
                    CentroRepository centroRepository,
-                   ProductoRepository productoRepository, 
-                   EmailService emailService) {
+                   ProductoRepository productoRepository,
+                   EmailService emailService,
+                   JdbcTemplate jdbcTemplate) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
         this.centroRepository = centroRepository;
         this.productoRepository = productoRepository;
         this.emailService = emailService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional(readOnly = true)
@@ -179,14 +188,91 @@ class BookingService {
                 if (request.getStripePaymentIntentId() != null) {
                     note += " | PI: " + request.getStripePaymentIntentId();
                 }
+                reservaRequest.setStatus("Pagado");
             } else if (request.getStripePaymentIntentId() != null) {
                 note = "Stripe PI: " + request.getStripePaymentIntentId();
+                reservaRequest.setStatus("Pagado");
             }
         }
 
         reservaRequest.setNote(note);
 
         CreateReservaResponse response = createReserva(reservaRequest, null);
+
+        // ── Auto-create invoice for paid public bookings ──
+        boolean isPaid = request.getStripePaymentIntentId() != null && !isFreeEligible;
+        if (isPaid && response.bloqueos() != null && !response.bloqueos().isEmpty()) {
+            try {
+                Long bloqueoId = response.bloqueos().get(0).id();
+
+                // Calculate price from room hourly rate × hours
+                BigDecimal hourlyRate = jdbcTemplate.queryForObject(
+                    "SELECT price_from FROM beworking.rooms WHERE code = ?",
+                    BigDecimal.class, producto.getNombre());
+
+                if (hourlyRate != null) {
+                    LocalTime startTime = LocalTime.parse(request.getStartTime());
+                    LocalTime endTime = LocalTime.parse(request.getEndTime());
+                    long minutes = Duration.between(startTime, endTime).toMinutes();
+                    BigDecimal hours = new BigDecimal(minutes).divide(new BigDecimal("60"), 4, RoundingMode.HALF_UP);
+                    BigDecimal subtotal = hourlyRate.multiply(hours).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal vat = subtotal.multiply(VAT_RATE).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal total = subtotal.add(vat).setScale(2, RoundingMode.HALF_UP);
+
+                    Long nextId = jdbcTemplate.queryForObject(
+                        "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+                    Integer nextInvoiceNum = jdbcTemplate.queryForObject(
+                        "SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
+
+                    jdbcTemplate.update("""
+                        INSERT INTO beworking.facturas (
+                            id, idfactura, idcliente, idcentro,
+                            descripcion, holdedinvoicenum,
+                            fechacreacionreal, estado,
+                            total, iva, totaliva, notas, creacionfecha
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pagado', ?, 21, ?, ?, CURRENT_TIMESTAMP)
+                        """,
+                        nextId,
+                        nextInvoiceNum,
+                        contact.getId(),
+                        centro.getId(),
+                        "Reserva: " + producto.getNombre() + " (" + request.getDate() + ")",
+                        "BW-" + nextInvoiceNum,
+                        request.getDate().toString(),
+                        total,
+                        vat,
+                        note
+                    );
+
+                    // Insert line item
+                    Long nextDesgloseId = jdbcTemplate.queryForObject(
+                        "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+
+                    jdbcTemplate.update("""
+                        INSERT INTO beworking.facturasdesglose (
+                            id, idfacturadesglose, conceptodesglose, precioundesglose,
+                            cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado
+                        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                        """,
+                        nextDesgloseId,
+                        nextInvoiceNum,
+                        "Reserva " + producto.getNombre() + " " + request.getStartTime() + "-" + request.getEndTime(),
+                        hourlyRate,
+                        hours,
+                        subtotal,
+                        bloqueoId
+                    );
+
+                    // Update bloqueo status to Facturado since invoice is created
+                    jdbcTemplate.update(
+                        "UPDATE beworking.bloqueos SET estado = 'Pagado' WHERE id = ?", bloqueoId);
+
+                    LOGGER.info("Auto-created invoice BW-{} for public booking bloqueo {}", nextInvoiceNum, bloqueoId);
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Failed to auto-create invoice for public booking", e);
+            }
+        }
 
         try {
             String safePhone = request.getPhone() != null ? request.getPhone() : "—";
