@@ -11,7 +11,10 @@ import com.beworking.leads.TurnstileService;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
 
 @RestController
@@ -57,32 +60,161 @@ public class AuthController {
                         .body(new AuthResponse("Please confirm your email before logging in", null, null));
             }
 
-            // Auto-link tenantId if missing
-            if (user.getTenantId() == null) {
-                String email = user.getEmail();
-                contactProfileRepository
-                    .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
-                        email, email, email, email)
-                    .ifPresent(cp -> {
-                        user.setTenantId(cp.getId());
-                        userRepository.save(user);
-                    });
+            // Find all contact profiles matching this email
+            String email = user.getEmail();
+            List<ContactProfile> matchingProfiles = contactProfileRepository
+                .findByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                    email, email, email, email);
+
+            // Multiple accounts: return account list for user to pick
+            if (matchingProfiles.size() > 1) {
+                List<AccountSummaryDTO> accounts = matchingProfiles.stream()
+                    .map(cp -> new AccountSummaryDTO(cp.getId(), cp.getName(), cp.getBillingTaxId(), cp.getTenantType()))
+                    .collect(Collectors.toList());
+
+                String selectionToken = jwtUtil.generateSelectionToken(email, user.getRole().name());
+                AuthResponse response = new AuthResponse("Account selection required", null, user.getRole().name());
+                response.setAccountSelectionRequired(true);
+                response.setSelectionToken(selectionToken);
+                response.setAccounts(accounts);
+                return ResponseEntity.ok(response);
             }
 
-            String access = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getTenantId());
-            String refresh = jwtUtil.generateRefreshToken(user.getEmail(), user.getRole().name(), user.getTenantId());
+            // Single or no account: auto-link and proceed as before
+            if (matchingProfiles.size() == 1 && user.getTenantId() == null) {
+                user.setTenantId(matchingProfiles.get(0).getId());
+                userRepository.save(user);
+            } else if (user.getTenantId() == null && matchingProfiles.isEmpty()) {
+                // No matching profile — proceed with null tenantId
+            }
 
-            ResponseCookie accessCookie = buildCookie(ACCESS_COOKIE, access, "/", Duration.ofHours(1));
-            ResponseCookie refreshCookie = buildCookie(REFRESH_COOKIE, refresh, "/api/auth/refresh", Duration.ofDays(7));
-
-            return ResponseEntity.ok()
-                    .header("Set-Cookie", accessCookie.toString())
-                    .header("Set-Cookie", refreshCookie.toString())
-                    .body(new AuthResponse("Login successful", access, user.getRole().name()));
+            return issueTokensAndRespond(user);
         } else {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new AuthResponse("Invalid credentials", null, null));
         }
+    }
+
+    @PostMapping("/select-account")
+    public ResponseEntity<AuthResponse> selectAccount(@RequestBody Map<String, Object> body) {
+        String selectionToken = (String) body.get("selectionToken");
+        Number contactProfileIdNum = (Number) body.get("contactProfileId");
+
+        if (selectionToken == null || contactProfileIdNum == null) {
+            return ResponseEntity.badRequest()
+                    .body(new AuthResponse("selectionToken and contactProfileId are required", null, null));
+        }
+
+        long contactProfileId = contactProfileIdNum.longValue();
+
+        // Validate the selection token
+        try {
+            var claims = jwtUtil.parseToken(selectionToken);
+            if (!"account_selection".equals(claims.get("tokenType", String.class))) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new AuthResponse("Invalid token type", null, null));
+            }
+
+            String email = claims.getSubject();
+            var userOpt = userRepository.findByEmail(email);
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(new AuthResponse("User not found", null, null));
+            }
+
+            User user = userOpt.get();
+
+            // Verify the requested profile belongs to this user's email
+            List<ContactProfile> matchingProfiles = contactProfileRepository
+                .findByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                    email, email, email, email);
+
+            boolean validChoice = matchingProfiles.stream().anyMatch(cp -> cp.getId().equals(contactProfileId));
+            if (!validChoice) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(new AuthResponse("Account does not belong to this user", null, null));
+            }
+
+            // Update user's tenantId and issue tokens
+            user.setTenantId(contactProfileId);
+            userRepository.save(user);
+
+            return issueTokensAndRespond(user);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new AuthResponse("Invalid or expired selection token", null, null));
+        }
+    }
+
+    @GetMapping("/my-accounts")
+    public ResponseEntity<?> myAccounts(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Unauthorized"));
+        }
+
+        String email = authentication.getName();
+        List<ContactProfile> matchingProfiles = contactProfileRepository
+            .findByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                email, email, email, email);
+
+        List<AccountSummaryDTO> accounts = matchingProfiles.stream()
+            .map(cp -> new AccountSummaryDTO(cp.getId(), cp.getName(), cp.getBillingTaxId(), cp.getTenantType()))
+            .collect(Collectors.toList());
+
+        return ResponseEntity.ok(accounts);
+    }
+
+    @PostMapping("/switch-account")
+    public ResponseEntity<AuthResponse> switchAccount(Authentication authentication, @RequestBody Map<String, Object> body) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new AuthResponse("Unauthorized", null, null));
+        }
+
+        Number contactProfileIdNum = (Number) body.get("contactProfileId");
+        if (contactProfileIdNum == null) {
+            return ResponseEntity.badRequest()
+                    .body(new AuthResponse("contactProfileId is required", null, null));
+        }
+
+        long contactProfileId = contactProfileIdNum.longValue();
+        String email = authentication.getName();
+
+        // Verify the requested profile belongs to this user's email
+        List<ContactProfile> matchingProfiles = contactProfileRepository
+            .findByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                email, email, email, email);
+
+        boolean validChoice = matchingProfiles.stream().anyMatch(cp -> cp.getId().equals(contactProfileId));
+        if (!validChoice) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new AuthResponse("Account does not belong to this user", null, null));
+        }
+
+        var userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new AuthResponse("User not found", null, null));
+        }
+
+        User user = userOpt.get();
+        user.setTenantId(contactProfileId);
+        userRepository.save(user);
+
+        return issueTokensAndRespond(user);
+    }
+
+    private ResponseEntity<AuthResponse> issueTokensAndRespond(User user) {
+        String access = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getTenantId());
+        String refresh = jwtUtil.generateRefreshToken(user.getEmail(), user.getRole().name(), user.getTenantId());
+
+        ResponseCookie accessCookie = buildCookie(ACCESS_COOKIE, access, "/", Duration.ofHours(1));
+        ResponseCookie refreshCookie = buildCookie(REFRESH_COOKIE, refresh, "/api/auth/refresh", Duration.ofDays(7));
+
+        return ResponseEntity.ok()
+                .header("Set-Cookie", accessCookie.toString())
+                .header("Set-Cookie", refreshCookie.toString())
+                .body(new AuthResponse("Login successful", access, user.getRole().name()));
     }
 
     @PostMapping("/refresh")
@@ -225,6 +357,14 @@ public class AuthController {
                         "expYear", user.getBillingExpYear() != null ? user.getBillingExpYear() : 0,
                         "stripeCustomerId", user.getStripeCustomerId() != null ? user.getStripeCustomerId() : ""
                     ));
+
+                    // Check if user has multiple accounts
+                    String userEmail = user.getEmail();
+                    List<ContactProfile> profiles = contactProfileRepository
+                        .findByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                            userEmail, userEmail, userEmail, userEmail);
+                    userData.put("hasMultipleAccounts", profiles.size() > 1);
+
                     return ResponseEntity.ok(userData);
                 })
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)

@@ -54,6 +54,12 @@ public class JwtUtil {
         return generateToken(email, role, tenantId, "refresh", REFRESH_EXPIRATION_MS);
     }
 
+    private static final long SELECTION_EXPIRATION_MS = 1000 * 60 * 5; // 5 minutes
+
+    public String generateSelectionToken(String email, String role) {
+        return generateToken(email, role, null, "account_selection", SELECTION_EXPIRATION_MS);
+    }
+
     // ---
     // JWT Token Verification Process:
     // 1. parseToken() is called with the JWT string from the client.

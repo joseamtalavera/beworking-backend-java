@@ -414,6 +414,25 @@ public class SubscriptionController {
         Subscription sub = subOpt.get();
         String tenant = "GT".equalsIgnoreCase(sub.getCuenta()) ? "gt" : null;
 
+        // For subscription schedules (sub_sched_...), just save the ID.
+        // When the schedule activates, Stripe fires customer.subscription.created
+        // which triggers /api/webhooks/subscription-activated to swap the schedule
+        // ID for the real subscription ID and invoices flow automatically.
+        if (stripeSubId.startsWith("sub_sched_")) {
+            sub.setStripeSubscriptionId(stripeSubId);
+            sub.setUpdatedAt(LocalDateTime.now());
+            subscriptionService.save(sub);
+            logger.info("Linked Stripe subscription schedule {} to local subscription {}", stripeSubId, sub.getId());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("subscription", sub);
+            response.put("stripeSubscriptionId", stripeSubId);
+            response.put("invoicesCreated", 0);
+            response.put("invoicesTotal", 0);
+            response.put("message", "Subscription schedule linked. Invoices will be created automatically when the schedule activates.");
+            return ResponseEntity.ok(response);
+        }
+
         // Fetch subscription details and invoices from stripe-service
         Map<String, Object> stripeDetails;
         try {
