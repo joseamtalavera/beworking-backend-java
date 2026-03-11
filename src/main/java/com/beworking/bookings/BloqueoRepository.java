@@ -74,15 +74,13 @@ public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
         LEFT JOIN FETCH b.centro centro
         LEFT JOIN FETCH b.producto producto
         WHERE c.id = :contactId
-          AND (
-              b.estado IS NULL
-              OR (
-                  LOWER(b.estado) NOT LIKE '%invoice%'
-                  AND LOWER(b.estado) NOT LIKE '%factura%'
-                  AND LOWER(b.estado) NOT LIKE '%pend%'
-                  AND LOWER(b.estado) NOT LIKE '%pag%'
-              )
-          )
+          AND b.estado IS NOT NULL
+          AND LOWER(b.estado) NOT LIKE '%invoice%'
+          AND LOWER(b.estado) NOT LIKE '%factura%'
+          AND LOWER(b.estado) NOT LIKE '%pend%'
+          AND LOWER(b.estado) NOT LIKE '%pag%'
+          AND LOWER(b.estado) NOT LIKE '%grat%'
+          AND LOWER(b.estado) NOT LIKE '%free%'
         ORDER BY b.fechaIni ASC
     """)
     List<Bloqueo> findUninvoicedByContact(@Param("contactId") Long contactId);
@@ -96,15 +94,13 @@ public interface BloqueoRepository extends JpaRepository<Bloqueo, Long> {
         WHERE b.fechaIni >= :monthStart
           AND b.fechaIni < :monthEnd
           AND c.tenantType = 'Usuario Aulas'
-          AND (
-              b.estado IS NULL
-              OR (
-                  LOWER(b.estado) NOT LIKE '%invoice%'
-                  AND LOWER(b.estado) NOT LIKE '%factura%'
-                  AND LOWER(b.estado) NOT LIKE '%pend%'
-                  AND LOWER(b.estado) NOT LIKE '%pag%'
-              )
-          )
+          AND b.estado IS NOT NULL
+          AND LOWER(b.estado) NOT LIKE '%invoice%'
+          AND LOWER(b.estado) NOT LIKE '%factura%'
+          AND LOWER(b.estado) NOT LIKE '%pend%'
+          AND LOWER(b.estado) NOT LIKE '%pag%'
+          AND LOWER(b.estado) NOT LIKE '%grat%'
+          AND LOWER(b.estado) NOT LIKE '%free%'
         ORDER BY b.fechaIni ASC
     """)
     List<Bloqueo> findUninvoicedForMonth(@Param("monthStart") LocalDateTime monthStart,
