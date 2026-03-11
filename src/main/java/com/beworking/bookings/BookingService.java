@@ -189,20 +189,112 @@ class BookingService {
         CreateReservaResponse response = createReserva(reservaRequest, null);
 
         try {
-            String html = "<h2>Nueva Reserva</h2>"
-                + "<p><b>Cliente:</b> " + request.getFirstName() + " " + request.getLastName() + "</p>"
-                + "<p><b>Email:</b> " + request.getEmail() + "</p>"
-                + "<p><b>Teléfono:</b> " + (request.getPhone() != null ? request.getPhone() : "-") + "</p>"
-                + "<p><b>Producto:</b> " + request.getProductName() + "</p>"
-                + "<p><b>Fecha:</b> " + request.getDate() + "</p>"
-                + "<p><b>Horario:</b> " + request.getStartTime() + " - " + request.getEndTime() + "</p>"
-                + "<p><b>Asistentes:</b> " + (request.getAttendees() != null ? request.getAttendees() : "-") + "</p>"
-                + "<p><b>Estado:</b> " + reservaRequest.getStatus() + "</p>"
-                + "<p><b>Nota:</b> " + (note != null ? note : "-") + "</p>";
+            String safePhone = request.getPhone() != null ? request.getPhone() : "—";
+            String safeAttendees = request.getAttendees() != null ? String.valueOf(request.getAttendees()) : "—";
+            String safeNote = note != null ? note : "—";
+
+            String html = "<div style='font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08)'>"
+                // ── Hero header with green gradient ──
+                + "<div style='background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:40px 32px 32px;color:#ffffff'>"
+                + "<p style='margin:0 0 4px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85'>BEWORKING</p>"
+                + "<h1 style='margin:0 0 8px;font-size:26px;font-weight:700;line-height:1.2'>Nueva Reserva</h1>"
+                + "</div>"
+                // ── Body ──
+                + "<div style='padding:32px'>"
+                + "<p style='margin:0 0 24px;font-size:16px;color:#333'>Se ha registrado una nueva reserva.</p>"
+                // ── Details card ──
+                + "<div style='background:#f5faf6;border-radius:10px;padding:20px 24px;border-left:4px solid #009624'>"
+                + "<table style='border-collapse:collapse;width:100%'>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Cliente</td>"
+                + "<td style='padding:8px 0;font-size:15px;font-weight:700;color:#222'>" + request.getFirstName() + " " + request.getLastName() + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Email</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'>" + request.getEmail() + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Tel\u00e9fono</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'>" + safePhone + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Producto</td>"
+                + "<td style='padding:8px 0;font-size:15px;font-weight:700;color:#222'>" + request.getProductName() + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Fecha</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'>" + request.getDate() + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Horario</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'>" + request.getStartTime() + " - " + request.getEndTime() + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Asistentes</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'>" + safeAttendees + "</td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Estado</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'><span style='display:inline-block;padding:3px 10px;border-radius:12px;background:#e8f5e9;color:#2e7d32;font-size:13px;font-weight:600'>" + reservaRequest.getStatus() + "</span></td></tr>"
+                + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Nota</td>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'>" + safeNote + "</td></tr>"
+                + "</table>"
+                + "</div>"
+                + "</div>"
+                // ── Footer ──
+                + "<div style='background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee'>"
+                + "<p style='margin:0;font-size:12px;color:#aaa'>\u00a9 BeWorking \u00b7 M\u00e1laga</p>"
+                + "</div>"
+                + "</div>";
 
             emailService.sendHtml("info@be-working.com", "Nueva Reserva - " + request.getProductName(), html);
         } catch (Exception e) {
-            LOGGER.warn("Failed to send booking notification email", e);
+            LOGGER.warn("Failed to send admin booking notification email", e);
+        }
+
+        // ── Client confirmation email ──
+        if (request.getEmail() != null && !request.getEmail().isBlank()) {
+            try {
+                String safeName = (request.getFirstName() != null ? request.getFirstName() : "") + " " + (request.getLastName() != null ? request.getLastName() : "");
+                safeName = safeName.trim().isEmpty() ? "Cliente" : safeName.trim();
+                String safeProduct = request.getProductName() != null ? request.getProductName() : "—";
+                String clientAttendees = request.getAttendees() != null ? String.valueOf(request.getAttendees()) : null;
+
+                String clientHtml = "<div style='font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08)'>"
+                    // ── Hero header ──
+                    + "<div style='background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:40px 32px 32px;color:#ffffff'>"
+                    + "<p style='margin:0 0 4px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85'>BEWORKING</p>"
+                    + "<h1 style='margin:0 0 8px;font-size:26px;font-weight:700;line-height:1.2'>Confirmaci\u00f3n de Reserva</h1>"
+                    + "</div>"
+                    // ── Body ──
+                    + "<div style='padding:32px'>"
+                    + "<p style='margin:0 0 8px;font-size:16px;color:#333'>Hola <strong>" + safeName + "</strong>, tu reserva ha sido confirmada.</p>"
+                    + "<p style='margin:0 0 24px;font-size:14px;color:#666'>A continuaci\u00f3n los detalles de tu reserva:</p>"
+                    // ── Details card ──
+                    + "<div style='background:#f5faf6;border-radius:10px;padding:20px 24px;border-left:4px solid #009624'>"
+                    + "<table style='border-collapse:collapse;width:100%'>"
+                    + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Sala</td>"
+                    + "<td style='padding:8px 0;font-size:15px;font-weight:700;color:#222'>" + safeProduct + "</td></tr>"
+                    + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Fecha</td>"
+                    + "<td style='padding:8px 0;font-size:15px;color:#333'>" + request.getDate() + "</td></tr>"
+                    + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Horario</td>"
+                    + "<td style='padding:8px 0;font-size:15px;color:#333'>" + request.getStartTime() + " - " + request.getEndTime() + "</td></tr>"
+                    + (clientAttendees != null ? "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Asistentes</td><td style='padding:8px 0;font-size:15px;color:#333'>" + clientAttendees + "</td></tr>" : "")
+                    + "</table>"
+                    + "</div>"
+                    // ── Info boxes ──
+                    + "<table style='border-collapse:collapse;width:100%;margin-top:28px'><tr>"
+                    + "<td style='width:50%;padding:0 8px 0 0;vertical-align:top'>"
+                    + "<div style='background:#f5faf6;border-radius:8px;padding:16px'>"
+                    + "<p style='margin:0 0 4px;font-size:14px;font-weight:700;color:#333'>Cambios o cancelaciones</p>"
+                    + "<p style='margin:0;font-size:12px;color:#888'>Cont\u00e1ctanos con antelaci\u00f3n para gestionar cualquier cambio.</p>"
+                    + "</div></td>"
+                    + "<td style='width:50%;padding:0 0 0 8px;vertical-align:top'>"
+                    + "<div style='background:#f5faf6;border-radius:8px;padding:16px'>"
+                    + "<p style='margin:0 0 4px;font-size:14px;font-weight:700;color:#333'>Acceso al centro</p>"
+                    + "<p style='margin:0;font-size:12px;color:#888'>Presenta este email en recepci\u00f3n a tu llegada.</p>"
+                    + "</div></td>"
+                    + "</tr></table>"
+                    // ── Contact line ──
+                    + "<p style='margin:28px 0 0;font-size:13px;color:#888;text-align:center'>"
+                    + "\u00bfNecesitas ayuda? Responde a este correo o escr\u00edbenos por WhatsApp: "
+                    + "<a href='https://wa.me/34640369759' style='color:#009624;text-decoration:none;font-weight:600'>+34 640 369 759</a></p>"
+                    + "</div>"
+                    // ── Footer ──
+                    + "<div style='background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee'>"
+                    + "<p style='margin:0;font-size:12px;color:#aaa'>\u00a9 BeWorking \u00b7 M\u00e1laga</p>"
+                    + "</div>"
+                    + "</div>";
+
+                emailService.sendHtml(request.getEmail(), "Confirmaci\u00f3n de reserva - BeWorking", clientHtml);
+            } catch (Exception e) {
+                LOGGER.warn("Failed to send client booking confirmation email", e);
+            }
         }
 
         return response;
