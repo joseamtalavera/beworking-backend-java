@@ -1441,8 +1441,8 @@ public class InvoiceService {
             // Skip if the caller already created a Stripe invoice (prevents duplicate)
             String paymentMethod = null;
             String stripeError = null;
-            boolean stripeAlreadyHandled = request.getStripeInvoiceId() != null
-                && !request.getStripeInvoiceId().isBlank();
+            boolean stripeAlreadyHandled = request.isSkipStripe()
+                || (request.getStripeInvoiceId() != null && !request.getStripeInvoiceId().isBlank());
             if (!stripeAlreadyHandled
                     && paymentsBaseUrl != null && !paymentsBaseUrl.isBlank()
                     && request.getClientId() != null) {

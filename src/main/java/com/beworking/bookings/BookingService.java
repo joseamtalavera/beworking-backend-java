@@ -4,6 +4,7 @@ import com.beworking.auth.User;
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
 import com.beworking.auth.EmailService;
+import com.beworking.cuentas.CuentaService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.DayOfWeek;
@@ -46,6 +47,7 @@ class BookingService {
     private final ProductoRepository productoRepository;
     private final EmailService emailService;
     private final JdbcTemplate jdbcTemplate;
+    private final CuentaService cuentaService;
 
     BookingService(ReservaRepository reservaRepository,
                    BloqueoRepository bloqueoRepository,
@@ -53,7 +55,8 @@ class BookingService {
                    CentroRepository centroRepository,
                    ProductoRepository productoRepository,
                    EmailService emailService,
-                   JdbcTemplate jdbcTemplate) {
+                   JdbcTemplate jdbcTemplate,
+                   CuentaService cuentaService) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
@@ -61,6 +64,7 @@ class BookingService {
         this.productoRepository = productoRepository;
         this.emailService = emailService;
         this.jdbcTemplate = jdbcTemplate;
+        this.cuentaService = cuentaService;
     }
 
     @Transactional(readOnly = true)
@@ -219,25 +223,33 @@ class BookingService {
                     BigDecimal vat = subtotal.multiply(VAT_RATE).setScale(2, RoundingMode.HALF_UP);
                     BigDecimal total = subtotal.add(vat).setScale(2, RoundingMode.HALF_UP);
 
+                    // Use CuentaService for proper sequential invoice numbering (PT = Partners/BeWorking)
+                    String invoiceNumber = cuentaService.generateNextInvoiceNumber("PT");
+                    String numericPart = invoiceNumber.replaceAll("[^0-9]", "");
+                    Integer invoiceId = numericPart.isEmpty() ? 0 : Integer.parseInt(numericPart);
+
+                    // Look up cuenta ID for PT
+                    Integer cuentaId = jdbcTemplate.queryForObject(
+                        "SELECT id FROM beworking.cuentas WHERE codigo = 'PT'", Integer.class);
+
                     Long nextId = jdbcTemplate.queryForObject(
                         "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
-                    Integer nextInvoiceNum = jdbcTemplate.queryForObject(
-                        "SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
 
                     jdbcTemplate.update("""
                         INSERT INTO beworking.facturas (
-                            id, idfactura, idcliente, idcentro,
+                            id, idfactura, idcliente, idcentro, holdedcuenta, id_cuenta,
                             descripcion, holdedinvoicenum,
                             fechacreacionreal, estado,
                             total, iva, totaliva, notas, creacionfecha
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pagado', ?, 21, ?, ?, CURRENT_TIMESTAMP)
+                        ) VALUES (?, ?, ?, ?, 'PT', ?, ?, ?, ?, 'Pagado', ?, 21, ?, ?, CURRENT_TIMESTAMP)
                         """,
                         nextId,
-                        nextInvoiceNum,
+                        invoiceId,
                         contact.getId(),
                         centro.getId(),
+                        cuentaId,
                         "Reserva: " + producto.getNombre() + " (" + request.getDate() + ")",
-                        "BW-" + nextInvoiceNum,
+                        invoiceNumber,
                         request.getDate().toString(),
                         total,
                         vat,
@@ -255,7 +267,7 @@ class BookingService {
                         ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
                         """,
                         nextDesgloseId,
-                        nextInvoiceNum,
+                        invoiceId,
                         "Reserva " + producto.getNombre() + " " + request.getStartTime() + "-" + request.getEndTime(),
                         hourlyRate,
                         hours,
@@ -263,11 +275,11 @@ class BookingService {
                         bloqueoId
                     );
 
-                    // Update bloqueo status to Facturado since invoice is created
+                    // Update bloqueo status
                     jdbcTemplate.update(
                         "UPDATE beworking.bloqueos SET estado = 'Pagado' WHERE id = ?", bloqueoId);
 
-                    LOGGER.info("Auto-created invoice BW-{} for public booking bloqueo {}", nextInvoiceNum, bloqueoId);
+                    LOGGER.info("Auto-created invoice {} for public booking bloqueo {}", invoiceNumber, bloqueoId);
                 }
             } catch (Exception e) {
                 LOGGER.warn("Failed to auto-create invoice for public booking", e);

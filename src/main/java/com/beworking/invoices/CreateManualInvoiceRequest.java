@@ -40,6 +40,8 @@ public class CreateManualInvoiceRequest {
 
     private String stripeInvoiceId;
 
+    private boolean skipStripe;
+
     // Getters and Setters
     public String getClientName() {
         return clientName;
@@ -143,6 +145,14 @@ public class CreateManualInvoiceRequest {
 
     public void setStripeInvoiceId(String stripeInvoiceId) {
         this.stripeInvoiceId = stripeInvoiceId;
+    }
+
+    public boolean isSkipStripe() {
+        return skipStripe;
+    }
+
+    public void setSkipStripe(boolean skipStripe) {
+        this.skipStripe = skipStripe;
     }
 
     // Inner classes for line items and computed totals
