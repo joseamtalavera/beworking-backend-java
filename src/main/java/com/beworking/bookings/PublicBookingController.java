@@ -65,6 +65,12 @@ public class PublicBookingController {
             body.put("message", illegalArgumentException.getMessage());
             body.put("refunded", request.getStripePaymentIntentId() != null);
             return ResponseEntity.badRequest().body(body);
+        } catch (Exception ex) {
+            LOGGER.error("Unexpected error creating public booking for PI={}: {}", request.getStripePaymentIntentId(), ex.getMessage(), ex);
+            Map<String, Object> body = new HashMap<>();
+            body.put("message", "Booking creation failed — payment was charged. Reference: " + request.getStripePaymentIntentId());
+            body.put("refunded", false);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
         }
     }
 

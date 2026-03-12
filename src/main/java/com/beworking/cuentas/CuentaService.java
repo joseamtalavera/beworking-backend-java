@@ -2,6 +2,7 @@ package com.beworking.cuentas;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -39,7 +40,7 @@ public class CuentaService {
      * Generate next invoice number for a specific cuenta
      * This method is thread-safe and updates the sequential number atomically
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public synchronized String generateNextInvoiceNumber(Integer cuentaId) {
         Optional<Cuenta> cuentaOpt = cuentaRepository.findById(cuentaId);
         if (cuentaOpt.isEmpty()) {
