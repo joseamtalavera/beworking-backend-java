@@ -24,6 +24,8 @@ import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -41,6 +43,9 @@ class BookingService {
     private static final int FREE_MONTHLY_LIMIT = 5;
 
     private static final BigDecimal VAT_RATE = new BigDecimal("0.21");
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private final ReservaRepository reservaRepository;
     private final BloqueoRepository bloqueoRepository;
@@ -204,6 +209,9 @@ class BookingService {
         reservaRequest.setNote(note);
 
         CreateReservaResponse response = createReserva(reservaRequest, null);
+
+        // Flush pending Hibernate INSERTs so jdbcTemplate invoice queries see the new bloqueo
+        entityManager.flush();
 
         // ── Auto-create invoice for paid public bookings ──
         boolean isPaid = request.getStripePaymentIntentId() != null && !isFreeEligible;
@@ -424,7 +432,8 @@ class BookingService {
             .orElseThrow(() -> new IllegalArgumentException("Contact not found: " + request.getContactId()));
         Centro centro = centroRepository.findById(request.getCentroId())
             .orElseThrow(() -> new IllegalArgumentException("Centro not found: " + request.getCentroId()));
-        Producto producto = productoRepository.findById(request.getProductoId())
+        // Pessimistic lock on the product row — serializes concurrent bookings for the same product
+        Producto producto = productoRepository.findByIdForUpdate(request.getProductoId())
             .orElseThrow(() -> new IllegalArgumentException("Producto not found: " + request.getProductoId()));
 
         Set<DayOfWeek> weekdays = normalizeWeekdays(request.getWeekdays());
