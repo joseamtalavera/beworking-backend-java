@@ -417,7 +417,7 @@ public class InvoiceService {
             : BigDecimal.ZERO;
         BigDecimal total = subtotal.add(vatAmount);
 
-        Long nextId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+        Long nextId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturas_id_seq')", Long.class);
         Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
         LocalDateTime now = request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now();
 
@@ -447,11 +447,10 @@ public class InvoiceService {
             request.getStripeInvoiceId()
         );
 
-        long nextDesgloseId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
-
         for (Map.Entry<Bloqueo, LineComputation> entry : computedLines.entrySet()) {
             Bloqueo bloqueo = entry.getKey();
             LineComputation line = entry.getValue();
+            long nextDesgloseId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
             jdbcTemplate.update(
                 """
                 INSERT INTO beworking.facturasdesglose
@@ -467,8 +466,6 @@ public class InvoiceService {
                 1,
                 bloqueo.getId()
             );
-            nextDesgloseId++;
-
         }
 
         // Insert extra line items (not linked to any bloqueo)
@@ -477,6 +474,7 @@ public class InvoiceService {
                 if (extra.getDescription() != null && !extra.getDescription().isBlank()) {
                     BigDecimal lineTotal = extra.getQuantity().multiply(extra.getPrice())
                         .setScale(2, RoundingMode.HALF_UP);
+                    long nextDesgloseId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
                     jdbcTemplate.update(
                         """
                         INSERT INTO beworking.facturasdesglose
@@ -492,7 +490,6 @@ public class InvoiceService {
                         1,
                         null
                     );
-                    nextDesgloseId++;
                 }
             }
         }
@@ -1323,9 +1320,9 @@ public class InvoiceService {
                 }
             }
 
-            // Generate internal primary key for facturas.id
+            // Generate internal primary key for facturas.id using sequence (concurrent-safe)
             Long nextInternalId = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas",
+                "SELECT nextval('beworking.facturas_id_seq')",
                 Long.class
             );
 

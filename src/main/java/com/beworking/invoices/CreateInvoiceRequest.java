@@ -20,6 +20,8 @@ public class CreateInvoiceRequest {
 
     private String stripeInvoiceId;
 
+    private boolean skipStripe;
+
     private LocalDateTime invoiceDate;
 
     public List<Long> getBloqueoIds() {
@@ -68,6 +70,14 @@ public class CreateInvoiceRequest {
 
     public void setStripeInvoiceId(String stripeInvoiceId) {
         this.stripeInvoiceId = stripeInvoiceId;
+    }
+
+    public boolean isSkipStripe() {
+        return skipStripe;
+    }
+
+    public void setSkipStripe(boolean skipStripe) {
+        this.skipStripe = skipStripe;
     }
 
     public LocalDateTime getInvoiceDate() {

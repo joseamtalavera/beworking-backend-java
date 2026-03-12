@@ -120,7 +120,7 @@ public class InvoiceController {
     }
 
     @PostMapping
-    public ResponseEntity<CreateInvoiceResponse> createInvoice(
+    public ResponseEntity<?> createInvoice(
         Authentication authentication,
         @Valid @RequestBody CreateInvoiceRequest request
     ) {
@@ -133,8 +133,15 @@ public class InvoiceController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        CreateInvoiceResponse response = invoiceService.createInvoice(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        try {
+            CreateInvoiceResponse response = invoiceService.createInvoice(request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            logger.warn("Invoice creation rejected: {}", e.getMessage());
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
     }
 
     @PostMapping("/manual")
