@@ -469,8 +469,6 @@ public class InvoiceService {
             );
             nextDesgloseId++;
 
-            bloqueo.setEstado("Invoiced");
-            bloqueo.setEdicionFecha(now);
         }
 
         // Insert extra line items (not linked to any bloqueo)
@@ -499,7 +497,17 @@ public class InvoiceService {
             }
         }
 
-        bloqueoRepository.saveAll(bloqueos);
+        // Update bloqueo statuses directly via SQL — avoids Hibernate flush timing issues
+        // when Hibernate and jdbcTemplate are mixed in the same transaction
+        List<Long> bloqueoIds = bloqueos.stream().map(Bloqueo::getId).toList();
+        String placeholders = bloqueoIds.stream().map(id -> "?").collect(java.util.stream.Collectors.joining(","));
+        List<Object> updateArgs = new java.util.ArrayList<>();
+        updateArgs.add(Timestamp.valueOf(now));
+        updateArgs.addAll(bloqueoIds);
+        jdbcTemplate.update(
+            "UPDATE beworking.bloqueos SET estado = 'Invoiced', edicion_fecha = ? WHERE id IN (" + placeholders + ")",
+            updateArgs.toArray()
+        );
 
         // Auto-update contact status to "Activo" when invoiced
         jdbcTemplate.update("""
