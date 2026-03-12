@@ -1,5 +1,6 @@
 package com.beworking.subscriptions;
 
+import com.beworking.contacts.ViesVatService;
 import com.beworking.cuentas.Cuenta;
 import com.beworking.cuentas.CuentaService;
 import java.math.BigDecimal;
@@ -24,13 +25,16 @@ public class SubscriptionService {
     private final SubscriptionRepository subscriptionRepository;
     private final CuentaService cuentaService;
     private final JdbcTemplate jdbcTemplate;
+    private final ViesVatService viesVatService;
 
     public SubscriptionService(SubscriptionRepository subscriptionRepository,
                                CuentaService cuentaService,
-                               JdbcTemplate jdbcTemplate) {
+                               JdbcTemplate jdbcTemplate,
+                               ViesVatService viesVatService) {
         this.subscriptionRepository = subscriptionRepository;
         this.cuentaService = cuentaService;
         this.jdbcTemplate = jdbcTemplate;
+        this.viesVatService = viesVatService;
     }
 
     public List<Subscription> findAll() {
@@ -354,24 +358,47 @@ public class SubscriptionService {
         int fallback = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
 
         String taxId = null;
+        String billingCountry = null;
         try {
-            taxId = jdbcTemplate.queryForObject(
-                "SELECT billing_tax_id FROM beworking.contact_profiles WHERE id = ?",
-                String.class, subscription.getContactId());
+            Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT billing_tax_id, billing_country FROM beworking.contact_profiles WHERE id = ?",
+                subscription.getContactId());
+            taxId = (String) row.get("billing_tax_id");
+            billingCountry = (String) row.get("billing_country");
         } catch (EmptyResultDataAccessException ignored) {}
-
-        if (taxId == null || taxId.isBlank() || taxId.length() < 3) {
-            return fallback;
-        }
-
-        String customerCountry = taxId.substring(0, 2).toUpperCase();
-        if (!EU_VAT_PREFIXES.contains(customerCountry)) {
-            return fallback;
-        }
 
         // Supplier country: GT = Estonia (EE), PT/OF = Spain (ES)
         String cuenta = subscription.getCuenta() != null ? subscription.getCuenta().toUpperCase() : "PT";
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
+
+        // Try to extract EU country prefix from taxId (e.g. "ESB09665258" → "ES")
+        String customerCountry = null;
+        if (taxId != null && !taxId.isBlank()) {
+            String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
+            if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
+                customerCountry = normalized.substring(0, 2);
+            }
+        }
+
+        // No prefix found — try VIES with billing_country as hint (e.g. "B09665258" + "Spain" → "ESB09665258")
+        if (customerCountry == null) {
+            String countryHint = countryNameToIso(billingCountry);
+            if (countryHint != null) {
+                ViesVatService.VatValidationResult result = viesVatService.validate(taxId, countryHint);
+                if (result.valid()) {
+                    customerCountry = countryHint;
+                    logger.info("VIES confirmed {} as {} for subscription {}",
+                        taxId, countryHint, subscription.getId());
+                } else {
+                    logger.info("VIES could not validate {} (hint={}) for subscription {}: {}",
+                        taxId, countryHint, subscription.getId(), result.error());
+                }
+            }
+        }
+
+        if (customerCountry == null || !EU_VAT_PREFIXES.contains(customerCountry)) {
+            return fallback;
+        }
 
         // Intra-EU reverse charge: 0% when supplier and customer are in different EU countries
         int resolved = supplierCountry.equals(customerCountry) ? fallback : 0;
@@ -380,11 +407,47 @@ public class SubscriptionService {
         if (subscription.getVatPercent() == null || subscription.getVatPercent() != resolved) {
             subscription.setVatPercent(resolved);
             subscriptionRepository.save(subscription);
-            logger.info("Updated subscription {} vatPercent {} → {} (cuenta={}, taxId={})",
-                subscription.getId(), fallback, resolved, cuenta, taxId);
+            logger.info("Updated subscription {} vatPercent {} → {} (cuenta={}, taxId={}, customerCountry={})",
+                subscription.getId(), fallback, resolved, cuenta, taxId, customerCountry);
         }
 
         return resolved;
+    }
+
+    private static String countryNameToIso(String countryName) {
+        if (countryName == null || countryName.isBlank()) return null;
+        String s = countryName.trim();
+        if (s.length() == 2) return s.toUpperCase();
+        return switch (s.toLowerCase()) {
+            case "spain", "españa" -> "ES";
+            case "ireland" -> "IE";
+            case "italy", "italia" -> "IT";
+            case "france", "francia" -> "FR";
+            case "germany", "alemania" -> "DE";
+            case "portugal" -> "PT";
+            case "netherlands", "holanda", "países bajos" -> "NL";
+            case "belgium", "bélgica", "belgica" -> "BE";
+            case "sweden", "suecia" -> "SE";
+            case "denmark", "dinamarca" -> "DK";
+            case "finland", "finlandia" -> "FI";
+            case "austria" -> "AT";
+            case "greece", "grecia" -> "GR";
+            case "poland", "polonia" -> "PL";
+            case "czech republic", "república checa", "czechia" -> "CZ";
+            case "hungary", "hungría", "hungria" -> "HU";
+            case "romania", "rumania" -> "RO";
+            case "bulgaria" -> "BG";
+            case "croatia", "croacia" -> "HR";
+            case "slovakia", "eslovaquia" -> "SK";
+            case "slovenia", "eslovenia" -> "SI";
+            case "estonia" -> "EE";
+            case "latvia", "letonia" -> "LV";
+            case "lithuania", "lituania" -> "LT";
+            case "luxembourg", "luxemburgo" -> "LU";
+            case "malta" -> "MT";
+            case "cyprus", "chipre" -> "CY";
+            default -> null;
+        };
     }
 
 }
