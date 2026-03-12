@@ -28,6 +28,8 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 class BookingService {
@@ -286,6 +288,19 @@ class BookingService {
             }
         }
 
+        // ── Send emails only after transaction commits ──
+        final String finalNote = note;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                sendBookingEmails(request, reservaRequest.getStatus(), finalNote);
+            }
+        });
+
+        return response;
+    }
+
+    private void sendBookingEmails(PublicBookingRequest request, String status, String note) {
         try {
             String safePhone = request.getPhone() != null ? request.getPhone() : "—";
             String safeAttendees = request.getAttendees() != null ? String.valueOf(request.getAttendees()) : "—";
@@ -318,7 +333,7 @@ class BookingService {
                 + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Asistentes</td>"
                 + "<td style='padding:8px 0;font-size:15px;color:#333'>" + safeAttendees + "</td></tr>"
                 + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Estado</td>"
-                + "<td style='padding:8px 0;font-size:15px;color:#333'><span style='display:inline-block;padding:3px 10px;border-radius:12px;background:#e8f5e9;color:#2e7d32;font-size:13px;font-weight:600'>" + reservaRequest.getStatus() + "</span></td></tr>"
+                + "<td style='padding:8px 0;font-size:15px;color:#333'><span style='display:inline-block;padding:3px 10px;border-radius:12px;background:#e8f5e9;color:#2e7d32;font-size:13px;font-weight:600'>" + status + "</span></td></tr>"
                 + "<tr><td style='padding:8px 12px 8px 0;color:#888;font-size:13px;white-space:nowrap'>Nota</td>"
                 + "<td style='padding:8px 0;font-size:15px;color:#333'>" + safeNote + "</td></tr>"
                 + "</table>"
@@ -394,9 +409,6 @@ class BookingService {
                 LOGGER.warn("Failed to send client booking confirmation email", e);
             }
         }
-
-        return response;
-
     }
 
     @Transactional
@@ -507,15 +519,9 @@ class BookingService {
             reserva.setUsuarioId(Math.toIntExact(user.getId()));
         }
 
-        Long nextReservaId = reservaRepository.findMaxId().map(value -> value + 1L).orElse(1L);
-        reserva.setId(nextReservaId);
-
         Reserva savedReserva = reservaRepository.save(reserva);
 
-        long[] nextBloqueoId = {bloqueoRepository.findMaxId().map(value -> value + 1L).orElse(1L)};
-
         bloqueosToPersist.forEach(bloqueo -> {
-            bloqueo.setId(nextBloqueoId[0]++);
             bloqueo.setReserva(savedReserva);
             bloqueo.setCliente(cliente);
             bloqueo.setCentro(centro);

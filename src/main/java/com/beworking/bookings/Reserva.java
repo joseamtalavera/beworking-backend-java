@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -21,6 +22,8 @@ import java.util.List;
 public class Reserva {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "reservas_seq")
+    @SequenceGenerator(name = "reservas_seq", sequenceName = "beworking.reservas_id_seq", allocationSize = 1)
     @Column(name = "id")
     private Long id;
 
