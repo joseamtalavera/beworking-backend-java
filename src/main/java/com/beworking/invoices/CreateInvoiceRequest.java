@@ -24,6 +24,8 @@ public class CreateInvoiceRequest {
 
     private LocalDateTime invoiceDate;
 
+    private String cuenta;
+
     public List<Long> getBloqueoIds() {
         return bloqueoIds;
     }
@@ -86,6 +88,14 @@ public class CreateInvoiceRequest {
 
     public void setInvoiceDate(LocalDateTime invoiceDate) {
         this.invoiceDate = invoiceDate;
+    }
+
+    public String getCuenta() {
+        return cuenta;
+    }
+
+    public void setCuenta(String cuenta) {
+        this.cuenta = cuenta;
     }
 
     public static class ExtraLineItem {

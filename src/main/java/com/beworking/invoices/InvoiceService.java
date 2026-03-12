@@ -418,8 +418,25 @@ public class InvoiceService {
         BigDecimal total = subtotal.add(vatAmount);
 
         Long nextId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturas_id_seq')", Long.class);
-        Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
         LocalDateTime now = request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now();
+
+        // Determine the cuenta for invoice numbering
+        String cuentaCodigo = request.getCuenta();
+        Integer cuentaId = null;
+        if (cuentaCodigo != null && !cuentaCodigo.isBlank()) {
+            cuentaId = cuentaService.getCuentaByCodigo(cuentaCodigo)
+                .map(com.beworking.cuentas.Cuenta::getId).orElse(null);
+        }
+        if (cuentaId == null) {
+            cuentaId = 3; // Default to Partners (PT)
+            cuentaCodigo = "PT";
+        }
+        String invoiceNumber = cuentaService.generateNextInvoiceNumber(cuentaId);
+        // Extract numeric part for the legacy idfactura column
+        String numericPart = invoiceNumber.replaceAll("[^0-9]", "");
+        Integer nextLegacy = numericPart.isEmpty()
+            ? jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class)
+            : Integer.parseInt(numericPart);
 
         String description = request.getDescription();
         if (description == null || description.isBlank()) {
@@ -429,8 +446,8 @@ public class InvoiceService {
         jdbcTemplate.update(
             """
             INSERT INTO beworking.facturas
-            (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado, creacionfecha, holdedinvoicenum, holdedinvoicepdf, stripeinvoiceid)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado, creacionfecha, holdedinvoicenum, holdedinvoicepdf, stripeinvoiceid, holdedcuenta, id_cuenta)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             nextId,
             nextLegacy,
@@ -442,9 +459,11 @@ public class InvoiceService {
             vatAmount,
             "Pendiente",
             Timestamp.valueOf(now),
-            request.getReference(),
+            invoiceNumber,
             null,
-            request.getStripeInvoiceId()
+            request.getStripeInvoiceId(),
+            cuentaCodigo,
+            cuentaId
         );
 
         for (Map.Entry<Bloqueo, LineComputation> entry : computedLines.entrySet()) {
