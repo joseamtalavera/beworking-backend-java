@@ -26,8 +26,8 @@ BEGIN
     SELECT id_centro INTO v_centro_id FROM beworking.bloqueos WHERE id = 65717;
 
     -- Generate invoice number 1
-    UPDATE beworking.cuentas SET contador = contador + 1 WHERE id = v_cuenta_id
-        RETURNING 'PT' || contador INTO v_inv_num_1;
+    UPDATE beworking.cuentas SET numero_secuencial = numero_secuencial + 1 WHERE id = v_cuenta_id
+        RETURNING 'PT' || numero_secuencial INTO v_inv_num_1;
     v_inv_id_1 := CAST(regexp_replace(v_inv_num_1, '[^0-9]', '', 'g') AS INT);
 
     -- Insert factura 1
@@ -58,8 +58,8 @@ BEGIN
     );
 
     -- Generate invoice number 2
-    UPDATE beworking.cuentas SET contador = contador + 1 WHERE id = v_cuenta_id
-        RETURNING 'PT' || contador INTO v_inv_num_2;
+    UPDATE beworking.cuentas SET numero_secuencial = numero_secuencial + 1 WHERE id = v_cuenta_id
+        RETURNING 'PT' || numero_secuencial INTO v_inv_num_2;
     v_inv_id_2 := CAST(regexp_replace(v_inv_num_2, '[^0-9]', '', 'g') AS INT);
 
     -- Insert factura 2
