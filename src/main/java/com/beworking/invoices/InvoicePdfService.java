@@ -176,6 +176,7 @@ public class InvoicePdfService {
     InvoiceHeader fetchHeader(Long id) {
         List<InvoiceHeader> headers = jdbcTemplate.query(
             "SELECT f.id, f.idfactura, f.idcliente, f.idcentro, f.descripcion, f.total, f.iva, f.creacionfecha,"
+                + " f.holdedinvoicenum,"
                 + " COALESCE(c.codigo, f.holdedcuenta) AS cuenta_codigo"
                 + " FROM beworking.facturas f"
                 + " LEFT JOIN beworking.cuentas c ON c.id = f.id_cuenta"
@@ -183,6 +184,7 @@ public class InvoicePdfService {
             (rs, rowNum) -> new InvoiceHeader(
                 rs.getLong("id"),
                 (Integer) rs.getObject("idfactura"),
+                rs.getString("holdedinvoicenum"),
                 (Long) rs.getObject("idcliente"),
                 (Integer) rs.getObject("idcentro"),
                 rs.getString("descripcion"),
@@ -695,6 +697,7 @@ public class InvoicePdfService {
 
     record InvoiceHeader(Long id,
                          Integer legacyNumber,
+                         String invoiceNum,
                          Long clientId,
                          Integer centerId,
                          String description,
@@ -703,6 +706,7 @@ public class InvoicePdfService {
                          LocalDateTime issuedAt,
                          String cuentaCodigo) {
         String displayNumber() {
+            if (invoiceNum != null && !invoiceNum.isBlank()) return invoiceNum;
             return legacyNumber != null ? legacyNumber.toString() : id.toString();
         }
     }
