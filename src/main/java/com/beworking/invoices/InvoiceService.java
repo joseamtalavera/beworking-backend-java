@@ -1496,8 +1496,11 @@ public class InvoiceService {
                                 (java.util.List<Map<String, Object>>) checkResult.get("paymentMethods");
                             String paymentMethodId = (String) methods.get(0).get("id");
 
+                            String contactName = getContactName(request.getClientId());
+
                             Map<String, Object> chargeBody = new HashMap<>();
                             chargeBody.put("customer_email", contactEmail);
+                            chargeBody.put("customer_name", contactName != null ? contactName : "");
                             chargeBody.put("payment_method_id", paymentMethodId);
                             chargeBody.put("amount", amountCents);
                             chargeBody.put("currency", "eur");
