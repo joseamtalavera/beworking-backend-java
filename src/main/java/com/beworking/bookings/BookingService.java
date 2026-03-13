@@ -243,15 +243,16 @@ class BookingService {
                         "SELECT id FROM beworking.cuentas WHERE codigo = 'PT'", Integer.class);
 
                     Long nextId = jdbcTemplate.queryForObject(
-                        "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+                        "SELECT nextval('beworking.facturas_id_seq')", Long.class);
 
                     jdbcTemplate.update("""
                         INSERT INTO beworking.facturas (
                             id, idfactura, idcliente, idcentro, holdedcuenta, id_cuenta,
                             descripcion, holdedinvoicenum,
                             fechacreacionreal, estado,
-                            total, iva, totaliva, notas, creacionfecha
-                        ) VALUES (?, ?, ?, ?, 'PT', ?, ?, ?, ?, 'Pagado', ?, 21, ?, ?, CURRENT_TIMESTAMP)
+                            total, iva, totaliva, notas, creacionfecha,
+                            stripepaymentintentid1, stripepaymentintentstatus1
+                        ) VALUES (?, ?, ?, ?, 'PT', ?, ?, ?, ?, 'Pagado', ?, 21, ?, ?, CURRENT_TIMESTAMP, ?, 'succeeded')
                         """,
                         nextId,
                         invoiceId,
@@ -263,12 +264,13 @@ class BookingService {
                         request.getDate().toString(),
                         total,
                         vat,
-                        note
+                        note,
+                        request.getStripePaymentIntentId()
                     );
 
                     // Insert line item
                     Long nextDesgloseId = jdbcTemplate.queryForObject(
-                        "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+                        "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
 
                     jdbcTemplate.update("""
                         INSERT INTO beworking.facturasdesglose (
@@ -292,7 +294,8 @@ class BookingService {
                     LOGGER.info("Auto-created invoice {} for public booking bloqueo {}", invoiceNumber, bloqueoId);
                 }
             } catch (Exception e) {
-                LOGGER.warn("Failed to auto-create invoice for public booking", e);
+                LOGGER.error("Failed to auto-create invoice for public booking — payment was collected but invoice record is missing!", e);
+                throw new RuntimeException("Invoice creation failed after payment. PaymentIntent: " + request.getStripePaymentIntentId(), e);
             }
         }
 
