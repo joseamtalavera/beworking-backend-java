@@ -1489,7 +1489,9 @@ public class InvoiceService {
                         boolean hasCard = checkResult != null
                             && Boolean.TRUE.equals(checkResult.get("hasPaymentMethod"));
 
-                        if (hasCard) {
+                        boolean forceInvoice = "invoice".equals(request.getPaymentMode());
+
+                        if (hasCard && !forceInvoice) {
                             // Charge the saved card
                             @SuppressWarnings("unchecked")
                             java.util.List<Map<String, Object>> methods =

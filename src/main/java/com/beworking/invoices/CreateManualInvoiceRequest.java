@@ -42,6 +42,8 @@ public class CreateManualInvoiceRequest {
 
     private boolean skipStripe;
 
+    private String paymentMode; // "card" or "invoice"
+
     // Getters and Setters
     public String getClientName() {
         return clientName;
@@ -153,6 +155,14 @@ public class CreateManualInvoiceRequest {
 
     public void setSkipStripe(boolean skipStripe) {
         this.skipStripe = skipStripe;
+    }
+
+    public String getPaymentMode() {
+        return paymentMode;
+    }
+
+    public void setPaymentMode(String paymentMode) {
+        this.paymentMode = paymentMode;
     }
 
     // Inner classes for line items and computed totals
