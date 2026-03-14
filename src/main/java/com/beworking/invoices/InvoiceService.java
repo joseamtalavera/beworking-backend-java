@@ -732,9 +732,6 @@ public class InvoiceService {
             "DELETE FROM beworking.facturasdesglose WHERE idfacturadesglose = ?", idfactura);
 
         if (request.getLineItems() != null && !request.getLineItems().isEmpty()) {
-            Long nextDesgloseId = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
-
             for (int i = 0; i < request.getLineItems().size(); i++) {
                 CreateManualInvoiceRequest.LineItem item = request.getLineItems().get(i);
                 BigDecimal unitPrice = item.getPrice().setScale(2, RoundingMode.HALF_UP);
@@ -747,13 +744,15 @@ public class InvoiceService {
                     description = "Line item";
                 }
 
+                Long nextDesgloseId = jdbcTemplate.queryForObject(
+                    "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
                 jdbcTemplate.update(
                     """
                     INSERT INTO beworking.facturasdesglose
                     (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado)
                     VALUES (?, ?, ?, ?, ?, ?, 1)
                     """,
-                    nextDesgloseId + i, idfactura,
+                    nextDesgloseId, idfactura,
                     description, unitPrice, item.getQuantity(), lineTotal
                 );
             }
@@ -945,7 +944,7 @@ public class InvoiceService {
         );
 
         // Generate new IDs
-        Long nextId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+        Long nextId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturas_id_seq')", Long.class);
         Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
 
         // Negate totals
@@ -968,9 +967,6 @@ public class InvoiceService {
 
         // Insert negated line items
         if (!origLines.isEmpty()) {
-            Long nextDesgloseId = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
-
             for (int i = 0; i < origLines.size(); i++) {
                 Map<String, Object> line = origLines.get(i);
                 String concept = (String) line.get("conceptodesglose");
@@ -981,13 +977,15 @@ public class InvoiceService {
                 BigDecimal lineTotal = line.get("totaldesglose") != null
                     ? ((BigDecimal) line.get("totaldesglose")).negate() : BigDecimal.ZERO;
 
+                Long nextDesgloseId = jdbcTemplate.queryForObject(
+                    "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
                 jdbcTemplate.update(
                     """
                     INSERT INTO beworking.facturasdesglose
                     (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado)
                     VALUES (?, ?, ?, ?, ?, ?, 1)
                     """,
-                    nextDesgloseId + i, nextLegacy,
+                    nextDesgloseId, nextLegacy,
                     "Rectificación: " + (concept != null ? concept : "—"),
                     unitPrice, qty, lineTotal
                 );
@@ -1182,7 +1180,7 @@ public class InvoiceService {
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             BigDecimal total = lineTotal.add(vatAmount);
 
-            Long nextId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+            Long nextId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturas_id_seq')", Long.class);
             Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
             LocalDateTime now = LocalDateTime.now();
 
@@ -1197,7 +1195,7 @@ public class InvoiceService {
             );
 
             Long nextDesgloseId = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+                "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
             jdbcTemplate.update(
                 """
                 INSERT INTO beworking.facturasdesglose
@@ -1415,11 +1413,6 @@ public class InvoiceService {
 
             // Insert line items
             if (request.getLineItems() != null && !request.getLineItems().isEmpty()) {
-                Long nextDesgloseId = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose",
-                    Long.class
-                );
-
                 String lineItemSql = """
                     INSERT INTO beworking.facturasdesglose (
                         id, idfacturadesglose, conceptodesglose, precioundesglose,
@@ -1438,8 +1431,10 @@ public class InvoiceService {
                         lineConcept = "Manual line item";
                     }
 
+                    Long nextDesgloseId = jdbcTemplate.queryForObject(
+                        "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
                     jdbcTemplate.update(lineItemSql,
-                        nextDesgloseId + i,
+                        nextDesgloseId,
                         facturaId,
                         lineConcept,
                         unitPrice,
