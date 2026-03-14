@@ -59,6 +59,10 @@ public class SubscriptionService {
         return subscriptionRepository.findById(id);
     }
 
+    public List<Subscription> findActiveDeskSubscriptions() {
+        return subscriptionRepository.findByActiveTrueAndProductoIdIsNotNull();
+    }
+
     public Optional<Subscription> findByStripeSubscriptionId(String stripeSubscriptionId) {
         return subscriptionRepository.findByStripeSubscriptionId(stripeSubscriptionId);
     }

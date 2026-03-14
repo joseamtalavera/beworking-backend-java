@@ -58,6 +58,9 @@ public class Subscription {
     @Column(name = "last_invoiced_month", length = 7)
     private String lastInvoicedMonth;
 
+    @Column(name = "producto_id")
+    private Long productoId;
+
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
@@ -110,6 +113,9 @@ public class Subscription {
 
     public String getBillingMethod() { return billingMethod; }
     public void setBillingMethod(String billingMethod) { this.billingMethod = billingMethod; }
+
+    public Long getProductoId() { return productoId; }
+    public void setProductoId(Long productoId) { this.productoId = productoId; }
 
     public String getLastInvoicedMonth() { return lastInvoicedMonth; }
     public void setLastInvoicedMonth(String lastInvoicedMonth) { this.lastInvoicedMonth = lastInvoicedMonth; }

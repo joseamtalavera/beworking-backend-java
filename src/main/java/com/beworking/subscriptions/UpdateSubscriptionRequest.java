@@ -13,6 +13,7 @@ public class UpdateSubscriptionRequest {
     private Boolean active;
     private String stripeSubscriptionId;
     private String stripeCustomerId;
+    private Long productoId;
 
     public String getCuenta() { return cuenta; }
     public void setCuenta(String cuenta) { this.cuenta = cuenta; }
@@ -37,4 +38,7 @@ public class UpdateSubscriptionRequest {
 
     public String getStripeCustomerId() { return stripeCustomerId; }
     public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
+
+    public Long getProductoId() { return productoId; }
+    public void setProductoId(Long productoId) { this.productoId = productoId; }
 }

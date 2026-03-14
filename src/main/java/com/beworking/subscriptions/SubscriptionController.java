@@ -2,12 +2,14 @@ package com.beworking.subscriptions;
 
 import com.beworking.auth.User;
 import com.beworking.auth.UserRepository;
+import com.beworking.bookings.ProductoRepository;
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,15 +33,18 @@ public class SubscriptionController {
     private final SubscriptionService subscriptionService;
     private final UserRepository userRepository;
     private final ContactProfileRepository contactRepository;
+    private final ProductoRepository productoRepository;
     private final RestClient http;
 
     public SubscriptionController(SubscriptionService subscriptionService,
                                   UserRepository userRepository,
                                   ContactProfileRepository contactRepository,
+                                  ProductoRepository productoRepository,
                                   @Value("${app.payments.base-url:http://beworking-stripe-service:8081}") String paymentsBaseUrl) {
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
         this.contactRepository = contactRepository;
+        this.productoRepository = productoRepository;
         this.http = RestClient.builder().baseUrl(paymentsBaseUrl).build();
     }
 
@@ -105,6 +110,7 @@ public class SubscriptionController {
             sub.setVatPercent(euIntra ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
             sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
             sub.setEndDate(request.getEndDate());
+            sub.setProductoId(request.getProductoId());
             sub.setActive(true);
             sub.setCreatedAt(LocalDateTime.now());
             sub.setUpdatedAt(LocalDateTime.now());
@@ -291,6 +297,7 @@ public class SubscriptionController {
         sub.setVatPercent(euIntracommunity ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
         sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
         sub.setEndDate(request.getEndDate());
+        sub.setProductoId(request.getProductoId());
         sub.setActive(true);
         sub.setCreatedAt(LocalDateTime.now());
         sub.setUpdatedAt(LocalDateTime.now());
@@ -375,6 +382,7 @@ public class SubscriptionController {
         if (request.getMonthlyAmount() != null) sub.setMonthlyAmount(request.getMonthlyAmount());
         if (request.getVatPercent() != null) sub.setVatPercent(request.getVatPercent());
         if (request.getEndDate() != null) sub.setEndDate(request.getEndDate());
+        if (request.getProductoId() != null) sub.setProductoId(request.getProductoId());
         if (request.getActive() != null) {
             sub.setActive(request.getActive());
             if (!request.getActive() && sub.getEndDate() == null) {
@@ -496,6 +504,40 @@ public class SubscriptionController {
         response.put("invoicesCreated", created);
         response.put("invoicesTotal", invoices != null ? invoices.size() : 0);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/desk-occupancy")
+    public ResponseEntity<?> deskOccupancy(Authentication authentication) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        List<Subscription> activeSubs = subscriptionService.findActiveDeskSubscriptions();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Subscription sub : activeSubs) {
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("subscriptionId", sub.getId());
+            entry.put("contactId", sub.getContactId());
+            entry.put("productoId", sub.getProductoId());
+            entry.put("monthlyAmount", sub.getMonthlyAmount());
+            entry.put("startDate", sub.getStartDate());
+            entry.put("description", sub.getDescription());
+
+            // Resolve contact name
+            contactRepository.findById(sub.getContactId()).ifPresent(cp ->
+                entry.put("contactName", cp.getName())
+            );
+
+            // Resolve product name and extract desk number
+            productoRepository.findById(sub.getProductoId()).ifPresent(p -> {
+                entry.put("productName", p.getNombre());
+            });
+
+            result.add(entry);
+        }
+
+        return ResponseEntity.ok(result);
     }
 
     @DeleteMapping("/{id}")

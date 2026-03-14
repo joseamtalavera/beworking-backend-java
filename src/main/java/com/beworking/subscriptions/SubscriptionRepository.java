@@ -20,6 +20,8 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Inte
 
     List<Subscription> findByContactIdAndActiveTrue(Long contactId);
 
+    List<Subscription> findByActiveTrueAndProductoIdIsNotNull();
+
     @Query("SELECT s FROM Subscription s WHERE s.billingMethod = 'bank_transfer' AND s.active = true AND (s.lastInvoicedMonth IS NULL OR s.lastInvoicedMonth <> :month)")
     List<Subscription> findBankTransferDueForMonth(@Param("month") String month);
 }

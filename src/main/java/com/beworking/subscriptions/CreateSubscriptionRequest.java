@@ -24,6 +24,7 @@ public class CreateSubscriptionRequest {
     private LocalDate startDate;
     private LocalDate endDate;
     private String billingMethod;
+    private Long productoId;
 
     public Long getContactId() { return contactId; }
     public void setContactId(Long contactId) { this.contactId = contactId; }
@@ -60,4 +61,7 @@ public class CreateSubscriptionRequest {
 
     public String getBillingMethod() { return billingMethod; }
     public void setBillingMethod(String billingMethod) { this.billingMethod = billingMethod; }
+
+    public Long getProductoId() { return productoId; }
+    public void setProductoId(Long productoId) { this.productoId = productoId; }
 }
