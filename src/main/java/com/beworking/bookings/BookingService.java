@@ -261,7 +261,7 @@ class BookingService {
                         cuentaId,
                         "Reserva: " + producto.getNombre() + " (" + request.getDate() + ")",
                         invoiceNumber,
-                        request.getDate().toString(),
+                        java.sql.Timestamp.valueOf(request.getDate().atStartOfDay()),
                         total,
                         vat,
                         note,
