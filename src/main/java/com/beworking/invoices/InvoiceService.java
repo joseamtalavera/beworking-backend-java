@@ -1000,10 +1000,10 @@ public class InvoiceService {
             originalId
         );
 
-        // Delete linked bloqueos — the payment is being refunded so the booking should be removed
+        // Revert linked bloqueos to Booked when invoice is credited
         jdbcTemplate.update(
             """
-            DELETE FROM beworking.bloqueos
+            UPDATE beworking.bloqueos SET estado = 'Booked'
             WHERE id IN (
                 SELECT fd.idbloqueovinculado FROM beworking.facturasdesglose fd
                 WHERE fd.idfacturadesglose = ? AND fd.idbloqueovinculado IS NOT NULL
