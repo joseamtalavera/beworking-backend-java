@@ -56,13 +56,14 @@ public class SubscriptionController {
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        User currentUser = userOpt.get();
+        boolean admin = isAdmin(authentication);
         // Non-admin users can only list subscriptions for their own contact
-        if (currentUser.getRole() != User.Role.ADMIN) {
+        if (!admin) {
+            Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            User currentUser = userOpt.get();
             if (contactId == null || currentUser.getTenantId() == null || !currentUser.getTenantId().equals(contactId)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
@@ -592,8 +593,8 @@ public class SubscriptionController {
 
     private boolean isAdmin(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) return false;
-        Optional<User> userOpt = userRepository.findByEmail(authentication.getName());
-        return userOpt.isPresent() && userOpt.get().getRole() == User.Role.ADMIN;
+        return authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
     }
 
     private static final Set<String> EU_VAT_PREFIXES = Set.of(
