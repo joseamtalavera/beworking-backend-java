@@ -146,7 +146,7 @@ class BookingService {
                 newContact.setBillingProvince(request.getBillingProvince());
                 newContact.setBillingCountry(request.getBillingCountry());
                 newContact.setBillingPostalCode(request.getBillingPostalCode());
-                newContact.setTenantType("Por Horas");
+                newContact.setTenantType("Usuario Aulas");
                 newContact.setStatus("Activo");
                 newContact.setActive(true);
                 newContact.setChannel("Web");
@@ -280,7 +280,7 @@ class BookingService {
                         """,
                         nextDesgloseId,
                         invoiceId,
-                        "Reserva " + producto.getNombre() + " " + request.getStartTime() + "-" + request.getEndTime(),
+                        "Reserva " + producto.getNombre() + " " + request.getDate() + " " + request.getStartTime() + "-" + request.getEndTime(),
                         hourlyRate,
                         hours,
                         subtotal,
