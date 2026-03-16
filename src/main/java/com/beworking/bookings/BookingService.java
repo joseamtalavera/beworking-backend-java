@@ -404,6 +404,12 @@ class BookingService {
                     + "<p style='margin:0;font-size:12px;color:#888'>Presenta este email en recepci\u00f3n a tu llegada.</p>"
                     + "</div></td>"
                     + "</tr></table>"
+                    // ── Invoice access box ──
+                    + "<div style='background:#f5faf6;border-radius:8px;padding:16px;margin-top:12px'>"
+                    + "<p style='margin:0 0 4px;font-size:14px;font-weight:700;color:#333'>Facturaci\u00f3n</p>"
+                    + "<p style='margin:0;font-size:12px;color:#888'>Accede a tus facturas desde tu panel en "
+                    + "<a href='https://app.be-working.com' style='color:#009624;text-decoration:none;font-weight:600'>app.be-working.com</a></p>"
+                    + "</div>"
                     // ── Contact line ──
                     + "<p style='margin:28px 0 0;font-size:13px;color:#888;text-align:center'>"
                     + "\u00bfNecesitas ayuda? Responde a este correo o escr\u00edbenos por WhatsApp: "
