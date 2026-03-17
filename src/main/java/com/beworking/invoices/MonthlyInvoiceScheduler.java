@@ -246,16 +246,20 @@ public class MonthlyInvoiceScheduler {
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
 
         String taxId = null;
+        Boolean vatValid = null;
         try {
-            taxId = jdbcTemplate.queryForObject(
-                "SELECT billing_tax_id FROM beworking.contact_profiles WHERE id = ?",
-                String.class, contactId);
+            Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT billing_tax_id, vat_valid FROM beworking.contact_profiles WHERE id = ?",
+                contactId);
+            taxId = (String) row.get("billing_tax_id");
+            vatValid = (Boolean) row.get("vat_valid");
         } catch (EmptyResultDataAccessException ignored) {}
 
         if (taxId == null || taxId.isBlank()) {
             return 21;
         }
 
+        // Check EU prefix on tax ID
         String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
         if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
             String customerCountry = normalized.substring(0, 2);
@@ -264,6 +268,13 @@ public class MonthlyInvoiceScheduler {
                     contactId, taxId, customerCountry, supplierCountry);
                 return 0;
             }
+        }
+
+        // Fallback: if VIES validated (vat_valid=true), treat as intra-EU reverse charge
+        if (Boolean.TRUE.equals(vatValid) && !"ES".equals(supplierCountry)) {
+            logger.info("Reverse charge (vat_valid): contact {} taxId={} vs supplier {} → 0% VAT",
+                contactId, taxId, supplierCountry);
+            return 0;
         }
 
         return 21;

@@ -1272,10 +1272,13 @@ public class InvoiceService {
         } catch (EmptyResultDataAccessException ignored) {}
 
         String taxId = null;
+        Boolean vatValid = null;
         try {
-            taxId = jdbcTemplate.queryForObject(
-                "SELECT billing_tax_id FROM beworking.contact_profiles WHERE id = ?",
-                String.class, contactId);
+            Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT billing_tax_id, vat_valid FROM beworking.contact_profiles WHERE id = ?",
+                contactId);
+            taxId = (String) row.get("billing_tax_id");
+            vatValid = (Boolean) row.get("vat_valid");
         } catch (EmptyResultDataAccessException ignored) {}
         if (taxId == null || taxId.isBlank()) return 21;
 
@@ -1284,6 +1287,8 @@ public class InvoiceService {
             String customerCountry = normalized.substring(0, 2);
             if (!supplierCountry.equals(customerCountry)) return 0;
         }
+        // Fallback: VIES validated contacts get reverse charge for non-Spanish suppliers
+        if (Boolean.TRUE.equals(vatValid) && !"ES".equals(supplierCountry)) return 0;
         return 21;
     }
 

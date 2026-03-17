@@ -348,10 +348,13 @@ class BookingService {
     private int resolveContactVatPercent(Long contactId, String cuenta) {
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
         String taxId = null;
+        Boolean vatValid = null;
         try {
-            taxId = jdbcTemplate.queryForObject(
-                "SELECT billing_tax_id FROM beworking.contact_profiles WHERE id = ?",
-                String.class, contactId);
+            var row = jdbcTemplate.queryForMap(
+                "SELECT billing_tax_id, vat_valid FROM beworking.contact_profiles WHERE id = ?",
+                contactId);
+            taxId = (String) row.get("billing_tax_id");
+            vatValid = (Boolean) row.get("vat_valid");
         } catch (EmptyResultDataAccessException ignored) {}
         if (taxId == null || taxId.isBlank()) return 21;
         String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
@@ -362,6 +365,12 @@ class BookingService {
                     contactId, taxId, customerCountry, supplierCountry);
                 return 0;
             }
+        }
+        // Fallback: VIES validated contacts get reverse charge for non-Spanish suppliers
+        if (Boolean.TRUE.equals(vatValid) && !"ES".equals(supplierCountry)) {
+            LOGGER.info("Reverse charge (vat_valid): contact {} taxId={} vs supplier {} → 0% VAT",
+                contactId, taxId, supplierCountry);
+            return 0;
         }
         return 21;
     }
