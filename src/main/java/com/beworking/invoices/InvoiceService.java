@@ -1607,7 +1607,7 @@ public class InvoiceService {
                                     UPDATE beworking.bloqueos b SET estado = 'Pagado'
                                     FROM beworking.facturasdesglose fd
                                     WHERE fd.idbloqueovinculado = b.id AND fd.idfacturadesglose = ? AND b.estado <> 'Pagado'
-                                    """, nextLegacy);
+                                    """, invoiceId);
                                 normalizedStatus = "Pagado";
                                 paymentMethod = "card_charged";
                             }
