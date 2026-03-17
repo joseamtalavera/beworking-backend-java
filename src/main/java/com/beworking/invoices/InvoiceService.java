@@ -613,6 +613,7 @@ public class InvoiceService {
                 stripePaymentIntentId, stripeInvoiceId
             );
             if (updated > 0) {
+                syncBloqueosPaidByStripeInvoice(stripeInvoiceId);
                 return updated;
             }
         }
@@ -627,6 +628,7 @@ public class InvoiceService {
             stripePaymentIntentId, reference
         );
         if (updated > 0) {
+            syncBloqueosPaidByInvoiceNum(reference);
             return updated;
         }
 
@@ -637,10 +639,39 @@ public class InvoiceService {
                 "UPDATE beworking.facturas SET estado = 'Pagado', stripepaymentintentid1 = ?, stripepaymentintentstatus1 = 'succeeded' WHERE idfactura = ? AND estado <> 'Pagado'",
                 stripePaymentIntentId, numRef
             );
+            if (updated > 0) {
+                syncBloqueosPaidByIdfactura(numRef);
+            }
         } catch (NumberFormatException ignored) {
         }
 
         return updated;
+    }
+
+    private void syncBloqueosPaidByStripeInvoice(String stripeInvoiceId) {
+        jdbcTemplate.update("""
+            UPDATE beworking.bloqueos b SET estado = 'Pagado'
+            FROM beworking.facturasdesglose fd
+            JOIN beworking.facturas f ON f.idfactura = fd.idfacturadesglose
+            WHERE fd.idbloqueovinculado = b.id AND f.stripeinvoiceid = ? AND b.estado <> 'Pagado'
+            """, stripeInvoiceId);
+    }
+
+    private void syncBloqueosPaidByInvoiceNum(String invoiceNum) {
+        jdbcTemplate.update("""
+            UPDATE beworking.bloqueos b SET estado = 'Pagado'
+            FROM beworking.facturasdesglose fd
+            JOIN beworking.facturas f ON f.idfactura = fd.idfacturadesglose
+            WHERE fd.idbloqueovinculado = b.id AND f.holdedinvoicenum = ? AND b.estado <> 'Pagado'
+            """, invoiceNum);
+    }
+
+    private void syncBloqueosPaidByIdfactura(int idfactura) {
+        jdbcTemplate.update("""
+            UPDATE beworking.bloqueos b SET estado = 'Pagado'
+            FROM beworking.facturasdesglose fd
+            WHERE fd.idbloqueovinculado = b.id AND fd.idfacturadesglose = ? AND b.estado <> 'Pagado'
+            """, idfactura);
     }
 
     @Transactional
@@ -1571,6 +1602,12 @@ public class InvoiceService {
                                         fechacobro1 = CURRENT_DATE
                                     WHERE id = ?
                                     """, piId, piStatus, paymentMethodId, nextInternalId);
+                                // Sync linked bloqueos to Pagado
+                                jdbcTemplate.update("""
+                                    UPDATE beworking.bloqueos b SET estado = 'Pagado'
+                                    FROM beworking.facturasdesglose fd
+                                    WHERE fd.idbloqueovinculado = b.id AND fd.idfacturadesglose = ? AND b.estado <> 'Pagado'
+                                    """, nextLegacy);
                                 normalizedStatus = "Pagado";
                                 paymentMethod = "card_charged";
                             }

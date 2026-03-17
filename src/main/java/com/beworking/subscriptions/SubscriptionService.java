@@ -111,6 +111,13 @@ public class SubscriptionService {
                                 "UPDATE beworking.facturas SET estado = 'Pagado', stripepaymentintentid1 = ?, stripepaymentintentstatus1 = 'succeeded' WHERE stripeinvoiceid = ? AND estado <> 'Pagado'",
                                 payload.getStripePaymentIntentId(), payload.getStripeInvoiceId());
                         }
+                        // Sync linked bloqueos to Pagado
+                        jdbcTemplate.update("""
+                            UPDATE beworking.bloqueos b SET estado = 'Pagado'
+                            FROM beworking.facturasdesglose fd
+                            JOIN beworking.facturas f ON f.idfactura = fd.idfacturadesglose
+                            WHERE fd.idbloqueovinculado = b.id AND f.stripeinvoiceid = ? AND b.estado <> 'Pagado'
+                            """, payload.getStripeInvoiceId());
                     }
                     logger.info("Invoice already exists for stripeInvoiceId={}, skipping creation",
                         payload.getStripeInvoiceId());
