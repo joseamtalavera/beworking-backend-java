@@ -11,10 +11,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -26,6 +28,12 @@ public class MonthlyInvoiceScheduler {
     private static final Logger logger = LoggerFactory.getLogger(MonthlyInvoiceScheduler.class);
 
     private static final String ADMIN_EMAIL = "accounts@be-working.com";
+
+    private static final Set<String> EU_VAT_PREFIXES = Set.of(
+        "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR",
+        "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL",
+        "PT", "RO", "SE", "SI", "SK"
+    );
 
     private final BloqueoRepository bloqueoRepository;
     private final InvoiceService invoiceService;
@@ -117,10 +125,15 @@ public class MonthlyInvoiceScheduler {
     private void processContactInvoice(Long contactId, List<Bloqueo> bloqueos, YearMonth month) {
         List<Long> bloqueoIds = bloqueos.stream().map(Bloqueo::getId).sorted().toList();
 
+        // Resolve cuenta and VAT for this contact
+        String cuenta = resolveContactCuenta(contactId);
+        int vatPercent = resolveContactVatPercent(contactId, cuenta);
+
         // 1. Create internal invoice (date = 1st of the invoiced month)
         CreateInvoiceRequest request = new CreateInvoiceRequest();
         request.setBloqueoIds(bloqueoIds);
-        request.setVatPercent(BigDecimal.valueOf(21));
+        request.setVatPercent(BigDecimal.valueOf(vatPercent));
+        request.setCuenta(cuenta);
         request.setDescription("Factura mensual - " + month.getMonth().name() + " " + month.getYear());
         request.setInvoiceDate(month.atDay(1).atStartOfDay());
 
@@ -207,6 +220,53 @@ public class MonthlyInvoiceScheduler {
             return contact.getRepresentativeEmail();
         }
         return null;
+    }
+
+    /**
+     * Determines the cuenta (invoicing entity) for a contact.
+     * Looks at active subscriptions first; defaults to "PT".
+     */
+    private String resolveContactCuenta(Long contactId) {
+        try {
+            String cuenta = jdbcTemplate.queryForObject(
+                "SELECT holdedcuenta FROM beworking.subscriptions WHERE contact_id = ? AND active = true ORDER BY id DESC LIMIT 1",
+                String.class, contactId);
+            if (cuenta != null && !cuenta.isBlank()) {
+                return cuenta.toUpperCase();
+            }
+        } catch (EmptyResultDataAccessException ignored) {}
+        return "PT";
+    }
+
+    /**
+     * Resolves VAT percentage using intra-EU reverse charge rules.
+     * Same logic as SubscriptionService.resolveVatPercent().
+     */
+    private int resolveContactVatPercent(Long contactId, String cuenta) {
+        String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
+
+        String taxId = null;
+        try {
+            taxId = jdbcTemplate.queryForObject(
+                "SELECT billing_tax_id FROM beworking.contact_profiles WHERE id = ?",
+                String.class, contactId);
+        } catch (EmptyResultDataAccessException ignored) {}
+
+        if (taxId == null || taxId.isBlank()) {
+            return 21;
+        }
+
+        String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
+        if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
+            String customerCountry = normalized.substring(0, 2);
+            if (!supplierCountry.equals(customerCountry)) {
+                logger.info("Reverse charge: contact {} taxId={} (country={}) vs supplier {} → 0% VAT",
+                    contactId, taxId, customerCountry, supplierCountry);
+                return 0;
+            }
+        }
+
+        return 21;
     }
 
     private void sendStatusEmail(YearMonth month, int successCount, int failCount, List<String> errors) {

@@ -23,6 +23,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.persistence.EntityManager;
@@ -43,7 +44,11 @@ class BookingService {
     private static final String FREE_TENANT_TYPE_DESK = "Usuario Mesa";
     private static final int FREE_MONTHLY_LIMIT = 5;
 
-    private static final BigDecimal VAT_RATE = new BigDecimal("0.21");
+    private static final Set<String> EU_VAT_PREFIXES = Set.of(
+        "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR",
+        "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL",
+        "PT", "RO", "SE", "SI", "SK"
+    );
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -234,17 +239,20 @@ class BookingService {
                     long minutes = Duration.between(startTime, endTime).toMinutes();
                     BigDecimal hours = new BigDecimal(minutes).divide(new BigDecimal("60"), 4, RoundingMode.HALF_UP);
                     BigDecimal subtotal = hourlyRate.multiply(hours).setScale(2, RoundingMode.HALF_UP);
-                    BigDecimal vat = subtotal.multiply(VAT_RATE).setScale(2, RoundingMode.HALF_UP);
+
+                    // Resolve cuenta and VAT rate per contact
+                    String cuentaCodigo = resolveContactCuenta(contact.getId());
+                    int vatPercent = resolveContactVatPercent(contact.getId(), cuentaCodigo);
+                    BigDecimal vatRate = BigDecimal.valueOf(vatPercent).divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+                    BigDecimal vat = subtotal.multiply(vatRate).setScale(2, RoundingMode.HALF_UP);
                     BigDecimal total = subtotal.add(vat).setScale(2, RoundingMode.HALF_UP);
 
-                    // Use CuentaService for proper sequential invoice numbering (PT = Partners/BeWorking)
-                    String invoiceNumber = cuentaService.generateNextInvoiceNumber("PT");
+                    String invoiceNumber = cuentaService.generateNextInvoiceNumber(cuentaCodigo);
                     String numericPart = invoiceNumber.replaceAll("[^0-9]", "");
                     Integer invoiceId = numericPart.isEmpty() ? 0 : Integer.parseInt(numericPart);
 
-                    // Look up cuenta ID for PT
                     Integer cuentaId = jdbcTemplate.queryForObject(
-                        "SELECT id FROM beworking.cuentas WHERE codigo = 'PT'", Integer.class);
+                        "SELECT id FROM beworking.cuentas WHERE codigo = ?", Integer.class, cuentaCodigo);
 
                     Long nextId = jdbcTemplate.queryForObject(
                         "SELECT nextval('beworking.facturas_id_seq')", Long.class);
@@ -256,17 +264,19 @@ class BookingService {
                             fechacreacionreal, estado,
                             total, iva, totaliva, notas, creacionfecha,
                             stripepaymentintentid1, stripepaymentintentstatus1
-                        ) VALUES (?, ?, ?, ?, 'PT', ?, ?, ?, ?, 'Pagado', ?, 21, ?, ?, CURRENT_TIMESTAMP, ?, 'succeeded')
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pagado', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'succeeded')
                         """,
                         nextId,
                         invoiceId,
                         contact.getId(),
                         centro.getId(),
+                        cuentaCodigo,
                         cuentaId,
                         "Reserva: " + producto.getNombre() + " (" + request.getDate() + ")",
                         invoiceNumber,
                         java.sql.Timestamp.valueOf(request.getDate().atStartOfDay()),
                         total,
+                        vatPercent,
                         vat,
                         note,
                         request.getStripePaymentIntentId()
@@ -321,6 +331,39 @@ class BookingService {
         });
 
         return response;
+    }
+
+    private String resolveContactCuenta(Long contactId) {
+        try {
+            String cuenta = jdbcTemplate.queryForObject(
+                "SELECT holdedcuenta FROM beworking.subscriptions WHERE contact_id = ? AND active = true ORDER BY id DESC LIMIT 1",
+                String.class, contactId);
+            if (cuenta != null && !cuenta.isBlank()) {
+                return cuenta.toUpperCase();
+            }
+        } catch (EmptyResultDataAccessException ignored) {}
+        return "PT";
+    }
+
+    private int resolveContactVatPercent(Long contactId, String cuenta) {
+        String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
+        String taxId = null;
+        try {
+            taxId = jdbcTemplate.queryForObject(
+                "SELECT billing_tax_id FROM beworking.contact_profiles WHERE id = ?",
+                String.class, contactId);
+        } catch (EmptyResultDataAccessException ignored) {}
+        if (taxId == null || taxId.isBlank()) return 21;
+        String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
+        if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
+            String customerCountry = normalized.substring(0, 2);
+            if (!supplierCountry.equals(customerCountry)) {
+                LOGGER.info("Reverse charge: contact {} taxId={} (country={}) vs supplier {} → 0% VAT",
+                    contactId, taxId, customerCountry, supplierCountry);
+                return 0;
+            }
+        }
+        return 21;
     }
 
     private void sendBookingEmails(PublicBookingRequest request, String status, String note) {

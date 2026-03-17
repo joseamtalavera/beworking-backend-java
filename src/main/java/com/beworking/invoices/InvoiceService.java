@@ -38,6 +38,11 @@ public class InvoiceService {
 
     private static final int MAX_PAGE_SIZE = 5000;
     private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final Set<String> EU_VAT_PREFIXES = Set.of(
+        "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR",
+        "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL",
+        "PT", "RO", "SE", "SI", "SK"
+    );
 
     private final JdbcTemplate jdbcTemplate;
     private final RestClient http;
@@ -1176,7 +1181,8 @@ public class InvoiceService {
                 description += " · " + DAY_FORMAT.format(fechaIni.toLocalDate());
             }
 
-            BigDecimal vatAmount = lineTotal.multiply(BigDecimal.valueOf(21))
+            int vatPercent = resolveContactVatPercent(contactId);
+            BigDecimal vatAmount = lineTotal.multiply(BigDecimal.valueOf(vatPercent))
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             BigDecimal total = lineTotal.add(vatAmount);
 
@@ -1191,7 +1197,7 @@ public class InvoiceService {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 nextId, nextLegacy, contactId, centerId, description,
-                lineTotal, 21, total, "Pagado", Timestamp.valueOf(now)
+                lineTotal, vatPercent, total, "Pagado", Timestamp.valueOf(now)
             );
 
             Long nextDesgloseId = jdbcTemplate.queryForObject(
@@ -1252,6 +1258,33 @@ public class InvoiceService {
         } catch (EmptyResultDataAccessException ignored) {}
 
         return null;
+    }
+
+    private int resolveContactVatPercent(Long contactId) {
+        if (contactId == null) return 21;
+        // Determine supplier country from contact's active subscription cuenta
+        String supplierCountry = "ES";
+        try {
+            String cuenta = jdbcTemplate.queryForObject(
+                "SELECT holdedcuenta FROM beworking.subscriptions WHERE contact_id = ? AND active = true ORDER BY id DESC LIMIT 1",
+                String.class, contactId);
+            if ("GT".equalsIgnoreCase(cuenta)) supplierCountry = "EE";
+        } catch (EmptyResultDataAccessException ignored) {}
+
+        String taxId = null;
+        try {
+            taxId = jdbcTemplate.queryForObject(
+                "SELECT billing_tax_id FROM beworking.contact_profiles WHERE id = ?",
+                String.class, contactId);
+        } catch (EmptyResultDataAccessException ignored) {}
+        if (taxId == null || taxId.isBlank()) return 21;
+
+        String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
+        if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
+            String customerCountry = normalized.substring(0, 2);
+            if (!supplierCountry.equals(customerCountry)) return 0;
+        }
+        return 21;
     }
 
     private record LineComputation(String concept, BigDecimal quantity, BigDecimal unitPrice, BigDecimal total) { }
