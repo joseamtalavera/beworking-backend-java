@@ -284,6 +284,44 @@ public class RegisterService {
         return user;
     }
 
+    /**
+     * Creates a user account for a booking contact and sends a booking welcome email.
+     * Idempotent: returns existing user if one already exists for this email.
+     * Token expires in 48 hours.
+     */
+    public User createUserForBookingContact(String email, String name, Long contactProfileId) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+
+        String normalizedEmail = email.toLowerCase().trim();
+
+        var existing = userRepository.findByEmail(normalizedEmail);
+        if (existing.isPresent()) {
+            User user = existing.get();
+            if (user.getTenantId() == null) {
+                user.setTenantId(contactProfileId);
+                userRepository.save(user);
+            }
+            return user;
+        }
+
+        String randomPassword = UUID.randomUUID().toString() + UUID.randomUUID().toString();
+        User user = new User(normalizedEmail, passwordEncoder.encode(randomPassword), User.Role.USER);
+        user.setName(name != null ? name.trim() : null);
+        user.setEmailConfirmed(true);
+        user.setTenantId(contactProfileId);
+
+        String rawToken = UUID.randomUUID().toString();
+        user.setConfirmationToken(hashToken(rawToken));
+        user.setConfirmationTokenExpiry(Instant.now().plus(48, ChronoUnit.HOURS));
+        userRepository.save(user);
+
+        emailService.sendBookingWelcomeEmail(normalizedEmail, name != null ? name.trim() : null, rawToken);
+
+        return user;
+    }
+
     public boolean changePassword(String email, String newPassword) {
         if (!isPasswordValid(newPassword)) {
             return false;

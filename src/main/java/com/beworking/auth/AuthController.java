@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
+import com.beworking.subscriptions.SubscriptionRepository;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -26,6 +27,7 @@ public class AuthController {
     private final RegisterService registerService;
     private final UserRepository userRepository;
     private final ContactProfileRepository contactProfileRepository;
+    private final SubscriptionRepository subscriptionRepository;
     private final TurnstileService turnstileService;
     @Value("${app.security.cookie-secure:true}")
     private boolean cookieSecure;
@@ -36,12 +38,14 @@ public class AuthController {
 
     public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService,
                           UserRepository userRepository, ContactProfileRepository contactProfileRepository,
+                          SubscriptionRepository subscriptionRepository,
                           TurnstileService turnstileService) {
         this.loginService = loginService;
         this.jwtUtil = jwtUtil;
         this.registerService = registerService;
         this.userRepository = userRepository;
         this.contactProfileRepository = contactProfileRepository;
+        this.subscriptionRepository = subscriptionRepository;
         this.turnstileService = turnstileService;
     }
 
@@ -364,6 +368,12 @@ public class AuthController {
                         .findByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
                             userEmail, userEmail, userEmail, userEmail);
                     userData.put("hasMultipleAccounts", profiles.size() > 1);
+
+                    // ADMIN always has full access; for others, check active subscription
+                    boolean hasActiveSubscription = user.getRole() == User.Role.ADMIN
+                        || (user.getTenantId() != null
+                            && !subscriptionRepository.findByContactIdAndActiveTrue(user.getTenantId()).isEmpty());
+                    userData.put("hasActiveSubscription", hasActiveSubscription);
 
                     return ResponseEntity.ok(userData);
                 })

@@ -1,6 +1,7 @@
 package com.beworking.bookings;
 
 import com.beworking.auth.User;
+import com.beworking.auth.RegisterService;
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
 import com.beworking.auth.EmailService;
@@ -55,6 +56,7 @@ class BookingService {
     private final EmailService emailService;
     private final JdbcTemplate jdbcTemplate;
     private final CuentaService cuentaService;
+    private final RegisterService registerService;
 
     BookingService(ReservaRepository reservaRepository,
                    BloqueoRepository bloqueoRepository,
@@ -63,7 +65,8 @@ class BookingService {
                    ProductoRepository productoRepository,
                    EmailService emailService,
                    JdbcTemplate jdbcTemplate,
-                   CuentaService cuentaService) {
+                   CuentaService cuentaService,
+                   RegisterService registerService) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
@@ -72,6 +75,7 @@ class BookingService {
         this.emailService = emailService;
         this.jdbcTemplate = jdbcTemplate;
         this.cuentaService = cuentaService;
+        this.registerService = registerService;
     }
 
     @Transactional(readOnly = true)
@@ -299,12 +303,20 @@ class BookingService {
             }
         }
 
-        // ── Send emails only after transaction commits ──
+        // ── Send emails and auto-create user account only after transaction commits ──
         final String finalNote = note;
+        final String contactEmail = contact.getEmailPrimary();
+        final String contactName = contact.getContactName() != null ? contact.getContactName() : contact.getName();
+        final Long contactId = contact.getId();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 sendBookingEmails(request, reservaRequest.getStatus(), finalNote);
+                try {
+                    registerService.createUserForBookingContact(contactEmail, contactName, contactId);
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to auto-create user account for booking contact {}: {}", contactEmail, e.getMessage());
+                }
             }
         });
 

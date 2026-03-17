@@ -186,6 +186,58 @@ public class EmailService {
     }
 
     @Async
+    public void sendBookingWelcomeEmail(String to, String name, String token) {
+        String subject = "Tu cuenta BeWorking está lista";
+        String resetLink = frontendUrl + "/main/reset-password?token=" + token;
+        String safeName = name != null ? name : "";
+        String content = "<!doctype html>"
+                + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                + "<title>Tu cuenta BeWorking</title></head>"
+                + "<body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background:#f7f7f8;\">"
+                + "<tr><td align=\"center\" style=\"padding:24px 0;\">"
+                + "<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:600px;max-width:600px;margin:0 auto;\">"
+                + "<tr><td style=\"background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:40px 32px 32px;color:#ffffff;border-radius:14px 14px 0 0;\">"
+                + "<p style=\"margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;\">BEWORKING</p>"
+                + "<h1 style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;line-height:1.2;color:#ffffff;\">Tu cuenta está lista</h1>"
+                + "</td></tr>"
+                + "<tr><td style=\"background:#ffffff;padding:32px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">"
+                + "<p style=\"margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#333;\">Hola <strong>" + safeName + "</strong>,</p>"
+                + "<p style=\"margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Hemos creado tu cuenta en <strong>BeWorking</strong> con motivo de tu reserva. Desde tu panel podrás gestionar tus reservas, facturas y mucho más.</p>"
+                + "<p style=\"margin:0 0 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Configura tu contraseña para acceder. Este enlace caduca en 48 horas.</p>"
+                + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto;\">"
+                + "<tr><td align=\"center\" style=\"border-radius:8px;background:#009624;\">"
+                + "<a href=\"" + resetLink + "\" style=\"display:inline-block;background:#009624;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;padding:14px 36px;border-radius:8px;\">Configurar contraseña</a>"
+                + "</td></tr></table>"
+                + "<div style=\"margin:28px 0 0;background:#f5faf6;border-radius:10px;padding:16px 20px;border-left:4px solid #009624;\">"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;line-height:1.5;\">Si no has realizado ninguna reserva, puedes ignorar este mensaje.</p>"
+                + "</div>"
+                + "<p style=\"margin:28px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#888;text-align:center;\">"
+                + "¿Necesitas ayuda? Escríbenos por WhatsApp: "
+                + "<a href=\"https://wa.me/34640369759\" style=\"color:#009624;text-decoration:none;font-weight:600;\">+34 640 369 759</a></p>"
+                + "<div style=\"margin:28px -32px -32px;background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee;border-radius:0 0 14px 14px;\">"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#aaa;\">© BeWorking · Málaga</p>"
+                + "</div>"
+                + "</td></tr>"
+                + "</table>"
+                + "</td></tr></table>"
+                + "</body></html>";
+        try {
+            logger.info("Attempting to send booking welcome email to {}", to);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(content, true);
+            mailSender.send(message);
+            logger.info("Booking welcome email sent successfully to {}", to);
+        } catch (Exception e) {
+            logger.error("Failed to send booking welcome email to {}: {}", to, e.getMessage(), e);
+        }
+    }
+
+    @Async
     public void sendTrialWelcomeEmail(String to, String name, String plan, String location) {
         String planLabel = plan != null ? switch (plan.toLowerCase()) {
             case "basic" -> "Basic";
