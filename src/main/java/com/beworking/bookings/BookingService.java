@@ -347,6 +347,7 @@ class BookingService {
 
     private int resolveContactVatPercent(Long contactId, String cuenta) {
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
+        int localVat = localVatRate(supplierCountry);
         String taxId = null;
         Boolean vatValid = null;
         try {
@@ -356,7 +357,7 @@ class BookingService {
             taxId = (String) row.get("billing_tax_id");
             vatValid = (Boolean) row.get("vat_valid");
         } catch (EmptyResultDataAccessException ignored) {}
-        if (taxId == null || taxId.isBlank()) return 21;
+        if (taxId == null || taxId.isBlank()) return localVat;
         String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
         if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
             String customerCountry = normalized.substring(0, 2);
@@ -366,13 +367,20 @@ class BookingService {
                 return 0;
             }
         }
-        // Fallback: VIES validated contacts get reverse charge for non-Spanish suppliers
-        if (Boolean.TRUE.equals(vatValid) && !"ES".equals(supplierCountry)) {
+        if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals("EE")) {
             LOGGER.info("Reverse charge (vat_valid): contact {} taxId={} vs supplier {} → 0% VAT",
                 contactId, taxId, supplierCountry);
             return 0;
         }
-        return 21;
+        return localVat;
+    }
+
+    private static int localVatRate(String countryCode) {
+        return switch (countryCode) {
+            case "EE" -> 24;
+            case "ES" -> 21;
+            default -> 21;
+        };
     }
 
     private void sendBookingEmails(PublicBookingRequest request, String status, String note) {

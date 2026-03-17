@@ -244,6 +244,7 @@ public class MonthlyInvoiceScheduler {
      */
     private int resolveContactVatPercent(Long contactId, String cuenta) {
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
+        int localVat = localVatRate(supplierCountry);
 
         String taxId = null;
         Boolean vatValid = null;
@@ -256,7 +257,7 @@ public class MonthlyInvoiceScheduler {
         } catch (EmptyResultDataAccessException ignored) {}
 
         if (taxId == null || taxId.isBlank()) {
-            return 21;
+            return localVat;
         }
 
         // Check EU prefix on tax ID
@@ -271,13 +272,21 @@ public class MonthlyInvoiceScheduler {
         }
 
         // Fallback: if VIES validated (vat_valid=true), treat as intra-EU reverse charge
-        if (Boolean.TRUE.equals(vatValid) && !"ES".equals(supplierCountry)) {
+        if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals("EE")) {
             logger.info("Reverse charge (vat_valid): contact {} taxId={} vs supplier {} → 0% VAT",
                 contactId, taxId, supplierCountry);
             return 0;
         }
 
-        return 21;
+        return localVat;
+    }
+
+    private static int localVatRate(String countryCode) {
+        return switch (countryCode) {
+            case "EE" -> 24;
+            case "ES" -> 21;
+            default -> 21;
+        };
     }
 
     private void sendStatusEmail(YearMonth month, int successCount, int failCount, List<String> errors) {

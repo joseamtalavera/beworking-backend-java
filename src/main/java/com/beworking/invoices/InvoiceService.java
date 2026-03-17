@@ -1271,6 +1271,8 @@ public class InvoiceService {
             if ("GT".equalsIgnoreCase(cuenta)) supplierCountry = "EE";
         } catch (EmptyResultDataAccessException ignored) {}
 
+        int localVat = localVatRate(supplierCountry);
+
         String taxId = null;
         Boolean vatValid = null;
         try {
@@ -1280,16 +1282,23 @@ public class InvoiceService {
             taxId = (String) row.get("billing_tax_id");
             vatValid = (Boolean) row.get("vat_valid");
         } catch (EmptyResultDataAccessException ignored) {}
-        if (taxId == null || taxId.isBlank()) return 21;
+        if (taxId == null || taxId.isBlank()) return localVat;
 
         String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
         if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
             String customerCountry = normalized.substring(0, 2);
             if (!supplierCountry.equals(customerCountry)) return 0;
         }
-        // Fallback: VIES validated contacts get reverse charge for non-Spanish suppliers
-        if (Boolean.TRUE.equals(vatValid) && !"ES".equals(supplierCountry)) return 0;
-        return 21;
+        if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals("EE")) return 0;
+        return localVat;
+    }
+
+    private static int localVatRate(String countryCode) {
+        return switch (countryCode) {
+            case "EE" -> 24;
+            case "ES" -> 21;
+            default -> 21;
+        };
     }
 
     private record LineComputation(String concept, BigDecimal quantity, BigDecimal unitPrice, BigDecimal total) { }
