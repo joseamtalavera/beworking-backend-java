@@ -1266,7 +1266,7 @@ public class InvoiceService {
         String supplierCountry = "ES";
         try {
             String cuenta = jdbcTemplate.queryForObject(
-                "SELECT holdedcuenta FROM beworking.subscriptions WHERE contact_id = ? AND active = true ORDER BY id DESC LIMIT 1",
+                "SELECT cuenta FROM beworking.subscriptions WHERE contact_id = ? AND active = true ORDER BY id DESC LIMIT 1",
                 String.class, contactId);
             if ("GT".equalsIgnoreCase(cuenta)) supplierCountry = "EE";
         } catch (EmptyResultDataAccessException ignored) {}

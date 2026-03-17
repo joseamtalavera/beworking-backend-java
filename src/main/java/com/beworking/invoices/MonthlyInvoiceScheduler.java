@@ -229,7 +229,7 @@ public class MonthlyInvoiceScheduler {
     private String resolveContactCuenta(Long contactId) {
         try {
             String cuenta = jdbcTemplate.queryForObject(
-                "SELECT holdedcuenta FROM beworking.subscriptions WHERE contact_id = ? AND active = true ORDER BY id DESC LIMIT 1",
+                "SELECT cuenta FROM beworking.subscriptions WHERE contact_id = ? AND active = true ORDER BY id DESC LIMIT 1",
                 String.class, contactId);
             if (cuenta != null && !cuenta.isBlank()) {
                 return cuenta.toUpperCase();
