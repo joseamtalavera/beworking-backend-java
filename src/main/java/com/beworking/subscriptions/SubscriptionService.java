@@ -155,7 +155,7 @@ public class SubscriptionService {
 
         // Generate internal primary key
         Long nextInternalId = jdbcTemplate.queryForObject(
-            "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+            "SELECT nextval('beworking.facturas_id_seq')", Long.class);
 
         // Use Stripe subtotal when available (handles prorated first invoices correctly).
         // Fall back to subscription monthly amount for bank transfer or missing data.
@@ -213,7 +213,7 @@ public class SubscriptionService {
 
         // Insert line item
         Long nextDesgloseId = jdbcTemplate.queryForObject(
-            "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+            "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
 
         jdbcTemplate.update(
             """
@@ -274,7 +274,7 @@ public class SubscriptionService {
 
         // Generate internal primary key
         Long nextInternalId = jdbcTemplate.queryForObject(
-            "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturas", Long.class);
+            "SELECT nextval('beworking.facturas_id_seq')", Long.class);
 
         // VAT calculation
         BigDecimal subtotal = subscription.getMonthlyAmount();
@@ -314,7 +314,7 @@ public class SubscriptionService {
 
         // Insert line item
         Long nextDesgloseId = jdbcTemplate.queryForObject(
-            "SELECT COALESCE(MAX(id), 0) + 1 FROM beworking.facturasdesglose", Long.class);
+            "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
 
         jdbcTemplate.update(
             """
