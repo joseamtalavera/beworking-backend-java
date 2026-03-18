@@ -1333,7 +1333,7 @@ public class InvoiceService {
      * is behind the actual max ID (prevents duplicate key violations).
      */
     private Long nextFacturaId() {
-        Long nextId = nextFacturaId();
+        Long nextId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturas_id_seq')", Long.class);
         Long maxId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM beworking.facturas", Long.class);
         if (nextId != null && maxId != null && nextId <= maxId) {
             logger.warn("facturas_id_seq was behind (seq={}, max={}), resetting", nextId, maxId);
