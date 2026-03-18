@@ -3,6 +3,8 @@ package com.beworking.invoices;
 import com.beworking.bookings.Bloqueo;
 import com.beworking.bookings.BloqueoRepository;
 import com.beworking.cuentas.CuentaService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
@@ -43,6 +45,8 @@ public class InvoiceService {
         "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL",
         "PT", "RO", "SE", "SI", "SK"
     );
+
+    private static final Logger logger = LoggerFactory.getLogger(InvoiceService.class);
 
     private final JdbcTemplate jdbcTemplate;
     private final RestClient http;
@@ -422,7 +426,7 @@ public class InvoiceService {
             : BigDecimal.ZERO;
         BigDecimal total = subtotal.add(vatAmount);
 
-        Long nextId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturas_id_seq')", Long.class);
+        Long nextId = nextFacturaId();
         LocalDateTime now = request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now();
 
         // Determine the cuenta for invoice numbering
@@ -980,7 +984,7 @@ public class InvoiceService {
         );
 
         // Generate new IDs
-        Long nextId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturas_id_seq')", Long.class);
+        Long nextId = nextFacturaId();
         Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
 
         // Negate totals
@@ -1217,7 +1221,7 @@ public class InvoiceService {
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             BigDecimal total = lineTotal.add(vatAmount);
 
-            Long nextId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturas_id_seq')", Long.class);
+            Long nextId = nextFacturaId();
             Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
             LocalDateTime now = LocalDateTime.now();
 
@@ -1322,6 +1326,32 @@ public class InvoiceService {
         }
         if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals("EE")) return 0;
         return localVat;
+    }
+
+    /**
+     * Returns a safe next ID from the facturas sequence, auto-correcting if the sequence
+     * is behind the actual max ID (prevents duplicate key violations).
+     */
+    private Long nextFacturaId() {
+        Long nextId = nextFacturaId();
+        Long maxId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM beworking.facturas", Long.class);
+        if (nextId != null && maxId != null && nextId <= maxId) {
+            logger.warn("facturas_id_seq was behind (seq={}, max={}), resetting", nextId, maxId);
+            nextId = jdbcTemplate.queryForObject(
+                "SELECT setval('beworking.facturas_id_seq', ? + 1)", Long.class, maxId);
+        }
+        return nextId;
+    }
+
+    private Long nextDesgloseId() {
+        Long nextId = jdbcTemplate.queryForObject("SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
+        Long maxId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM beworking.facturasdesglose", Long.class);
+        if (nextId != null && maxId != null && nextId <= maxId) {
+            logger.warn("facturasdesglose_id_seq was behind (seq={}, max={}), resetting", nextId, maxId);
+            nextId = jdbcTemplate.queryForObject(
+                "SELECT setval('beworking.facturasdesglose_id_seq', ? + 1)", Long.class, maxId);
+        }
+        return nextId;
     }
 
     private static int localVatRate(String countryCode) {
