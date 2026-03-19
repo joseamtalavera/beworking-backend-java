@@ -141,14 +141,14 @@ public class InvoiceService {
             args.add(filters.cuenta().trim());
         }
 
-        // Date filtering - use creacionfecha (creation date) for filtering
+        // Date filtering - prefer fechacreacionreal (billing period date), fall back to creacionfecha
         if (hasText(filters.startDate())) {
-            where.append(" AND f.creacionfecha >= ?::timestamp");
+            where.append(" AND COALESCE(f.fechacreacionreal::timestamp, f.creacionfecha) >= ?::timestamp");
             args.add(filters.startDate().trim());
         }
 
         if (hasText(filters.endDate())) {
-            where.append(" AND f.creacionfecha < ?::date + INTERVAL '1 day'");
+            where.append(" AND COALESCE(f.fechacreacionreal::timestamp, f.creacionfecha) < ?::date + INTERVAL '1 day'");
             args.add(filters.endDate().trim());
         }
 
@@ -174,7 +174,7 @@ public class InvoiceService {
                 f.iva,
                 f.totaliva,
                 f.estado,
-                f.creacionfecha,
+                COALESCE(f.fechacreacionreal::timestamp, f.creacionfecha) AS creacionfecha,
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf,
                 MAX(COALESCE(c.name, c.contact_name, c.billing_name)) AS client_name,
@@ -210,10 +210,11 @@ public class InvoiceService {
                 f.iva,
                 f.totaliva,
                 f.estado,
+                f.fechacreacionreal,
                 f.creacionfecha,
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf
-            ORDER BY f.creacionfecha DESC NULLS LAST, f.id DESC
+            ORDER BY COALESCE(f.fechacreacionreal::timestamp, f.creacionfecha) DESC NULLS LAST, f.id DESC
             OFFSET ? LIMIT ?
             """;
 
