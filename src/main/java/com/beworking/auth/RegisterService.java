@@ -7,6 +7,7 @@ import com.beworking.subscriptions.Subscription;
 import com.beworking.subscriptions.SubscriptionRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,7 @@ public class RegisterService {
      * Creates a new user account with a trial subscription when inputs are valid and the email is unused.
      * Also creates a Subscription record and populates ContactProfile with billing data.
      */
+    @Transactional
     public User registerUserWithTrial(RegisterRequest request) {
         String name = request.getName();
         String email = request.getEmail();

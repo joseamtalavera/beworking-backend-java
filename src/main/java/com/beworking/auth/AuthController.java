@@ -257,8 +257,22 @@ public class AuthController {
         if (email == null || email.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("available", false));
         }
-        boolean exists = userRepository.findByEmail(email.toLowerCase().trim()).isPresent();
-        return ResponseEntity.ok(Map.of("available", !exists));
+        String normalized = email.toLowerCase().trim();
+        var userOpt = userRepository.findByEmail(normalized);
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            // Clean up orphan users (user exists but no contact profile)
+            boolean hasContact = contactProfileRepository
+                .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                    normalized, normalized, normalized, normalized)
+                .isPresent();
+            if (!hasContact && user.getTenantId() == null) {
+                userRepository.delete(user);
+                return ResponseEntity.ok(Map.of("available", true));
+            }
+            return ResponseEntity.ok(Map.of("available", false));
+        }
+        return ResponseEntity.ok(Map.of("available", true));
     }
 
     @PostMapping("/register")
