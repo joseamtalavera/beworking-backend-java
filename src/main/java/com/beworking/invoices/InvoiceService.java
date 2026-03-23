@@ -106,7 +106,8 @@ public class InvoiceService {
 
         if (hasText(filters.idFactura())) {
             String like = "%" + filters.idFactura().trim().toLowerCase() + "%";
-            where.append(" AND (CAST(f.idfactura AS TEXT) ILIKE ? OR CAST(f.id AS TEXT) ILIKE ?)");
+            where.append(" AND (CAST(f.idfactura AS TEXT) ILIKE ? OR CAST(f.id AS TEXT) ILIKE ? OR LOWER(COALESCE(f.holdedinvoicenum, '')) ILIKE ?)");
+            args.add(like);
             args.add(like);
             args.add(like);
         }
@@ -291,7 +292,8 @@ public class InvoiceService {
 
         if (hasText(filters.idFactura())) {
             String like = "%" + filters.idFactura().trim().toLowerCase() + "%";
-            where.append(" AND (CAST(f.idfactura AS TEXT) ILIKE ? OR CAST(f.id AS TEXT) ILIKE ?)");
+            where.append(" AND (CAST(f.idfactura AS TEXT) ILIKE ? OR CAST(f.id AS TEXT) ILIKE ? OR LOWER(COALESCE(f.holdedinvoicenum, '')) ILIKE ?)");
+            args.add(like);
             args.add(like);
             args.add(like);
         }
