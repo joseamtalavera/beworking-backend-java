@@ -94,13 +94,7 @@ public class InvoiceService {
 
         if (hasText(filters.email())) {
             String like = "%" + filters.email().trim().toLowerCase() + "%";
-            where.append(" AND (LOWER(COALESCE(c.email_primary, '')) LIKE ?"
-                + " OR LOWER(COALESCE(c.email_secondary, '')) LIKE ?"
-                + " OR LOWER(COALESCE(c.email_tertiary, '')) LIKE ?"
-                + " OR LOWER(COALESCE(c.representative_email, '')) LIKE ?)");
-            args.add(like);
-            args.add(like);
-            args.add(like);
+            where.append(" AND LOWER(COALESCE(c.email_primary, '')) LIKE ?");
             args.add(like);
         }
 
@@ -280,13 +274,7 @@ public class InvoiceService {
 
         if (hasText(filters.email())) {
             String like = "%" + filters.email().trim().toLowerCase() + "%";
-            where.append(" AND (LOWER(COALESCE(c.email_primary, '')) LIKE ?"
-                + " OR LOWER(COALESCE(c.email_secondary, '')) LIKE ?"
-                + " OR LOWER(COALESCE(c.email_tertiary, '')) LIKE ?"
-                + " OR LOWER(COALESCE(c.representative_email, '')) LIKE ?)");
-            args.add(like);
-            args.add(like);
-            args.add(like);
+            where.append(" AND LOWER(COALESCE(c.email_primary, '')) LIKE ?");
             args.add(like);
         }
 
