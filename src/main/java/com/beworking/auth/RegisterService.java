@@ -181,6 +181,81 @@ public class RegisterService {
     }
 
     /**
+     * Creates a free user account with email confirmation required.
+     * No payment, no Stripe, no subscription. User must confirm email before login.
+     */
+    @Transactional
+    public User registerSimple(RegisterRequest request) {
+        String name = request.getName();
+        String email = request.getEmail();
+        String password = request.getPassword();
+
+        if (!isNonBlank(name) || !isNonBlank(email) || !isPasswordValid(password)) {
+            return null;
+        }
+
+        String normalizedEmail = email.toLowerCase().trim();
+
+        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
+            return null;
+        }
+
+        User user = new User(normalizedEmail, passwordEncoder.encode(password), User.Role.USER);
+        user.setName(name.trim());
+        user.setPhone(request.getPhone());
+        user.setEmailConfirmed(false); // Requires email confirmation
+
+        // Generate confirmation token
+        String rawToken = UUID.randomUUID().toString();
+        user.setConfirmationToken(hashToken(rawToken));
+        user.setConfirmationTokenExpiry(Instant.now().plus(1, ChronoUnit.HOURS));
+
+        // Auto-link or create ContactProfile
+        var existingProfile = contactProfileRepository
+            .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail);
+
+        ContactProfile cp;
+        if (existingProfile.isPresent()) {
+            cp = existingProfile.get();
+            user.setTenantId(cp.getId());
+        } else {
+            cp = new ContactProfile();
+            cp.setId(System.currentTimeMillis());
+            cp.setName(name.trim());
+            cp.setEmailPrimary(normalizedEmail);
+            cp.setStatus("Free");
+            cp.setTenantType("Usuario Free");
+            cp.setActive(true);
+            cp.setCreatedAt(LocalDateTime.now());
+            cp.setStatusChangedAt(LocalDateTime.now());
+            cp.setChannel("Self-registration-free");
+            user.setTenantId(cp.getId());
+        }
+
+        if (request.getCompany() != null && !request.getCompany().isBlank()) {
+            cp.setBillingName(request.getCompany().trim());
+        }
+        if (request.getPhone() != null && !request.getPhone().isBlank()) {
+            cp.setPhonePrimary(request.getPhone().trim());
+        }
+
+        contactProfileRepository.save(cp);
+        userRepository.save(user);
+
+        // Send confirmation email
+        emailService.sendConfirmationEmail(normalizedEmail, rawToken);
+
+        // Send admin notification
+        emailService.sendRegistrationAdminNotification(
+            name, normalizedEmail, request.getPhone(),
+            request.getCompany(), null, null, null
+        );
+
+        return user;
+    }
+
+    /**
      * Retrieves a user awaiting confirmation by a one-time token.
      */
     public java.util.Optional<User> findByConfirmationToken(String token) {

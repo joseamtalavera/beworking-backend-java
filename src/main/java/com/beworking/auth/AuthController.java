@@ -282,12 +282,12 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new AuthResponse("Turnstile verification failed", null, null));
         }
-        User created = registerService.registerUserWithTrial(request);
+        User created = registerService.registerSimple(request);
         if (created != null) {
-            return ResponseEntity.ok(new AuthResponse("User registered successfully", null, "USER"));
+            return ResponseEntity.ok(new AuthResponse("User registered. Please check your email to confirm your account.", null, "USER"));
         } else {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(new AuthResponse("User already exists", null, null));
+                    .body(new AuthResponse("User already exists or invalid data", null, null));
         }
     }
 

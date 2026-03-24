@@ -23,6 +23,9 @@ public class LoginService {
         if (userOpt.isPresent()) {
             User user = userOpt.get();
             if (passwordEncoder.matches(password, user.getPassword())) {
+                if (!user.isEmailConfirmed()) {
+                    return Optional.empty(); // Email not confirmed yet
+                }
                 return Optional.of(user);
             }
         }
