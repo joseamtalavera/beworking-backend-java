@@ -408,12 +408,11 @@ public class InvoiceService {
         subtotal = subtotal.setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal vatPercent = request.getVatPercent();
-        if (vatPercent != null) {
-            vatPercent = vatPercent.setScale(2, RoundingMode.HALF_UP);
+        if (vatPercent == null) {
+            vatPercent = BigDecimal.valueOf(21); // Default: 21% IVA for Spanish services
         }
-        BigDecimal vatAmount = vatPercent != null
-            ? subtotal.multiply(vatPercent).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
-            : BigDecimal.ZERO;
+        vatPercent = vatPercent.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal vatAmount = subtotal.multiply(vatPercent).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(vatAmount);
 
         Long nextId = nextFacturaId();
