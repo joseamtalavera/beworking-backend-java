@@ -148,9 +148,9 @@ public class RegisterService {
                 sub.setVatPercent(0); // EU VAT reverse charge
             }
 
-            // Create Stripe subscription (no trial — charge immediately)
+            // Create Stripe subscription (charge immediately, no trial)
             if (request.getSetupIntentId() != null && !request.getSetupIntentId().isBlank()) {
-                String stripeSubId = createStripeTrialSubscription(
+                String stripeSubId = createStripeSubscription(
                     request.getSetupIntentId(),
                     amount.multiply(new java.math.BigDecimal("100")).intValue(),
                     sub.getCurrency().toLowerCase(),
@@ -431,9 +431,9 @@ public class RegisterService {
      * Calls the Stripe service to create a trial subscription.
      * Returns the Stripe subscription ID, or null on failure.
      */
-    private String createStripeTrialSubscription(String setupIntentId, int monthlyAmountCents,
-                                                  String currency, int trialDays,
-                                                  String description, String plan) {
+    private String createStripeSubscription(String setupIntentId, int monthlyAmountCents,
+                                              String currency, int trialDays,
+                                              String description, String plan) {
         try {
             String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
                 ? System.getenv("STRIPE_SERVICE_URL")
@@ -464,11 +464,11 @@ public class RegisterService {
 
             if (response != null && response.containsKey("subscriptionId")) {
                 String subId = (String) response.get("subscriptionId");
-                logger.info("Created Stripe trial subscription {} for setupIntent {}", subId, setupIntentId);
+                logger.info("Created Stripe subscription {} for setupIntent {}", subId, setupIntentId);
                 return subId;
             }
         } catch (Exception e) {
-            logger.error("Failed to create Stripe trial subscription for setupIntent {}: {}",
+            logger.error("Failed to create Stripe subscription for setupIntent {}: {}",
                 setupIntentId, e.getMessage(), e);
         }
         return null;
