@@ -224,7 +224,7 @@ public class RegisterService {
             cp.setId(System.currentTimeMillis());
             cp.setName(name.trim());
             cp.setEmailPrimary(normalizedEmail);
-            cp.setStatus("Free");
+            cp.setStatus("Activo");
             cp.setTenantType("Usuario Free");
             cp.setActive(true);
             cp.setCreatedAt(LocalDateTime.now());

@@ -33,6 +33,8 @@ public class AuthController {
     private boolean cookieSecure;
     @Value("${app.security.cookie-domain:}")
     private String cookieDomain;
+    @Value("${app.frontend-url:https://www.be-working.com}")
+    private String frontendUrl;
     private static final String ACCESS_COOKIE = "beworking_access";
     private static final String REFRESH_COOKIE = "beworking_refresh";
 
@@ -514,7 +516,7 @@ public class AuthController {
     @GetMapping("/confirm")
     public ResponseEntity<String> confirmationEmail(@RequestParam("token") String token) {
         var userOpt = registerService.findByConfirmationToken(token);
-        String loginUrl = "http://localhost:3020/main/login";
+        String loginUrl = frontendUrl + "/main/login";
         String buttonStyle = "background:#388e3c;color:#fff;border:none;border-radius:4px;padding:0.75em 2em;font-size:1.1em;cursor:pointer;margin-top:2em;box-shadow:0 2px 8px #0001;transition:background 0.2s;";
         String cardStyle = "max-width:420px;margin:3em auto;background:#fff;border-radius:12px;box-shadow:0 2px 16px #0002;padding:2.5em 2em;text-align:center;font-family:sans-serif;";
         String bodyStyle = "background:#f5f7fa;min-height:100vh;";
