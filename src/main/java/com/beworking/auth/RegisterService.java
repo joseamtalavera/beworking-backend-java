@@ -139,7 +139,7 @@ public class RegisterService {
             sub.setDescription("BeWorking " + planLabel);
             sub.setBillingMethod("stripe");
             sub.setStripeCustomerId(request.getStripeCustomerId());
-            sub.setStartDate(LocalDate.now().plusDays(30)); // Billing starts after 30-day trial
+            sub.setStartDate(LocalDate.now()); // Billing starts immediately
             sub.setEndDate(null); // Ongoing subscription, no fixed end
             sub.setActive(true);
             sub.setCreatedAt(LocalDateTime.now());
@@ -148,13 +148,13 @@ public class RegisterService {
                 sub.setVatPercent(0); // EU VAT reverse charge
             }
 
-            // Create Stripe trial subscription
+            // Create Stripe subscription (no trial — charge immediately)
             if (request.getSetupIntentId() != null && !request.getSetupIntentId().isBlank()) {
                 String stripeSubId = createStripeTrialSubscription(
                     request.getSetupIntentId(),
                     amount.multiply(new java.math.BigDecimal("100")).intValue(),
                     sub.getCurrency().toLowerCase(),
-                    30,
+                    0,
                     "BeWorking " + planLabel,
                     planKey
                 );
@@ -175,7 +175,7 @@ public class RegisterService {
 
         // Send welcome email to the user
         String planLabel = request.getPlan() != null ? request.getPlan() : "Basic";
-        emailService.sendTrialWelcomeEmail(normalizedEmail, name.trim(), planLabel, request.getLocation());
+        emailService.sendSubscriptionWelcomeEmail(normalizedEmail, name.trim(), planLabel, request.getLocation());
 
         return user;
     }

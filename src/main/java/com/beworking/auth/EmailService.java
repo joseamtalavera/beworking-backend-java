@@ -238,7 +238,7 @@ public class EmailService {
     }
 
     @Async
-    public void sendTrialWelcomeEmail(String to, String name, String plan, String location) {
+    public void sendSubscriptionWelcomeEmail(String to, String name, String plan, String location) {
         String planLabel = plan != null ? switch (plan.toLowerCase()) {
             case "basic" -> "Basic";
             case "pro" -> "Pro";
@@ -254,7 +254,7 @@ public class EmailService {
 
         String loginUrl = frontendUrl + "/main/login";
 
-        String subject = "Bienvenido a BeWorking — Tu periodo de prueba ha comenzado";
+        String subject = "Bienvenido a BeWorking — Tu suscripción está activa";
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
@@ -271,12 +271,12 @@ public class EmailService {
                 // Body
                 + "<tr><td style=\"background:#ffffff;padding:32px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">"
                 + "<p style=\"margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#333;\">Tu registro en <strong>BeWorking</strong> se ha completado correctamente.</p>"
-                + "<p style=\"margin:0 0 20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Tu periodo de prueba gratuito de <strong>30 d\u00edas</strong> ya est\u00e1 activo. Durante este tiempo podr\u00e1s disfrutar de todos los servicios de tu oficina virtual.</p>"
+                + "<p style=\"margin:0 0 20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Tu suscripci\u00f3n ya est\u00e1 activa. Disfruta de todos los servicios de tu oficina virtual.</p>"
                 // Plan info box
                 + "<div style=\"margin:0 0 20px;background:#f5faf6;border-radius:10px;padding:16px 20px;border-left:4px solid #009624;\">"
                 + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Plan:</strong> " + planLabel + "</p>"
                 + (locationLabel.isEmpty() ? "" : "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Sede:</strong> " + locationLabel + "</p>")
-                + "<p style=\"margin:6px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Trial:</strong> 30 d\u00edas gratis</p>"
+                + "<p style=\"margin:6px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Estado:</strong> Activa</p>"
                 + "</div>"
                 + "<p style=\"margin:0 0 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Ya puedes acceder a tu panel de control con el email y contrase\u00f1a que has elegido.</p>"
                 // CTA button
