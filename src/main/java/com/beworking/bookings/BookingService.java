@@ -229,9 +229,10 @@ class BookingService {
         boolean isPaid = request.getStripePaymentIntentId() != null && !isFreeEligible;
         if (isPaid && response.bloqueos() != null && !response.bloqueos().isEmpty()) {
             try {
-                Long bloqueoId = response.bloqueos().get(0).id();
+                List<BloqueoResponse> allBloqueos = response.bloqueos();
+                int sessionCount = allBloqueos.size();
 
-                // Calculate price from room hourly rate × hours
+                // Calculate price from room hourly rate × hours × sessions
                 BigDecimal hourlyRate = jdbcTemplate.queryForObject(
                     "SELECT price_from FROM beworking.rooms WHERE code = ?",
                     BigDecimal.class, producto.getNombre());
@@ -241,7 +242,8 @@ class BookingService {
                     LocalTime endTime = LocalTime.parse(request.getEndTime());
                     long minutes = Duration.between(startTime, endTime).toMinutes();
                     BigDecimal hours = new BigDecimal(minutes).divide(new BigDecimal("60"), 4, RoundingMode.HALF_UP);
-                    BigDecimal subtotal = hourlyRate.multiply(hours).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal perSession = hourlyRate.multiply(hours).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal subtotal = perSession.multiply(BigDecimal.valueOf(sessionCount)).setScale(2, RoundingMode.HALF_UP);
 
                     // Resolve cuenta and VAT rate per contact
                     String cuentaCodigo = resolveContactCuenta(contact.getId());
@@ -260,6 +262,10 @@ class BookingService {
                     Long nextId = jdbcTemplate.queryForObject(
                         "SELECT nextval('beworking.facturas_id_seq')", Long.class);
 
+                    String dateRange = sessionCount > 1
+                        ? request.getDate() + " — " + request.getDateTo()
+                        : String.valueOf(request.getDate());
+
                     jdbcTemplate.update("""
                         INSERT INTO beworking.facturas (
                             id, idfactura, idcliente, idcentro, holdedcuenta, id_cuenta,
@@ -275,7 +281,7 @@ class BookingService {
                         centro.getId(),
                         cuentaCodigo,
                         cuentaId,
-                        "Reserva: " + producto.getNombre() + " (" + request.getDate() + ")",
+                        "Reserva: " + producto.getNombre() + " (" + dateRange + ")",
                         invoiceNumber,
                         java.sql.Timestamp.valueOf(request.getDate().atStartOfDay()),
                         total,
@@ -285,30 +291,36 @@ class BookingService {
                         request.getStripePaymentIntentId()
                     );
 
-                    // Insert line item
-                    Long nextDesgloseId = jdbcTemplate.queryForObject(
-                        "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
+                    // Insert line items — one per session
+                    for (BloqueoResponse bi : allBloqueos) {
+                        Long nextDesgloseId = jdbcTemplate.queryForObject(
+                            "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
 
-                    jdbcTemplate.update("""
-                        INSERT INTO beworking.facturasdesglose (
-                            id, idfacturadesglose, conceptodesglose, precioundesglose,
-                            cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado
-                        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-                        """,
-                        nextDesgloseId,
-                        invoiceId,
-                        "Reserva " + producto.getNombre() + " " + request.getDate() + " " + request.getStartTime() + "-" + request.getEndTime(),
-                        hourlyRate,
-                        hours,
-                        subtotal,
-                        bloqueoId
-                    );
+                        String bloqueoDate = bi.fechaIni() != null
+                            ? bi.fechaIni().toLocalDate().toString()
+                            : request.getDate().toString();
 
-                    // Update bloqueo status
-                    jdbcTemplate.update(
-                        "UPDATE beworking.bloqueos SET estado = 'Pagado' WHERE id = ?", bloqueoId);
+                        jdbcTemplate.update("""
+                            INSERT INTO beworking.facturasdesglose (
+                                id, idfacturadesglose, conceptodesglose, precioundesglose,
+                                cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado
+                            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                            """,
+                            nextDesgloseId,
+                            invoiceId,
+                            "Reserva " + producto.getNombre() + " " + bloqueoDate + " " + request.getStartTime() + "-" + request.getEndTime(),
+                            perSession,
+                            BigDecimal.ONE,
+                            perSession,
+                            bi.id()
+                        );
 
-                    LOGGER.info("Auto-created invoice {} for public booking bloqueo {}", invoiceNumber, bloqueoId);
+                        // Update bloqueo status
+                        jdbcTemplate.update(
+                            "UPDATE beworking.bloqueos SET estado = 'Pagado' WHERE id = ?", bi.id());
+                    }
+
+                    LOGGER.info("Auto-created invoice {} for {} public booking sessions", invoiceNumber, sessionCount);
                 }
             } catch (Exception e) {
                 LOGGER.error("Failed to auto-create invoice for public booking — payment was collected but invoice record is missing!", e);
