@@ -28,14 +28,24 @@ public class LocalSubscriptionScheduler {
      */
     @Scheduled(cron = "0 0 1 1 * *")
     public void generateBankTransferInvoices() {
-        String currentMonth = YearMonth.now().toString(); // "2026-03"
+        YearMonth current = YearMonth.now();
+        String currentMonth = current.toString(); // "2026-03"
         logger.info("LocalSubscriptionScheduler: generating bank_transfer invoices for month={}", currentMonth);
 
         List<Subscription> dueSubscriptions = subscriptionService.findBankTransferDueForMonth(currentMonth);
         int success = 0;
         int failed = 0;
+        int skipped = 0;
 
         for (Subscription sub : dueSubscriptions) {
+            // Check billing interval — skip if not due yet
+            if (!isDueForMonth(sub, current)) {
+                skipped++;
+                logger.info("Skipping subscription {} (contact={}, interval={}, lastInvoiced={}): not due this month",
+                    sub.getId(), sub.getContactId(), sub.getBillingInterval(), sub.getLastInvoicedMonth());
+                continue;
+            }
+
             try {
                 subscriptionService.createBankTransferInvoice(sub, currentMonth);
                 sub.setLastInvoicedMonth(currentMonth);
@@ -50,7 +60,32 @@ public class LocalSubscriptionScheduler {
             }
         }
 
-        logger.info("LocalSubscriptionScheduler: month={} total={} success={} failed={}",
-            currentMonth, dueSubscriptions.size(), success, failed);
+        logger.info("LocalSubscriptionScheduler: month={} total={} success={} failed={} skipped={}",
+            currentMonth, dueSubscriptions.size(), success, failed, skipped);
+    }
+
+    /**
+     * Determines if a subscription is due for invoicing in the given month,
+     * based on its billing_interval and last_invoiced_month.
+     */
+    private boolean isDueForMonth(Subscription sub, YearMonth current) {
+        String interval = sub.getBillingInterval();
+        if (interval == null || "month".equals(interval)) {
+            return true; // monthly — always due
+        }
+
+        String lastInvoiced = sub.getLastInvoicedMonth();
+        if (lastInvoiced == null || lastInvoiced.isBlank()) {
+            return true; // never invoiced — due now
+        }
+
+        YearMonth last = YearMonth.parse(lastInvoiced);
+        int monthsBetween = (int) last.until(current, java.time.temporal.ChronoUnit.MONTHS);
+
+        return switch (interval) {
+            case "quarter" -> monthsBetween >= 3;
+            case "year" -> monthsBetween >= 12;
+            default -> true;
+        };
     }
 }

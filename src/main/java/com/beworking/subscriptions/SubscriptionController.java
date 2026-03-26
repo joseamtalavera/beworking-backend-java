@@ -615,4 +615,18 @@ public class SubscriptionController {
         if (value instanceof Number n) return n.intValue();
         return null;
     }
+
+    @PostMapping("/{id}/generate-invoice")
+    public ResponseEntity<?> generateInvoice(@PathVariable Integer id, @RequestParam String month) {
+        Optional<Subscription> opt = subscriptionService.findById(id);
+        if (opt.isEmpty()) return ResponseEntity.notFound().build();
+        Subscription sub = opt.get();
+        if (!"bank_transfer".equals(sub.getBillingMethod())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Not a bank_transfer subscription"));
+        }
+        Map<String, Object> result = subscriptionService.createBankTransferInvoice(sub, month);
+        sub.setLastInvoicedMonth(month);
+        subscriptionService.save(sub);
+        return ResponseEntity.ok(result);
+    }
 }
