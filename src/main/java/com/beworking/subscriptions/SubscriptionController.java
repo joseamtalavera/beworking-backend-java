@@ -105,6 +105,7 @@ public class SubscriptionController {
             sub.setCurrency(request.getCurrency() != null ? request.getCurrency() : "EUR");
             sub.setCuenta(request.getCuenta() != null ? request.getCuenta() : "GT");
             sub.setDescription(request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
+            sub.setBillingInterval(request.getBillingInterval() != null ? request.getBillingInterval() : "month");
             boolean hasVat = vatNumber != null && !vatNumber.isBlank();
             sub.setVatNumber(hasVat ? vatNumber : null);
             boolean euIntra = isEuVatNumber(vatNumber);
@@ -215,6 +216,10 @@ public class SubscriptionController {
                 boolean startsOnFirst = startDate.getDayOfMonth() == 1 && !startDate.isBefore(firstOfNextMonth);
                 stripeRequest.put("proration_behavior", startsOnFirst ? "none" : "create_prorations");
 
+                // Pass billing interval (month, quarter, year)
+                String interval = request.getBillingInterval() != null ? request.getBillingInterval() : "month";
+                stripeRequest.put("interval", interval);
+
                 // Pass billing details from contact profile to Stripe customer
                 Map<String, Object> billing = new HashMap<>();
                 if (contact.getBillingName() != null && !contact.getBillingName().isBlank()) {
@@ -292,6 +297,7 @@ public class SubscriptionController {
         sub.setCurrency(request.getCurrency() != null ? request.getCurrency() : "EUR");
         sub.setCuenta(request.getCuenta() != null ? request.getCuenta() : "PT");
         sub.setDescription(request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
+        sub.setBillingInterval(request.getBillingInterval() != null ? request.getBillingInterval() : "month");
         boolean hasVatNumber = effectiveVat != null && !effectiveVat.isBlank();
         sub.setVatNumber(hasVatNumber ? effectiveVat : null);
         boolean euIntracommunity = isEuVatNumber(effectiveVat);
