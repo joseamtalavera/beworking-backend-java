@@ -275,14 +275,17 @@ public class ContactProfileService {
             profile.getName()
         );
 
-        String contactEmail = userRepository.findFirstByTenantIdOrderByIdAsc(profile.getId())
-            .map(com.beworking.auth.User::getEmail)
-            .orElseGet(() -> firstNonBlank(
-                profile.getEmailPrimary(),
-                profile.getEmailSecondary(),
-                profile.getEmailTertiary(),
-                profile.getRepresentativeEmail()
-            ));
+        String contactEmail = firstNonBlank(
+            profile.getEmailPrimary(),
+            profile.getEmailSecondary(),
+            profile.getEmailTertiary(),
+            profile.getRepresentativeEmail()
+        );
+        if (contactEmail == null) {
+            contactEmail = userRepository.findFirstByTenantIdOrderByIdAsc(profile.getId())
+                .map(com.beworking.auth.User::getEmail)
+                .orElse(null);
+        }
 
         String phone = firstNonBlank(
             profile.getPhonePrimary(),
