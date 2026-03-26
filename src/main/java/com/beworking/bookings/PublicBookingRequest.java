@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
+import java.util.List;
 
 public class PublicBookingRequest {
 
@@ -52,6 +53,11 @@ public class PublicBookingRequest {
     private String stripePaymentIntentId;
 
     private String stripeSubscriptionId;
+
+    private List<String> weekdays;
+
+    public List<String> getWeekdays() { return weekdays; }
+    public void setWeekdays(List<String> weekdays) { this.weekdays = weekdays; }
 
     public String getFirstName() {
         return firstName;

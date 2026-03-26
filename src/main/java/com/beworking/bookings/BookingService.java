@@ -172,6 +172,9 @@ class BookingService {
         reservaRequest.setDateTo(request.getDateTo() != null ? request.getDateTo() : request.getDate());
         reservaRequest.setStatus("Pendiente");
         reservaRequest.setAttendees(request.getAttendees());
+        if (request.getWeekdays() != null && !request.getWeekdays().isEmpty()) {
+            reservaRequest.setWeekdays(request.getWeekdays());
+        }
 
         CreateReservaRequest.TimeSlot slot = new CreateReservaRequest.TimeSlot();
         slot.setFrom(request.getStartTime());
