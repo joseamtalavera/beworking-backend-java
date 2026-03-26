@@ -516,10 +516,8 @@ public class ContactProfileService {
             .ifPresent(user -> {
                 boolean changed = false;
                 if (request.getEmail() != null && !request.getEmail().isBlank()) {
-                    String newEmail = request.getEmail().trim();
-                    // Only sync email if it's not already taken by another user
-                    if (newEmail.equalsIgnoreCase(user.getEmail()) ||
-                        userRepository.findByEmail(newEmail.toLowerCase()).isEmpty()) {
+                    String newEmail = request.getEmail().trim().toLowerCase();
+                    if (!newEmail.equalsIgnoreCase(user.getEmail())) {
                         user.setEmail(newEmail);
                         changed = true;
                     }
