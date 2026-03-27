@@ -71,6 +71,22 @@ Swagger UI available at `/swagger-ui.html` when the service is running.
 | Public booking | `/api/public/*` | Public |
 | Health | `/api/health` | Public |
 
+## Scheduled Jobs (Cron)
+
+| Job | Cron | Schedule | Description |
+|-----|------|----------|-------------|
+| **MonthlyInvoiceScheduler** | `0 0 5 28 * *` | 28th of each month at 05:00 AM | Finds all uninvoiced bookings (bloqueos) for the **next month**, groups by contact, creates DB invoice + Stripe invoice, sends status email to accounts@be-working.com |
+| **LocalSubscriptionScheduler** | `0 0 1 1 * *` | 1st of each month at 01:00 AM | Creates Pendiente invoices for active `bank_transfer` subscriptions due that month. Respects `billing_interval` — skips quarterly (< 3 months) and annual (< 12 months) subscriptions not yet due |
+| **DailyReconciliationScheduler** | `0 0 5 * * *` | Every day at 05:00 AM | Reconciles Stripe payments (GT + PT accounts) with DB invoices, sends status email to accounts@be-working.com |
+
+### Invoice generation flows
+
+- **Public bookings (be-spaces.com)**: Invoice created at booking time after Stripe payment succeeds (`BookingService.createPublicBooking`)
+- **Admin bookings (dashboard)**: Invoice created in the payment step based on selected option (charge card, send Stripe invoice, invoice without Stripe, book only)
+- **Bank transfer subscriptions**: Auto-invoiced by `LocalSubscriptionScheduler` on the 1st of each month
+- **Stripe subscriptions**: Auto-charged by Stripe; webhook (`SubscriptionWebhookController`) creates the local DB invoice
+- **Uninvoiced bookings**: Auto-invoiced by `MonthlyInvoiceScheduler` on the 28th for the next month
+
 ## Deployment
 
 AWS ECS Fargate. See `../beworking-orchestration/docs/deployment/ops-runbook.md`.
