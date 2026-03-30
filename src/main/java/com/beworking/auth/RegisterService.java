@@ -86,12 +86,12 @@ public class RegisterService {
             cp.setId(System.currentTimeMillis());
             cp.setName(name.trim());
             cp.setEmailPrimary(normalizedEmail);
-            cp.setStatus("Trial");
+            cp.setStatus("Activo");
             cp.setTenantType("Usuario Virtual");
             cp.setActive(true);
             cp.setCreatedAt(LocalDateTime.now());
             cp.setStatusChangedAt(LocalDateTime.now());
-            cp.setChannel("Self-registration-trial");
+            cp.setChannel("Self-registration");
             user.setTenantId(cp.getId());
         }
 
