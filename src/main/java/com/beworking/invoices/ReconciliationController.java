@@ -1,13 +1,11 @@
 package com.beworking.invoices;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/reconciliation")
@@ -41,6 +39,75 @@ public class ReconciliationController {
             ORDER BY account
             """);
         return ResponseEntity.ok(rows);
+    }
+
+    @GetMapping("/breakdown/{account}")
+    public ResponseEntity<Map<String, Object>> getBreakdown(@PathVariable String account) {
+        String acct = account.toUpperCase();
+
+        List<Map<String, Object>> stripeActive = jdbcTemplate.queryForList("""
+            SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id,
+                   s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary
+            FROM beworking.subscriptions s
+            JOIN beworking.contact_profiles cp ON cp.id = s.contact_id
+            WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'stripe'
+            AND s.stripe_subscription_id NOT LIKE 'sub_sched_%'
+            ORDER BY cp.name
+            """, acct);
+
+        List<Map<String, Object>> stripeScheduled = jdbcTemplate.queryForList("""
+            SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id,
+                   s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary
+            FROM beworking.subscriptions s
+            JOIN beworking.contact_profiles cp ON cp.id = s.contact_id
+            WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'stripe'
+            AND s.stripe_subscription_id LIKE 'sub_sched_%'
+            ORDER BY cp.name
+            """, acct);
+
+        List<Map<String, Object>> bankTransfer = jdbcTemplate.queryForList("""
+            SELECT s.id, s.contact_id, s.monthly_amount, s.billing_interval,
+                   s.last_invoiced_month, s.start_date, cp.name, cp.email_primary
+            FROM beworking.subscriptions s
+            JOIN beworking.contact_profiles cp ON cp.id = s.contact_id
+            WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'bank_transfer'
+            ORDER BY cp.name
+            """, acct);
+
+        // Past due from latest reconciliation run
+        List<Map<String, Object>> pastDueRow = jdbcTemplate.queryForList("""
+            SELECT past_due_subs, stripe_past_due, past_due_amount
+            FROM beworking.reconciliation_results
+            WHERE account = ? AND run_date = (SELECT MAX(run_date) FROM beworking.reconciliation_results WHERE account = ?)
+            """, acct, acct);
+
+        List<?> pastDueSubs = List.of();
+        int pastDueCount = 0;
+        Object pastDueAmount = 0;
+        if (!pastDueRow.isEmpty()) {
+            Object raw = pastDueRow.get(0).get("past_due_subs");
+            if (raw instanceof List<?> l) pastDueSubs = l;
+            else if (raw instanceof String s) {
+                try { pastDueSubs = new com.fasterxml.jackson.databind.ObjectMapper().readValue(s, List.class); } catch (Exception ignored) {}
+            }
+            pastDueCount = ((Number) pastDueRow.get(0).getOrDefault("stripe_past_due", 0)).intValue();
+            pastDueAmount = pastDueRow.get(0).getOrDefault("past_due_amount", 0);
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("account", acct);
+        result.put("stripeActive", stripeActive);
+        result.put("stripeActiveCount", stripeActive.size());
+        result.put("stripeScheduled", stripeScheduled);
+        result.put("stripeScheduledCount", stripeScheduled.size());
+        result.put("bankTransfer", bankTransfer);
+        result.put("bankTransferCount", bankTransfer.size());
+        result.put("pastDueSubs", pastDueSubs);
+        result.put("pastDueCount", pastDueCount);
+        result.put("pastDueAmount", pastDueAmount);
+        result.put("totalActive", stripeActive.size() + stripeScheduled.size() + bankTransfer.size());
+
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/run")
