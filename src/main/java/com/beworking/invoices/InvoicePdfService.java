@@ -485,12 +485,16 @@ public class InvoicePdfService {
 
         // Invoice title badge
         String invoiceLabel = "FACTURA";
-        String invoiceNumber = "#" + header.displayNumber();
+        String rawNumber = header.displayNumber();
+        // Insert dash between prefix and digits: GT5416 → GT-5416, PT4361 → PT-4361
+        String formattedNumber = rawNumber.replaceAll("^([A-Z]+)(\\d)", "$1-$2");
+        String invoiceNumber = "#" + formattedNumber;
+        float titleSize = 11;
         cs.setNonStrokingColor(BRAND_GREEN);
-        addText(cs, PDType1Font.HELVETICA_BOLD, 9, margin, cursorY + 2, invoiceLabel);
+        addText(cs, PDType1Font.HELVETICA_BOLD, titleSize, margin, cursorY, invoiceLabel);
         cs.setNonStrokingColor(INK);
-        float labelWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(invoiceLabel) / 1000f * 9f;
-        addText(cs, PDType1Font.HELVETICA_BOLD, 14, margin + labelWidth + 6, cursorY, invoiceNumber);
+        float labelWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(invoiceLabel) / 1000f * titleSize;
+        addText(cs, PDType1Font.HELVETICA_BOLD, titleSize, margin + labelWidth + 8, cursorY, invoiceNumber);
 
         // Date on the right
         String dateLabel = header.issuedAt() != null
