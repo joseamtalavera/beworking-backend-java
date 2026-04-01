@@ -485,10 +485,7 @@ public class InvoicePdfService {
 
         // Invoice title badge
         String invoiceLabel = "FACTURA";
-        String rawNumber = header.displayNumber();
-        // Insert dash between prefix and digits: GT5416 → GT-5416, PT4361 → PT-4361
-        String formattedNumber = rawNumber.replaceAll("^([A-Z]+)(\\d)", "$1-$2");
-        String invoiceNumber = "#" + formattedNumber;
+        String invoiceNumber = "#" + header.displayNumber();
         float titleSize = 11;
         cs.setNonStrokingColor(BRAND_GREEN);
         addText(cs, PDType1Font.HELVETICA_BOLD, titleSize, margin, cursorY, invoiceLabel);
