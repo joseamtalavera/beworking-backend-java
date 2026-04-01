@@ -485,7 +485,7 @@ public class InvoicePdfService {
 
         // Invoice title badge
         String invoiceLabel = "FACTURA";
-        String invoiceNumber = "#" + header.displayNumber();
+        String invoiceNumber = header.displayNumber();
         float titleSize = 11;
         cs.setNonStrokingColor(BRAND_GREEN);
         addText(cs, PDType1Font.HELVETICA_BOLD, titleSize, margin, cursorY, invoiceLabel);
