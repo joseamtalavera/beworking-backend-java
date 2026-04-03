@@ -425,7 +425,7 @@ public class SubscriptionService {
         return resolved;
     }
 
-    private static String countryNameToIso(String countryName) {
+    static String countryNameToIso(String countryName) {
         if (countryName == null || countryName.isBlank()) return null;
         String s = countryName.trim();
         if (s.length() == 2) return s.toUpperCase();

@@ -34,17 +34,20 @@ public class SubscriptionController {
     private final UserRepository userRepository;
     private final ContactProfileRepository contactRepository;
     private final ProductoRepository productoRepository;
+    private final com.beworking.contacts.ViesVatService viesVatService;
     private final RestClient http;
 
     public SubscriptionController(SubscriptionService subscriptionService,
                                   UserRepository userRepository,
                                   ContactProfileRepository contactRepository,
                                   ProductoRepository productoRepository,
+                                  com.beworking.contacts.ViesVatService viesVatService,
                                   @Value("${app.payments.base-url:http://beworking-stripe-service:8081}") String paymentsBaseUrl) {
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
         this.contactRepository = contactRepository;
         this.productoRepository = productoRepository;
+        this.viesVatService = viesVatService;
         this.http = RestClient.builder().baseUrl(paymentsBaseUrl).build();
     }
 
@@ -180,8 +183,47 @@ public class SubscriptionController {
             }
 
             try {
-                int amountCents = request.getMonthlyAmount()
-                    .multiply(BigDecimal.valueOf(100)).intValue();
+                // Resolve VAT: use request vatNumber, fallback to contact billing tax ID
+                String resolvedVat = request.getVatNumber();
+                if ((resolvedVat == null || resolvedVat.isBlank()) && contact.getBillingTaxId() != null) {
+                    resolvedVat = contact.getBillingTaxId();
+                }
+
+                // Determine tax exemption using full VIES check (prefix + country hint)
+                String cuenta = request.getCuenta() != null ? request.getCuenta().toUpperCase() : "PT";
+                String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
+                boolean taxExempt = false;
+
+                if (resolvedVat != null && !resolvedVat.isBlank()) {
+                    // First check prefix
+                    if (isEuVatNumber(resolvedVat)) {
+                        String prefix = resolvedVat.trim().replaceAll("\\s+", "").toUpperCase().substring(0, 2);
+                        taxExempt = !prefix.equals(supplierCountry);
+                    } else {
+                        // No prefix — try VIES with country hint from billing_country
+                        String countryHint = SubscriptionService.countryNameToIso(contact.getBillingCountry());
+                        if (countryHint != null) {
+                            var viesResult = viesVatService.validate(resolvedVat, countryHint);
+                            if (viesResult.valid()) {
+                                taxExempt = !countryHint.equals(supplierCountry);
+                                logger.info("VIES confirmed {} as {} — taxExempt={}", resolvedVat, countryHint, taxExempt);
+                            } else {
+                                logger.info("VIES could not validate {} (hint={}) — applying default VAT", resolvedVat, countryHint);
+                            }
+                        }
+                    }
+                }
+
+                // Calculate amount including VAT for Stripe
+                BigDecimal baseAmount = request.getMonthlyAmount();
+                int vatPercent = taxExempt ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21);
+                BigDecimal vatAmount = baseAmount.multiply(BigDecimal.valueOf(vatPercent))
+                    .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+                BigDecimal totalAmount = baseAmount.add(vatAmount);
+                int amountCents = totalAmount.multiply(BigDecimal.valueOf(100)).intValue();
+
+                logger.info("Creating Stripe sub: base={} vat={}% vatAmount={} total={} taxExempt={}",
+                    baseAmount, vatPercent, vatAmount, totalAmount, taxExempt);
 
                 Map<String, Object> stripeRequest = new HashMap<>();
                 stripeRequest.put("customer_email", email);
@@ -197,12 +239,6 @@ public class SubscriptionController {
                     .findFirst()
                     .ifPresent(s -> stripeRequest.put("customer_id", s.getStripeCustomerId()));
 
-                // Resolve VAT: use request vatNumber, fallback to contact billing tax ID
-                String resolvedVat = request.getVatNumber();
-                if ((resolvedVat == null || resolvedVat.isBlank()) && contact.getBillingTaxId() != null) {
-                    resolvedVat = contact.getBillingTaxId();
-                }
-                boolean taxExempt = isEuVatNumber(resolvedVat);
                 stripeRequest.put("vat_number", taxExempt ? resolvedVat : "");
                 stripeRequest.put("tax_exempt", taxExempt);
 
