@@ -512,12 +512,17 @@ public class InvoicePdfService {
             cursorY -= 14;
 
             String clientBlock = buildClientBlock(clientInfo);
+            float maxClientWidth = colRight - colLeft - 10;
             String[] clientLines = clientBlock.split("\\r?\\n");
             float clientY = cursorY;
             cs.setNonStrokingColor(INK);
             for (String line : clientLines) {
-                addText(cs, PDType1Font.HELVETICA, 9.5f, colLeft, clientY, line);
-                clientY -= 13;
+                // Wrap long lines to fit within client column
+                List<String> wrapped = wrapLine(line, PDType1Font.HELVETICA, 9.5f, maxClientWidth);
+                for (String wl : wrapped) {
+                    addText(cs, PDType1Font.HELVETICA, 9.5f, colLeft, clientY, wl);
+                    clientY -= 13;
+                }
             }
 
             // Details column
@@ -668,6 +673,31 @@ public class InvoicePdfService {
 
     private static LocalDateTime toDateTime(Timestamp timestamp) {
         return timestamp != null ? timestamp.toLocalDateTime() : null;
+    }
+
+    private static List<String> wrapLine(String text, PDType1Font font, float fontSize, float maxWidth) {
+        List<String> result = new ArrayList<>();
+        if (text == null || text.isBlank()) { result.add(""); return result; }
+        try {
+            float textWidth = font.getStringWidth(text) / 1000f * fontSize;
+            if (textWidth <= maxWidth) { result.add(text); return result; }
+            String[] words = text.split("\\s+");
+            StringBuilder current = new StringBuilder();
+            for (String word : words) {
+                String test = current.isEmpty() ? word : current + " " + word;
+                float w = font.getStringWidth(test) / 1000f * fontSize;
+                if (w > maxWidth && !current.isEmpty()) {
+                    result.add(current.toString());
+                    current = new StringBuilder(word);
+                } else {
+                    current = new StringBuilder(test);
+                }
+            }
+            if (!current.isEmpty()) result.add(current.toString());
+        } catch (Exception e) {
+            result.add(text);
+        }
+        return result;
     }
 
     private static String buildClientBlock(ClientInfo info) {
