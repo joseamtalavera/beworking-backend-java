@@ -107,9 +107,32 @@ public class DailyReconciliationScheduler {
             result.missingInvoices = findMissingInvoices(paidInvoiceIds, account);
         }
 
-        logger.info("Reconciliation [{}]: dbActive={} stripeActive={} pastDue={} missing={}",
+        // 4. Cross-check subscription IDs: DB vs Stripe
+        @SuppressWarnings("unchecked")
+        List<String> activeSubIds = (List<String>) stripeData.get("activeSubIds");
+        List<String> pastDueSubIds = result.pastDueSubs.stream()
+            .map(m -> (String) m.get("subscriptionId")).filter(id -> id != null).toList();
+
+        if (activeSubIds != null) {
+            java.util.Set<String> stripeIds = new java.util.HashSet<>(activeSubIds);
+            stripeIds.addAll(pastDueSubIds);
+
+            // DB Stripe subs (excluding scheduled and bank_transfer)
+            List<String> dbSubIds = jdbcTemplate.queryForList(
+                "SELECT stripe_subscription_id FROM beworking.subscriptions WHERE active = true AND cuenta = ? AND billing_method = 'stripe' AND stripe_subscription_id IS NOT NULL AND stripe_subscription_id != '' AND stripe_subscription_id NOT LIKE 'sub_sched_%'",
+                String.class, account);
+            java.util.Set<String> dbIds = new java.util.HashSet<>(dbSubIds);
+
+            // In DB but not in Stripe (cancelled in Stripe but still active in DB)
+            result.dbOnlySubIds = dbSubIds.stream().filter(id -> !stripeIds.contains(id)).toList();
+            // In Stripe but not in DB (exists in Stripe but no DB record)
+            result.stripeOnlySubIds = activeSubIds.stream().filter(id -> !dbIds.contains(id)).toList();
+            result.stripeOnlySubIds.addAll(pastDueSubIds.stream().filter(id -> !dbIds.contains(id)).toList());
+        }
+
+        logger.info("Reconciliation [{}]: dbActive={} stripeActive={} pastDue={} missing={} dbOnly={} stripeOnly={}",
             account, result.dbActive, result.stripeActive, result.stripePastDue,
-            result.missingInvoices.size());
+            result.missingInvoices.size(), result.dbOnlySubIds.size(), result.stripeOnlySubIds.size());
 
         return result;
     }
@@ -138,12 +161,15 @@ public class DailyReconciliationScheduler {
         try {
             String missingJson = objectMapper.writeValueAsString(result.missingInvoices);
             String pastDueJson = objectMapper.writeValueAsString(result.pastDueSubs);
+            String dbOnlyJson = objectMapper.writeValueAsString(result.dbOnlySubIds);
+            String stripeOnlyJson = objectMapper.writeValueAsString(result.stripeOnlySubIds);
 
             jdbcTemplate.update("""
                 INSERT INTO beworking.reconciliation_results
                     (run_date, account, db_active, stripe_active, stripe_past_due,
-                     past_due_amount, missing_invoice_count, missing_invoices, past_due_subs)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb)
+                     past_due_amount, missing_invoice_count, missing_invoices, past_due_subs,
+                     db_only_subs, stripe_only_subs)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb)
                 ON CONFLICT (run_date, account) DO UPDATE SET
                     db_active = EXCLUDED.db_active,
                     stripe_active = EXCLUDED.stripe_active,
@@ -152,11 +178,13 @@ public class DailyReconciliationScheduler {
                     missing_invoice_count = EXCLUDED.missing_invoice_count,
                     missing_invoices = EXCLUDED.missing_invoices,
                     past_due_subs = EXCLUDED.past_due_subs,
+                    db_only_subs = EXCLUDED.db_only_subs,
+                    stripe_only_subs = EXCLUDED.stripe_only_subs,
                     created_at = CURRENT_TIMESTAMP
                 """,
                 LocalDate.now(), result.account, result.dbActive, result.stripeActive,
                 result.stripePastDue, result.pastDueAmount, result.missingInvoices.size(),
-                missingJson, pastDueJson);
+                missingJson, pastDueJson, dbOnlyJson, stripeOnlyJson);
 
         } catch (Exception e) {
             logger.error("Failed to persist reconciliation result for {}: {}", result.account, e.getMessage(), e);
@@ -265,6 +293,8 @@ public class DailyReconciliationScheduler {
         BigDecimal pastDueAmount = BigDecimal.ZERO;
         List<Map<String, Object>> pastDueSubs = new ArrayList<>();
         List<Map<String, Object>> missingInvoices = new ArrayList<>();
+        List<String> dbOnlySubIds = new ArrayList<>();
+        List<String> stripeOnlySubIds = new ArrayList<>();
         String error;
 
         AccountResult(String account) {
@@ -275,7 +305,8 @@ public class DailyReconciliationScheduler {
             return error != null
                 || !missingInvoices.isEmpty()
                 || stripePastDue > 0
-                || (dbActive - stripeActive - stripePastDue) != 0;
+                || !dbOnlySubIds.isEmpty()
+                || !stripeOnlySubIds.isEmpty();
         }
     }
 }

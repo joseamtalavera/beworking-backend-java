@@ -33,6 +33,8 @@ public class ReconciliationController {
                 missing_invoice_count,
                 missing_invoices,
                 past_due_subs,
+                COALESCE(db_only_subs, '[]'::jsonb) as db_only_subs,
+                COALESCE(stripe_only_subs, '[]'::jsonb) as stripe_only_subs,
                 created_at
             FROM beworking.reconciliation_results
             WHERE run_date = (SELECT MAX(run_date) FROM beworking.reconciliation_results)
