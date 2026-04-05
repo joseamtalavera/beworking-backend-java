@@ -83,7 +83,7 @@ public class EmailService {
 
     public void sendPasswordResetEmail(String to, String token) {
         String subject = "Restablecer contrase\u00f1a \u2014 BeWorking";
-        String resetLink = frontendUrl + "/main/reset-password?token=" + token;
+        String resetLink = frontendUrl + "/reset-password?token=" + token;
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
@@ -138,7 +138,7 @@ public class EmailService {
 
     public void sendWelcomeEmail(String to, String token) {
         String subject = "Bienvenido a BeWorking \u2014 Configura tu contrase\u00f1a";
-        String resetLink = frontendUrl + "/main/reset-password?token=" + token;
+        String resetLink = frontendUrl + "/reset-password?token=" + token;
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
@@ -188,7 +188,7 @@ public class EmailService {
     @Async
     public void sendBookingWelcomeEmail(String to, String name, String token) {
         String subject = "Tu cuenta BeWorking está lista";
-        String resetLink = frontendUrl + "/main/reset-password?token=" + token;
+        String resetLink = frontendUrl + "/reset-password?token=" + token;
         String safeName = name != null ? name : "";
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
@@ -252,7 +252,7 @@ public class EmailService {
             default -> location;
         } : "";
 
-        String loginUrl = frontendUrl + "/main/login";
+        String loginUrl = frontendUrl + "/login";
 
         String subject = "Bienvenido a BeWorking — Tu suscripción está activa";
         String content = "<!doctype html>"

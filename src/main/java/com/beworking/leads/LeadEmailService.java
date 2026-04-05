@@ -49,7 +49,7 @@ public class LeadEmailService {
                       <table role=\"presentation\" class=\"btn-table\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\">
                         <tr>
                           <td class=\"btn-td\">
-                            <a href=\"https://be-working.com/#contacto\" class=\"btn\">
+                            <a href=\"https://be-working.com/contact\" class=\"btn\">
                               Mas acerca de BeWorking
                             </a>
                           </td>
