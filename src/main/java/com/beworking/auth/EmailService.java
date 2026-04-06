@@ -358,10 +358,10 @@ public class EmailService {
                     <td style="background:linear-gradient(135deg,#009624 0%%,#00c853 100%%);padding:22px 24px;color:#fff;border-radius:14px 14px 0 0;">
                       <div class="badge">BeWorking</div>
                       <div style="font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:22px;font-weight:800;margin-top:10px;">
-                        Nuevo registro
+                        Nuevo registro%s
                       </div>
                       <div style="opacity:.9;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;margin-top:4px;">
-                        Un usuario se ha registrado con suscripción
+                        %s
                       </div>
                     </td>
                   </tr>
@@ -428,6 +428,8 @@ public class EmailService {
         </body>
         </html>
         """,
+        plan != null ? " — " + planLabel : " (free)",
+        plan != null ? "Nuevo usuario con suscripción" : "Nuevo usuario gratuito",
         name != null ? name : "—",
         email, email,
         phone != null && !phone.isBlank() ? phone : "—",
