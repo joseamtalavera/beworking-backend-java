@@ -358,10 +358,10 @@ public class EmailService {
                     <td style="background:linear-gradient(135deg,#009624 0%%,#00c853 100%%);padding:22px 24px;color:#fff;border-radius:14px 14px 0 0;">
                       <div class="badge">BeWorking</div>
                       <div style="font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:22px;font-weight:800;margin-top:10px;">
-                        Nuevo registro con trial
+                        Nuevo registro
                       </div>
                       <div style="opacity:.9;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;margin-top:4px;">
-                        Un usuario se ha registrado con periodo de prueba
+                        Un usuario se ha registrado con suscripción
                       </div>
                     </td>
                   </tr>
@@ -417,7 +417,7 @@ public class EmailService {
 
                       <div style="height:14px;"></div>
                       <div style="font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:12px;color:#9aa0a6;text-align:center;">
-                        Tip: verifica el pago en Stripe y etiqueta como <strong>Trial</strong> en CRM.
+                        Tip: verifica el pago en Stripe y etiqueta como <strong>Activo</strong> en CRM.
                       </div>
                     </td>
                   </tr>
