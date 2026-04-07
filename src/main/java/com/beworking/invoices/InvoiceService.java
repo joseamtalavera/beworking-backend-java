@@ -328,7 +328,7 @@ public class InvoiceService {
         }
 
         String revenueSql = """
-            SELECT COALESCE(SUM(f.total), 0) 
+            SELECT COALESCE(SUM(f.total), 0)
             FROM (
                 SELECT DISTINCT f.id, f.total
                 FROM beworking.facturas f
@@ -337,9 +337,9 @@ public class InvoiceService {
                 LEFT JOIN beworking.bloqueos b ON b.id = fd.idbloqueovinculado
                 LEFT JOIN beworking.productos p ON p.id = b.id_producto
             """;
-        
-        // Append the WHERE conditions to the subquery
-        revenueSql += where.toString() + ") f";
+
+        // Append the WHERE conditions to the subquery + exclude cancelled/rectified
+        revenueSql += where.toString() + " AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%cancel%' AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%anula%' AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%void%' AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%rectificad%') f";
         
         try {
             BigDecimal totalRevenue = args.isEmpty()
