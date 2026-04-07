@@ -678,4 +678,51 @@ public class SubscriptionController {
         subscriptionService.save(sub);
         return ResponseEntity.ok(result);
     }
+
+    /**
+     * Upgrade an existing Stripe subscription to a new plan amount.
+     * Updates both the Stripe subscription and the local DB record.
+     */
+    @PostMapping("/{id}/upgrade")
+    public ResponseEntity<?> upgradePlan(@PathVariable Integer id, @RequestBody Map<String, Object> body) {
+        Optional<Subscription> opt = subscriptionService.findById(id);
+        if (opt.isEmpty()) return ResponseEntity.notFound().build();
+        Subscription sub = opt.get();
+
+        BigDecimal newAmount = new BigDecimal(body.get("monthlyAmount").toString());
+        String newDescription = body.get("description") != null ? body.get("description").toString() : sub.getDescription();
+
+        // Update Stripe subscription if it exists
+        if (sub.getStripeSubscriptionId() != null && !sub.getStripeSubscriptionId().isBlank()
+                && !sub.getStripeSubscriptionId().startsWith("sub_sched_")) {
+            try {
+                String tenant = "GT".equalsIgnoreCase(sub.getCuenta()) ? "gt" : "bw";
+
+                // Resolve VAT
+                int vatPercent = sub.getVatPercent() != null ? sub.getVatPercent() : 21;
+                BigDecimal totalAmount = newAmount.add(newAmount.multiply(BigDecimal.valueOf(vatPercent)).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP));
+                int amountCents = totalAmount.multiply(BigDecimal.valueOf(100)).intValue();
+
+                http.post()
+                    .uri("/api/subscriptions/" + sub.getStripeSubscriptionId() + "/update-amount")
+                    .header("Content-Type", "application/json")
+                    .body(Map.of("amount_cents", amountCents, "tenant", tenant, "description", newDescription))
+                    .retrieve()
+                    .toBodilessEntity();
+
+                logger.info("Upgraded Stripe subscription {} to {} cents", sub.getStripeSubscriptionId(), amountCents);
+            } catch (Exception e) {
+                logger.error("Failed to upgrade Stripe subscription: {}", e.getMessage());
+                return ResponseEntity.status(502).body(Map.of("error", "Failed to update Stripe: " + e.getMessage()));
+            }
+        }
+
+        // Update local record
+        sub.setMonthlyAmount(newAmount);
+        sub.setDescription(newDescription);
+        sub.setUpdatedAt(java.time.LocalDateTime.now());
+        subscriptionService.save(sub);
+
+        return ResponseEntity.ok(Map.of("message", "Plan upgraded", "newAmount", newAmount));
+    }
 }
