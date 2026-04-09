@@ -209,7 +209,7 @@ public class RegisterService {
                     inv.setInvoicePdf((String) firstInvoice.get("invoicePdf"));
                     inv.setPeriodStart((String) firstInvoice.get("periodStart"));
                     inv.setPeriodEnd((String) firstInvoice.get("periodEnd"));
-                    inv.setStatus("pagado");
+                    inv.setStatus("paid");
                     subscriptionService.createInvoiceFromSubscription(sub, inv);
                     logger.info("Created local invoice for subscription {}", sub.getStripeSubscriptionId());
                 } catch (Exception e) {
