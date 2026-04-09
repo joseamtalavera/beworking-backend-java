@@ -6,6 +6,8 @@ import com.beworking.contacts.ViesVatService;
 import com.beworking.plans.PlanRepository;
 import com.beworking.subscriptions.Subscription;
 import com.beworking.subscriptions.SubscriptionRepository;
+import com.beworking.subscriptions.SubscriptionService;
+import com.beworking.subscriptions.SubscriptionInvoicePayload;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,11 +38,12 @@ public class RegisterService {
     private final SubscriptionRepository subscriptionRepository;
     private final PlanRepository planRepository;
     private final ViesVatService viesVatService;
+    private final SubscriptionService subscriptionService;
 
     public RegisterService(UserRepository userRepository, PasswordEncoder passwordEncoder,
                            EmailService emailService, ContactProfileRepository contactProfileRepository,
                            SubscriptionRepository subscriptionRepository, PlanRepository planRepository,
-                           ViesVatService viesVatService) {
+                           ViesVatService viesVatService, SubscriptionService subscriptionService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
@@ -48,6 +51,7 @@ public class RegisterService {
         this.subscriptionRepository = subscriptionRepository;
         this.planRepository = planRepository;
         this.viesVatService = viesVatService;
+        this.subscriptionService = subscriptionService;
     }
 
     /**
@@ -190,6 +194,28 @@ public class RegisterService {
             user.setStripeCustomerId((String) stripeResult.get("customerId"));
             userRepository.save(user);
             subscriptionRepository.save(sub);
+
+            // Create local invoice from Stripe first invoice data
+            @SuppressWarnings("unchecked")
+            Map<String, Object> firstInvoice = (Map<String, Object>) stripeResult.get("firstInvoice");
+            if (firstInvoice != null) {
+                try {
+                    SubscriptionInvoicePayload inv = new SubscriptionInvoicePayload();
+                    inv.setStripeSubscriptionId(sub.getStripeSubscriptionId());
+                    inv.setStripeInvoiceId((String) firstInvoice.get("stripeInvoiceId"));
+                    inv.setStripePaymentIntentId((String) firstInvoice.get("paymentIntentId"));
+                    inv.setSubtotalCents(firstInvoice.get("subtotalCents") != null ? ((Number) firstInvoice.get("subtotalCents")).intValue() : 0);
+                    inv.setTaxCents(firstInvoice.get("taxCents") != null ? ((Number) firstInvoice.get("taxCents")).intValue() : 0);
+                    inv.setInvoicePdf((String) firstInvoice.get("invoicePdf"));
+                    inv.setPeriodStart((String) firstInvoice.get("periodStart"));
+                    inv.setPeriodEnd((String) firstInvoice.get("periodEnd"));
+                    inv.setStatus("pagado");
+                    subscriptionService.createInvoiceFromSubscription(sub, inv);
+                    logger.info("Created local invoice for subscription {}", sub.getStripeSubscriptionId());
+                } catch (Exception e) {
+                    logger.warn("Failed to create local invoice: {}", e.getMessage());
+                }
+            }
         }
 
         // Send admin notification email
