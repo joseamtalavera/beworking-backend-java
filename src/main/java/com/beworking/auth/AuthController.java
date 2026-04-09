@@ -294,22 +294,14 @@ public class AuthController {
     }
 
     @PostMapping("/register-with-trial")
-    public ResponseEntity<?> registerWithTrial(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<AuthResponse> registerWithTrial(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
         try {
             var result = registerService.registerUserWithTrial(request);
             if (result == null) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                         .body(new AuthResponse("Unexpected error during registration", null, null));
             }
-            String clientSecret = (String) result.get("clientSecret");
-            if (clientSecret != null) {
-                return ResponseEntity.ok(Map.of(
-                    "message", "User registered, confirm payment",
-                    "clientSecret", clientSecret,
-                    "role", "USER"
-                ));
-            }
-            return ResponseEntity.ok(new AuthResponse("User registered", null, "USER"));
+            return ResponseEntity.ok(new AuthResponse("User registered successfully", null, "USER"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new AuthResponse(e.getMessage(), null, null));

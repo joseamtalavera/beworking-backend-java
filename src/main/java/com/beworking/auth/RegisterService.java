@@ -51,8 +51,7 @@ public class RegisterService {
      * Also creates a Subscription record and populates ContactProfile with billing data.
      */
     @Transactional
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> registerUserWithTrial(RegisterRequest request) {
+    public User registerUserWithTrial(RegisterRequest request) {
         String name = request.getName();
         String email = request.getEmail();
         String password = request.getPassword();
@@ -121,8 +120,7 @@ public class RegisterService {
         contactProfileRepository.save(cp);
         userRepository.save(user);
 
-        // Create subscription with immediate payment via Stripe
-        String clientSecret = null;
+        // Create subscription via /api/subscriptions/auto (card already on file from SetupIntent)
         if (request.getPlan() != null && !request.getPlan().isBlank()) {
             String planKey = request.getPlan().toLowerCase();
             if ("basis".equals(planKey)) planKey = "basic";
@@ -149,9 +147,10 @@ public class RegisterService {
             java.math.BigDecimal totalAmount = amount.add(vatAmount);
             int amountCents = totalAmount.multiply(java.math.BigDecimal.valueOf(100)).intValue();
 
-            // Create Stripe subscription (default_incomplete — charges when user confirms payment)
-            var stripeResult = createDirectSubscription(
-                normalizedEmail, name.trim(), amountCents, "BeWorking " + planLabel, planKey
+            // Customer already has card from SetupIntent — subscription charges immediately
+            String customerId = request.getStripeCustomerId();
+            var stripeResult = createAutoSubscription(
+                normalizedEmail, name.trim(), amountCents, "BeWorking " + planLabel, customerId
             );
 
             Subscription sub = new Subscription();
@@ -163,7 +162,7 @@ public class RegisterService {
             sub.setCuenta("PT");
             sub.setStartDate(LocalDate.now());
             sub.setEndDate(null);
-            sub.setActive(false); // Activates when payment confirmed via webhook
+            sub.setActive(true); // Active immediately — card charged on subscription creation
             sub.setCreatedAt(LocalDateTime.now());
             sub.setVatNumber(vatNumber);
             sub.setVatPercent(vatPercent);
@@ -171,11 +170,12 @@ public class RegisterService {
             if (stripeResult != null) {
                 sub.setStripeSubscriptionId((String) stripeResult.get("subscriptionId"));
                 sub.setStripeCustomerId((String) stripeResult.get("customerId"));
-                clientSecret = (String) stripeResult.get("clientSecret");
                 user.setStripeCustomerId((String) stripeResult.get("customerId"));
-                userRepository.save(user);
+            } else if (customerId != null) {
+                sub.setStripeCustomerId(customerId);
+                user.setStripeCustomerId(customerId);
             }
-
+            userRepository.save(user);
             subscriptionRepository.save(sub);
         }
 
@@ -190,10 +190,7 @@ public class RegisterService {
         String planLabel = request.getPlan() != null ? request.getPlan() : "Basic";
         emailService.sendSubscriptionWelcomeEmail(normalizedEmail, name.trim(), planLabel, request.getLocation());
 
-        Map<String, Object> result = new java.util.HashMap<>();
-        result.put("user", user);
-        result.put("clientSecret", clientSecret);
-        return result;
+        return user;
     }
 
     /**
@@ -444,13 +441,14 @@ public class RegisterService {
     }
 
     /**
-     * Calls stripe-service /api/subscriptions/direct to create a subscription with immediate payment.
-     * Returns Map with subscriptionId, customerId, clientSecret.
+     * Calls stripe-service /api/subscriptions/auto to create a subscription.
+     * Customer already has a card from the SetupIntent, so Stripe charges immediately.
+     * Returns Map with subscriptionId, customerId, firstInvoice.
      */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> createDirectSubscription(String email, String name,
-                                                          int amountCentsWithVat,
-                                                          String description, String plan) {
+    private Map<String, Object> createAutoSubscription(String email, String name,
+                                                        int amountCentsWithVat,
+                                                        String description, String customerId) {
         try {
             String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
                 ? System.getenv("STRIPE_SERVICE_URL")
@@ -459,11 +457,13 @@ public class RegisterService {
             Map<String, Object> body = new java.util.HashMap<>();
             body.put("customer_email", email);
             body.put("customer_name", name);
-            body.put("monthly_amount", amountCentsWithVat);
+            body.put("amount_cents", amountCentsWithVat);
             body.put("currency", "eur");
             body.put("description", description);
-            body.put("plan", plan);
             body.put("tenant", "bw");
+            if (customerId != null && !customerId.isBlank()) {
+                body.put("customer_id", customerId);
+            }
 
             var client = new org.springframework.web.client.RestTemplate();
             var headers = new org.springframework.http.HttpHeaders();
@@ -471,18 +471,18 @@ public class RegisterService {
             var entity = new org.springframework.http.HttpEntity<>(body, headers);
 
             Map<String, Object> response = client.postForObject(
-                stripeServiceUrl + "/api/subscriptions/direct",
+                stripeServiceUrl + "/api/subscriptions/auto",
                 entity,
                 Map.class
             );
 
             if (response != null && response.containsKey("subscriptionId")) {
-                logger.info("Created direct Stripe subscription {} for {} ({}c incl. VAT)",
+                logger.info("Created auto Stripe subscription {} for {} ({}c incl. VAT)",
                     response.get("subscriptionId"), email, amountCentsWithVat);
                 return response;
             }
         } catch (Exception e) {
-            logger.error("Failed to create direct Stripe subscription for {}: {}", email, e.getMessage(), e);
+            logger.error("Failed to create auto Stripe subscription for {}: {}", email, e.getMessage(), e);
         }
         return null;
     }

@@ -59,11 +59,10 @@ class RegisterServiceTest {
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        Map<String, Object> result = registerService.registerUserWithTrial(makeRequest(name, email, password));
+        User result = registerService.registerUserWithTrial(makeRequest(name, email, password));
 
         assertNotNull(result);
-        User user = (User) result.get("user");
-        assertTrue(user.isEmailConfirmed());
+        assertTrue(result.isEmailConfirmed());
         verify(userRepository).save(any(User.class));
         verify(contactProfileRepository).save(any());
     }
@@ -112,7 +111,7 @@ class RegisterServiceTest {
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        Map<String, Object> result = registerService.registerUserWithTrial(makeRequest("Test User", email, password));
+        User result = registerService.registerUserWithTrial(makeRequest("Test User", email, password));
         assertNotNull(result);
     }
 
@@ -129,7 +128,7 @@ class RegisterServiceTest {
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        Map<String, Object> result = registerService.registerUserWithTrial(request);
+        User result = registerService.registerUserWithTrial(request);
         assertNotNull(result);
         verify(subscriptionRepository).save(any(com.beworking.subscriptions.Subscription.class));
     }
