@@ -683,6 +683,139 @@ public class SubscriptionController {
      * Upgrade an existing Stripe subscription to a new plan amount.
      * Updates both the Stripe subscription and the local DB record.
      */
+    /**
+     * Self-service: logged-in free user creates their own subscription.
+     * Card must already be on file (via SetupIntent). Charges immediately.
+     */
+    @PostMapping("/self-subscribe")
+    public ResponseEntity<?> selfSubscribe(Authentication authentication, @RequestBody Map<String, Object> body) {
+        if (authentication == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        String email = authentication.getName();
+        String plan = (String) body.getOrDefault("plan", "basic");
+        String stripeCustomerId = (String) body.get("stripeCustomerId");
+
+        if (stripeCustomerId == null || stripeCustomerId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "stripeCustomerId is required"));
+        }
+
+        // Find contact profile by email
+        var contactOpt = contactRepository.findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+            email, email, email, email);
+        if (contactOpt.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Contact profile not found"));
+        }
+        ContactProfile contact = contactOpt.get();
+
+        // Check no active subscription already exists
+        var existingSubs = subscriptionService.findByContactIdAndActiveTrue(contact.getId());
+        if (!existingSubs.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "Active subscription already exists"));
+        }
+
+        // Resolve plan amount
+        String planKey = plan.toLowerCase();
+        var planOpt = planRepository.findByPlanKey(planKey);
+        java.math.BigDecimal amount = planOpt.map(com.beworking.plans.Plan::getPrice)
+                .orElse(new java.math.BigDecimal("15.00"));
+        String planLabel = planOpt.map(com.beworking.plans.Plan::getName)
+                .orElse(planKey.substring(0, 1).toUpperCase() + planKey.substring(1));
+
+        // VAT calculation (same as admin flow)
+        String vatNumber = contact.getBillingTaxId();
+        String cuenta = "PT";
+        String supplierCountry = "ES";
+        boolean taxExempt = false;
+        if (vatNumber != null && !vatNumber.isBlank()) {
+            if (isEuVatNumber(vatNumber)) {
+                String prefix = vatNumber.trim().replaceAll("\\s+", "").toUpperCase().substring(0, 2);
+                taxExempt = !prefix.equals(supplierCountry);
+            } else {
+                String countryHint = SubscriptionService.countryNameToIso(contact.getBillingCountry());
+                if (countryHint != null) {
+                    var viesResult = viesVatService.validate(vatNumber, countryHint);
+                    if (viesResult.valid()) {
+                        taxExempt = !countryHint.equals(supplierCountry);
+                    }
+                }
+            }
+        }
+        int vatPercent = taxExempt ? 0 : 21;
+        int baseAmountCents = amount.multiply(java.math.BigDecimal.valueOf(100)).intValue();
+
+        // Create Stripe subscription via /api/subscriptions/auto (card already on file)
+        try {
+            Map<String, Object> stripeRequest = new java.util.HashMap<>();
+            stripeRequest.put("customer_email", email);
+            stripeRequest.put("customer_name", contact.getName());
+            stripeRequest.put("amount_cents", baseAmountCents);
+            stripeRequest.put("currency", "eur");
+            stripeRequest.put("description", "BeWorking " + planLabel);
+            stripeRequest.put("tenant", "bw");
+            stripeRequest.put("collection_method", "charge_automatically");
+            stripeRequest.put("tax_exempt", taxExempt);
+            stripeRequest.put("customer_id", stripeCustomerId);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> stripeResult = http.post()
+                .uri("/api/subscriptions/auto")
+                .header("Content-Type", "application/json")
+                .body(stripeRequest)
+                .retrieve()
+                .body(Map.class);
+
+            if (stripeResult == null || !stripeResult.containsKey("subscriptionId")) {
+                return ResponseEntity.status(502).body(Map.of("error", "Failed to create Stripe subscription"));
+            }
+
+            Subscription sub = new Subscription();
+            sub.setContactId(contact.getId());
+            sub.setMonthlyAmount(amount);
+            sub.setCurrency("EUR");
+            sub.setDescription("BeWorking " + planLabel);
+            sub.setBillingMethod("stripe");
+            sub.setCuenta(cuenta);
+            sub.setStartDate(java.time.LocalDate.now());
+            sub.setActive(true);
+            sub.setCreatedAt(java.time.LocalDateTime.now());
+            sub.setVatNumber(vatNumber);
+            sub.setVatPercent(vatPercent);
+            sub.setStripeSubscriptionId((String) stripeResult.get("subscriptionId"));
+            sub.setStripeCustomerId((String) stripeResult.get("customerId"));
+            subscriptionService.save(sub);
+
+            // Create local invoice
+            @SuppressWarnings("unchecked")
+            Map<String, Object> firstInvoice = (Map<String, Object>) stripeResult.get("firstInvoice");
+            if (firstInvoice != null) {
+                try {
+                    SubscriptionInvoicePayload inv = new SubscriptionInvoicePayload();
+                    inv.setStripeSubscriptionId(sub.getStripeSubscriptionId());
+                    inv.setStripeInvoiceId((String) firstInvoice.get("stripeInvoiceId"));
+                    inv.setStripePaymentIntentId((String) firstInvoice.get("paymentIntentId"));
+                    inv.setSubtotalCents(firstInvoice.get("subtotalCents") != null ? ((Number) firstInvoice.get("subtotalCents")).intValue() : 0);
+                    inv.setTaxCents(firstInvoice.get("taxCents") != null ? ((Number) firstInvoice.get("taxCents")).intValue() : 0);
+                    inv.setInvoicePdf((String) firstInvoice.get("invoicePdf"));
+                    inv.setPeriodStart((String) firstInvoice.get("periodStart"));
+                    inv.setPeriodEnd((String) firstInvoice.get("periodEnd"));
+                    inv.setStatus("paid");
+                    subscriptionService.createInvoiceFromSubscription(sub, inv);
+                } catch (Exception e) {
+                    logger.warn("Failed to create local invoice: {}", e.getMessage());
+                }
+            }
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                "message", "Subscription created",
+                "subscriptionId", sub.getId(),
+                "plan", planLabel
+            ));
+        } catch (Exception e) {
+            logger.error("Self-subscribe failed: {}", e.getMessage(), e);
+            return ResponseEntity.status(502).body(Map.of("error", "Payment failed: " + e.getMessage()));
+        }
+    }
+
     @PostMapping("/{id}/upgrade")
     public ResponseEntity<?> upgradePlan(@PathVariable Integer id, @RequestBody Map<String, Object> body) {
         Optional<Subscription> opt = subscriptionService.findById(id);
