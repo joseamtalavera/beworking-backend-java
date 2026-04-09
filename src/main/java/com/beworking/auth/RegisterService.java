@@ -57,13 +57,13 @@ public class RegisterService {
         String password = request.getPassword();
 
         if (!isNonBlank(name) || !isNonBlank(email) || !isPasswordValid(password)) {
-            return null;
+            throw new IllegalArgumentException("Invalid data: name, email and password (8-64 chars) are required");
         }
 
         String normalizedEmail = email.toLowerCase().trim();
 
         if (userRepository.findByEmail(normalizedEmail).isPresent()) {
-            return null;
+            throw new IllegalStateException("User already exists");
         }
 
         User user = new User(normalizedEmail, passwordEncoder.encode(password), User.Role.USER);

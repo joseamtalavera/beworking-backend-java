@@ -296,13 +296,20 @@ public class AuthController {
     @PostMapping("/register-with-trial")
     public ResponseEntity<AuthResponse> registerWithTrial(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
         // Turnstile skipped for paid registration — Stripe payment setup is the anti-fraud gate
-        var result = registerService.registerUserWithTrial(request);
-        if (result == null) {
+        try {
+            var result = registerService.registerUserWithTrial(request);
+            if (result == null) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(new AuthResponse("Unexpected error during registration", null, null));
+            }
+            return ResponseEntity.ok(new AuthResponse("User registered with trial", null, "USER"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new AuthResponse(e.getMessage(), null, null));
+        } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(new AuthResponse("User already exists or invalid data", null, null));
+                    .body(new AuthResponse(e.getMessage(), null, null));
         }
-
-        return ResponseEntity.ok(new AuthResponse("User registered with trial", null, "USER"));
     }
 
     @PostMapping("/setup-intent")
