@@ -182,14 +182,12 @@ public class RegisterService {
             sub.setVatNumber(vatNumber);
             sub.setVatPercent(vatPercent);
 
-            if (stripeResult != null) {
-                sub.setStripeSubscriptionId((String) stripeResult.get("subscriptionId"));
-                sub.setStripeCustomerId((String) stripeResult.get("customerId"));
-                user.setStripeCustomerId((String) stripeResult.get("customerId"));
-            } else if (customerId != null) {
-                sub.setStripeCustomerId(customerId);
-                user.setStripeCustomerId(customerId);
+            if (stripeResult == null) {
+                throw new IllegalStateException("Payment failed. Please try again.");
             }
+            sub.setStripeSubscriptionId((String) stripeResult.get("subscriptionId"));
+            sub.setStripeCustomerId((String) stripeResult.get("customerId"));
+            user.setStripeCustomerId((String) stripeResult.get("customerId"));
             userRepository.save(user);
             subscriptionRepository.save(sub);
         }
