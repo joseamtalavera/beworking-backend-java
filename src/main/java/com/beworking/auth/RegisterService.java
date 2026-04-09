@@ -121,7 +121,7 @@ public class RegisterService {
         contactProfileRepository.save(cp);
         userRepository.save(user);
 
-        // Create subscription with direct payment via Stripe
+        // Create subscription with immediate payment via Stripe
         String clientSecret = null;
         if (request.getPlan() != null && !request.getPlan().isBlank()) {
             String planKey = request.getPlan().toLowerCase();
@@ -133,11 +133,25 @@ public class RegisterService {
             String planLabel = planOpt.map(com.beworking.plans.Plan::getName)
                     .orElse(planKey.substring(0, 1).toUpperCase() + planKey.substring(1));
 
-            // Call stripe-service to create subscription with immediate payment
+            // Calculate VAT (21% for Spain, 0% for EU intra-community)
+            String vatNumber = request.getTaxId();
+            int vatPercent = 21;
+            if (vatNumber != null && !vatNumber.isBlank()) {
+                String cleaned = vatNumber.trim().replaceAll("\\s+", "").toUpperCase();
+                if (cleaned.length() >= 2 && Character.isLetter(cleaned.charAt(0)) && Character.isLetter(cleaned.charAt(1))) {
+                    String prefix = cleaned.substring(0, 2);
+                    if (!prefix.equals("ES")) vatPercent = 0;
+                }
+            }
+
+            java.math.BigDecimal vatAmount = amount.multiply(java.math.BigDecimal.valueOf(vatPercent))
+                    .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+            java.math.BigDecimal totalAmount = amount.add(vatAmount);
+            int amountCents = totalAmount.multiply(java.math.BigDecimal.valueOf(100)).intValue();
+
+            // Create Stripe subscription (default_incomplete — charges when user confirms payment)
             var stripeResult = createDirectSubscription(
-                normalizedEmail, name.trim(),
-                amount.multiply(new java.math.BigDecimal("100")).intValue(),
-                "BeWorking " + planLabel, planKey
+                normalizedEmail, name.trim(), amountCents, "BeWorking " + planLabel, planKey
             );
 
             Subscription sub = new Subscription();
@@ -146,14 +160,13 @@ public class RegisterService {
             sub.setCurrency(planOpt.map(com.beworking.plans.Plan::getCurrency).orElse("EUR"));
             sub.setDescription("BeWorking " + planLabel);
             sub.setBillingMethod("stripe");
+            sub.setCuenta("PT");
             sub.setStartDate(LocalDate.now());
             sub.setEndDate(null);
-            sub.setActive(false); // Will activate when payment confirmed
+            sub.setActive(false); // Activates when payment confirmed via webhook
             sub.setCreatedAt(LocalDateTime.now());
-            sub.setVatNumber(request.getTaxId());
-            if (request.getTaxId() != null && !request.getTaxId().isBlank()) {
-                sub.setVatPercent(0);
-            }
+            sub.setVatNumber(vatNumber);
+            sub.setVatPercent(vatPercent);
 
             if (stripeResult != null) {
                 sub.setStripeSubscriptionId((String) stripeResult.get("subscriptionId"));
@@ -431,32 +444,31 @@ public class RegisterService {
     }
 
     /**
-     * Calls the Stripe service to create a subscription with immediate payment.
+     * Calls stripe-service /api/subscriptions/direct to create a subscription with immediate payment.
      * Returns Map with subscriptionId, customerId, clientSecret.
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> createDirectSubscription(String email, String name,
-                                                          int monthlyAmountCents,
+                                                          int amountCentsWithVat,
                                                           String description, String plan) {
         try {
             String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
                 ? System.getenv("STRIPE_SERVICE_URL")
                 : "http://beworking-stripe-service:8081";
 
-            String jsonBody = String.format(
-                "{\"customer_email\":\"%s\",\"customer_name\":\"%s\",\"monthly_amount\":%d,"
-                + "\"description\":\"%s\",\"plan\":\"%s\",\"tenant\":\"beworking\"}",
-                email.replace("\"", "\\\""),
-                name.replace("\"", "\\\""),
-                monthlyAmountCents,
-                description.replace("\"", "\\\""),
-                plan.replace("\"", "\\\"")
-            );
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("customer_email", email);
+            body.put("customer_name", name);
+            body.put("monthly_amount", amountCentsWithVat);
+            body.put("currency", "eur");
+            body.put("description", description);
+            body.put("plan", plan);
+            body.put("tenant", "bw");
 
             var client = new org.springframework.web.client.RestTemplate();
             var headers = new org.springframework.http.HttpHeaders();
             headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
-            var entity = new org.springframework.http.HttpEntity<>(jsonBody, headers);
+            var entity = new org.springframework.http.HttpEntity<>(body, headers);
 
             Map<String, Object> response = client.postForObject(
                 stripeServiceUrl + "/api/subscriptions/direct",
@@ -465,7 +477,8 @@ public class RegisterService {
             );
 
             if (response != null && response.containsKey("subscriptionId")) {
-                logger.info("Created direct Stripe subscription {} for {}", response.get("subscriptionId"), email);
+                logger.info("Created direct Stripe subscription {} for {} ({}c incl. VAT)",
+                    response.get("subscriptionId"), email, amountCentsWithVat);
                 return response;
             }
         } catch (Exception e) {

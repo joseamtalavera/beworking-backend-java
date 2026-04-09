@@ -63,7 +63,6 @@ class RegisterServiceTest {
 
         assertNotNull(result);
         User user = (User) result.get("user");
-        assertNotNull(user);
         assertTrue(user.isEmailConfirmed());
         verify(userRepository).save(any(User.class));
         verify(contactProfileRepository).save(any());
@@ -115,7 +114,6 @@ class RegisterServiceTest {
 
         Map<String, Object> result = registerService.registerUserWithTrial(makeRequest("Test User", email, password));
         assertNotNull(result);
-        assertNotNull(result.get("user"));
     }
 
     @Test

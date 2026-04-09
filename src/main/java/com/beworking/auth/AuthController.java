@@ -295,7 +295,6 @@ public class AuthController {
 
     @PostMapping("/register-with-trial")
     public ResponseEntity<?> registerWithTrial(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
-        // Turnstile skipped for paid registration — Stripe payment is the anti-fraud gate
         try {
             var result = registerService.registerUserWithTrial(request);
             if (result == null) {
@@ -304,7 +303,6 @@ public class AuthController {
             }
             String clientSecret = (String) result.get("clientSecret");
             if (clientSecret != null) {
-                // Return clientSecret for frontend to confirm payment
                 return ResponseEntity.ok(Map.of(
                     "message", "User registered, confirm payment",
                     "clientSecret", clientSecret,
