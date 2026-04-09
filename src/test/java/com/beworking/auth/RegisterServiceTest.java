@@ -7,6 +7,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.util.Map;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -69,19 +71,19 @@ class RegisterServiceTest {
     void testRegisterUserWithTrial_DuplicateEmail() {
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(new User()));
 
-        User result = registerService.registerUserWithTrial(makeRequest("Test User", "test@example.com", "Password123!"));
-
-        assertNull(result);
+        assertThrows(IllegalStateException.class, () ->
+            registerService.registerUserWithTrial(makeRequest("Test User", "test@example.com", "Password123!"))
+        );
         verify(userRepository, never()).save(any(User.class));
     }
 
     @Test
     void testRegisterUserWithTrial_NullOrEmptyInput() {
-        assertNull(registerService.registerUserWithTrial(makeRequest(null, "test@example.com", "Password123!")));
-        assertNull(registerService.registerUserWithTrial(makeRequest("Test User", null, "Password123!")));
-        assertNull(registerService.registerUserWithTrial(makeRequest("Test User", "test@example.com", null)));
-        assertNull(registerService.registerUserWithTrial(makeRequest("", "test@example.com", "Password123!")));
-        assertNull(registerService.registerUserWithTrial(makeRequest("Test User", "", "Password123!")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest(null, "test@example.com", "Password123!")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest("Test User", null, "Password123!")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest("Test User", "test@example.com", null)));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest("", "test@example.com", "Password123!")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest("Test User", "", "Password123!")));
         assertNull(registerService.registerUserWithTrial(makeRequest("Test User", "test@example.com", "")));
         verify(userRepository, never()).save(any(User.class));
     }
@@ -109,8 +111,9 @@ class RegisterServiceTest {
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        User result = registerService.registerUserWithTrial(makeRequest("Test User", email, password));
+        Map<String, Object> result = registerService.registerUserWithTrial(makeRequest("Test User", email, password));
         assertNotNull(result);
+        assertNotNull(result.get("user"));
     }
 
     @Test
@@ -126,7 +129,7 @@ class RegisterServiceTest {
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        User result = registerService.registerUserWithTrial(request);
+        Map<String, Object> result = registerService.registerUserWithTrial(request);
         assertNotNull(result);
         verify(subscriptionRepository).save(any(com.beworking.subscriptions.Subscription.class));
     }
