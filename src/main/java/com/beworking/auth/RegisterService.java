@@ -495,8 +495,8 @@ public class RegisterService {
             );
 
             if (response != null && response.containsKey("subscriptionId")) {
-                logger.info("Created auto Stripe subscription {} for {} ({}c incl. VAT)",
-                    response.get("subscriptionId"), email, amountCentsWithVat);
+                logger.info("Created auto Stripe subscription {} for {} ({}c base)",
+                    response.get("subscriptionId"), email, baseAmountCents);
                 return response;
             }
         } catch (Exception e) {
