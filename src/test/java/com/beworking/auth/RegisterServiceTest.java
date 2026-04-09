@@ -59,10 +59,12 @@ class RegisterServiceTest {
         when(passwordEncoder.encode(password)).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        User result = registerService.registerUserWithTrial(makeRequest(name, email, password));
+        Map<String, Object> result = registerService.registerUserWithTrial(makeRequest(name, email, password));
 
         assertNotNull(result);
-        assertTrue(result.isEmailConfirmed());
+        User user = (User) result.get("user");
+        assertNotNull(user);
+        assertTrue(user.isEmailConfirmed());
         verify(userRepository).save(any(User.class));
         verify(contactProfileRepository).save(any());
     }
