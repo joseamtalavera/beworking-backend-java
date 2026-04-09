@@ -145,7 +145,7 @@ public class AuthControllerTest {
     @Test
     void testRegister_Success() throws Exception {
         String json = "{\"name\":\"New User\",\"email\":\"newuser@example.com\",\"password\":\"newpassword\"}";
-        when(registerService.registerUserWithTrial(any(RegisterRequest.class))).thenReturn(new User("newuser@example.com", "encoded", User.Role.USER));
+        when(registerService.registerSimple(any(RegisterRequest.class))).thenReturn(new User("newuser@example.com", "encoded", User.Role.USER));
 
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -159,7 +159,7 @@ public class AuthControllerTest {
     void testRegister_Conflict() throws Exception {
         // lets assume that the user already exists
         String json = "{\"name\": \"Existing User\", \"email\": \"existing@example.com\", \"password\": \"existingpassword\"}";
-        when(registerService.registerUserWithTrial(any(RegisterRequest.class))).thenReturn(null);
+        when(registerService.registerSimple(any(RegisterRequest.class))).thenReturn(null);
 
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)

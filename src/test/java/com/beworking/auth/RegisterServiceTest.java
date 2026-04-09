@@ -86,7 +86,7 @@ class RegisterServiceTest {
         assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest("Test User", "test@example.com", null)));
         assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest("", "test@example.com", "Password123!")));
         assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest("Test User", "", "Password123!")));
-        assertNull(registerService.registerUserWithTrial(makeRequest("Test User", "test@example.com", "")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest("Test User", "test@example.com", "")));
         verify(userRepository, never()).save(any(User.class));
     }
 
@@ -95,11 +95,11 @@ class RegisterServiceTest {
         String name = "Test User";
         String email = "test@example.com";
 
-        assertNull(registerService.registerUserWithTrial(makeRequest(name, email, "P1!a")));
-        assertNull(registerService.registerUserWithTrial(makeRequest(name, email, "password123!")));
-        assertNull(registerService.registerUserWithTrial(makeRequest(name, email, "PASSWORD234!")));
-        assertNull(registerService.registerUserWithTrial(makeRequest(name, email, "Password!")));
-        assertNull(registerService.registerUserWithTrial(makeRequest(name, email, "Password123")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest(name, email, "P1!a")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest(name, email, "password123!")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest(name, email, "PASSWORD234!")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest(name, email, "Password!")));
+        assertThrows(IllegalArgumentException.class, () -> registerService.registerUserWithTrial(makeRequest(name, email, "Password123")));
         verify(userRepository, never()).save(any(User.class));
     }
 
