@@ -51,7 +51,8 @@ public class RegisterService {
      * Also creates a Subscription record and populates ContactProfile with billing data.
      */
     @Transactional
-    public User registerUserWithTrial(RegisterRequest request) {
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> registerUserWithTrial(RegisterRequest request) {
         String name = request.getName();
         String email = request.getEmail();
         String password = request.getPassword();
@@ -120,10 +121,10 @@ public class RegisterService {
         contactProfileRepository.save(cp);
         userRepository.save(user);
 
-        // Create subscription record if plan is provided
+        // Create subscription with direct payment via Stripe
+        String clientSecret = null;
         if (request.getPlan() != null && !request.getPlan().isBlank()) {
             String planKey = request.getPlan().toLowerCase();
-            // "basis" is legacy alias for "basic"
             if ("basis".equals(planKey)) planKey = "basic";
 
             var planOpt = planRepository.findByPlanKey(planKey);
@@ -132,35 +133,34 @@ public class RegisterService {
             String planLabel = planOpt.map(com.beworking.plans.Plan::getName)
                     .orElse(planKey.substring(0, 1).toUpperCase() + planKey.substring(1));
 
+            // Call stripe-service to create subscription with immediate payment
+            var stripeResult = createDirectSubscription(
+                normalizedEmail, name.trim(),
+                amount.multiply(new java.math.BigDecimal("100")).intValue(),
+                "BeWorking " + planLabel, planKey
+            );
+
             Subscription sub = new Subscription();
             sub.setContactId(cp.getId());
             sub.setMonthlyAmount(amount);
             sub.setCurrency(planOpt.map(com.beworking.plans.Plan::getCurrency).orElse("EUR"));
             sub.setDescription("BeWorking " + planLabel);
             sub.setBillingMethod("stripe");
-            sub.setStripeCustomerId(request.getStripeCustomerId());
-            sub.setStartDate(LocalDate.now()); // Billing starts immediately
-            sub.setEndDate(null); // Ongoing subscription, no fixed end
-            sub.setActive(true);
+            sub.setStartDate(LocalDate.now());
+            sub.setEndDate(null);
+            sub.setActive(false); // Will activate when payment confirmed
             sub.setCreatedAt(LocalDateTime.now());
             sub.setVatNumber(request.getTaxId());
             if (request.getTaxId() != null && !request.getTaxId().isBlank()) {
-                sub.setVatPercent(0); // EU VAT reverse charge
+                sub.setVatPercent(0);
             }
 
-            // Create Stripe subscription (charge immediately, no trial)
-            if (request.getSetupIntentId() != null && !request.getSetupIntentId().isBlank()) {
-                String stripeSubId = createStripeSubscription(
-                    request.getSetupIntentId(),
-                    amount.multiply(new java.math.BigDecimal("100")).intValue(),
-                    sub.getCurrency().toLowerCase(),
-                    0,
-                    "BeWorking " + planLabel,
-                    planKey
-                );
-                if (stripeSubId != null) {
-                    sub.setStripeSubscriptionId(stripeSubId);
-                }
+            if (stripeResult != null) {
+                sub.setStripeSubscriptionId((String) stripeResult.get("subscriptionId"));
+                sub.setStripeCustomerId((String) stripeResult.get("customerId"));
+                clientSecret = (String) stripeResult.get("clientSecret");
+                user.setStripeCustomerId((String) stripeResult.get("customerId"));
+                userRepository.save(user);
             }
 
             subscriptionRepository.save(sub);
@@ -177,7 +177,10 @@ public class RegisterService {
         String planLabel = request.getPlan() != null ? request.getPlan() : "Basic";
         emailService.sendSubscriptionWelcomeEmail(normalizedEmail, name.trim(), planLabel, request.getLocation());
 
-        return user;
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("user", user);
+        result.put("clientSecret", clientSecret);
+        return result;
     }
 
     /**
@@ -428,24 +431,24 @@ public class RegisterService {
     }
 
     /**
-     * Calls the Stripe service to create a trial subscription.
-     * Returns the Stripe subscription ID, or null on failure.
+     * Calls the Stripe service to create a subscription with immediate payment.
+     * Returns Map with subscriptionId, customerId, clientSecret.
      */
-    private String createStripeSubscription(String setupIntentId, int monthlyAmountCents,
-                                              String currency, int trialDays,
-                                              String description, String plan) {
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> createDirectSubscription(String email, String name,
+                                                          int monthlyAmountCents,
+                                                          String description, String plan) {
         try {
             String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
                 ? System.getenv("STRIPE_SERVICE_URL")
                 : "http://beworking-stripe-service:8081";
 
             String jsonBody = String.format(
-                "{\"setup_intent_id\":\"%s\",\"monthly_amount\":%d,\"currency\":\"%s\","
-                + "\"trial_period_days\":%d,\"description\":\"%s\",\"plan\":\"%s\",\"tenant\":\"beworking\"}",
-                setupIntentId.replace("\"", "\\\""),
+                "{\"customer_email\":\"%s\",\"customer_name\":\"%s\",\"monthly_amount\":%d,"
+                + "\"description\":\"%s\",\"plan\":\"%s\",\"tenant\":\"beworking\"}",
+                email.replace("\"", "\\\""),
+                name.replace("\"", "\\\""),
                 monthlyAmountCents,
-                currency.replace("\"", "\\\""),
-                trialDays,
                 description.replace("\"", "\\\""),
                 plan.replace("\"", "\\\"")
             );
@@ -455,21 +458,18 @@ public class RegisterService {
             headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
             var entity = new org.springframework.http.HttpEntity<>(jsonBody, headers);
 
-            @SuppressWarnings("unchecked")
             Map<String, Object> response = client.postForObject(
-                stripeServiceUrl + "/api/subscriptions/trial",
+                stripeServiceUrl + "/api/subscriptions/direct",
                 entity,
                 Map.class
             );
 
             if (response != null && response.containsKey("subscriptionId")) {
-                String subId = (String) response.get("subscriptionId");
-                logger.info("Created Stripe subscription {} for setupIntent {}", subId, setupIntentId);
-                return subId;
+                logger.info("Created direct Stripe subscription {} for {}", response.get("subscriptionId"), email);
+                return response;
             }
         } catch (Exception e) {
-            logger.error("Failed to create Stripe subscription for setupIntent {}: {}",
-                setupIntentId, e.getMessage(), e);
+            logger.error("Failed to create direct Stripe subscription for {}: {}", email, e.getMessage(), e);
         }
         return null;
     }

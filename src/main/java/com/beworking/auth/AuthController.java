@@ -294,15 +294,24 @@ public class AuthController {
     }
 
     @PostMapping("/register-with-trial")
-    public ResponseEntity<AuthResponse> registerWithTrial(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
-        // Turnstile skipped for paid registration — Stripe payment setup is the anti-fraud gate
+    public ResponseEntity<?> registerWithTrial(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
+        // Turnstile skipped for paid registration — Stripe payment is the anti-fraud gate
         try {
             var result = registerService.registerUserWithTrial(request);
             if (result == null) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                         .body(new AuthResponse("Unexpected error during registration", null, null));
             }
-            return ResponseEntity.ok(new AuthResponse("User registered with trial", null, "USER"));
+            String clientSecret = (String) result.get("clientSecret");
+            if (clientSecret != null) {
+                // Return clientSecret for frontend to confirm payment
+                return ResponseEntity.ok(Map.of(
+                    "message", "User registered, confirm payment",
+                    "clientSecret", clientSecret,
+                    "role", "USER"
+                ));
+            }
+            return ResponseEntity.ok(new AuthResponse("User registered", null, "USER"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new AuthResponse(e.getMessage(), null, null));
