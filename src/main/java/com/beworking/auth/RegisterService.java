@@ -2,6 +2,7 @@ package com.beworking.auth;
 
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
+import com.beworking.contacts.ViesVatService;
 import com.beworking.plans.PlanRepository;
 import com.beworking.subscriptions.Subscription;
 import com.beworking.subscriptions.SubscriptionRepository;
@@ -34,16 +35,19 @@ public class RegisterService {
     private final ContactProfileRepository contactProfileRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final PlanRepository planRepository;
+    private final ViesVatService viesVatService;
 
     public RegisterService(UserRepository userRepository, PasswordEncoder passwordEncoder,
                            EmailService emailService, ContactProfileRepository contactProfileRepository,
-                           SubscriptionRepository subscriptionRepository, PlanRepository planRepository) {
+                           SubscriptionRepository subscriptionRepository, PlanRepository planRepository,
+                           ViesVatService viesVatService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.contactProfileRepository = contactProfileRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.planRepository = planRepository;
+        this.viesVatService = viesVatService;
     }
 
     /**
@@ -131,14 +135,26 @@ public class RegisterService {
             String planLabel = planOpt.map(com.beworking.plans.Plan::getName)
                     .orElse(planKey.substring(0, 1).toUpperCase() + planKey.substring(1));
 
-            // Calculate VAT (21% for Spain, 0% for EU intra-community)
+            // Calculate VAT using VIES validation
             String vatNumber = request.getTaxId();
-            int vatPercent = 21;
+            int vatPercent = 21; // Default: Spanish IVA
+            boolean taxExempt = false;
             if (vatNumber != null && !vatNumber.isBlank()) {
-                String cleaned = vatNumber.trim().replaceAll("\\s+", "").toUpperCase();
-                if (cleaned.length() >= 2 && Character.isLetter(cleaned.charAt(0)) && Character.isLetter(cleaned.charAt(1))) {
-                    String prefix = cleaned.substring(0, 2);
-                    if (!prefix.equals("ES")) vatPercent = 0;
+                // Try VIES validation with country hint from billing country
+                String countryHint = com.beworking.subscriptions.SubscriptionService.countryNameToIso(
+                    cp.getBillingCountry());
+                var viesResult = viesVatService.validate(vatNumber, countryHint);
+                if (viesResult.valid()) {
+                    // Valid EU VAT — check if intra-community (not ES supplier)
+                    String normalized = vatNumber.trim().toUpperCase().replaceAll("\\s+", "");
+                    String prefix = normalized.length() >= 2 ? normalized.substring(0, 2) : "";
+                    if (!prefix.equals("ES")) {
+                        vatPercent = 0;
+                        taxExempt = true;
+                    }
+                    logger.info("VIES validated {} — taxExempt={}", vatNumber, taxExempt);
+                } else {
+                    logger.info("VIES could not validate {} — applying default 21% VAT", vatNumber);
                 }
             }
 

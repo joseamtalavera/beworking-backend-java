@@ -32,12 +32,14 @@ class RegisterServiceTest {
     private com.beworking.subscriptions.SubscriptionRepository subscriptionRepository;
     @Mock
     private com.beworking.plans.PlanRepository planRepository;
+    @Mock
+    private com.beworking.contacts.ViesVatService viesVatService;
 
     private RegisterService registerService;
 
     @BeforeEach
     void setUp() {
-        registerService = new RegisterService(userRepository, passwordEncoder, emailService, contactProfileRepository, subscriptionRepository, planRepository);
+        registerService = new RegisterService(userRepository, passwordEncoder, emailService, contactProfileRepository, subscriptionRepository, planRepository, viesVatService);
     }
 
     private RegisterRequest makeRequest(String name, String email, String password) {
