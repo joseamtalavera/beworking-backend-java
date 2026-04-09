@@ -158,15 +158,14 @@ public class RegisterService {
                 }
             }
 
-            java.math.BigDecimal vatAmount = amount.multiply(java.math.BigDecimal.valueOf(vatPercent))
-                    .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
-            java.math.BigDecimal totalAmount = amount.add(vatAmount);
-            int amountCents = totalAmount.multiply(java.math.BigDecimal.valueOf(100)).intValue();
+            // Send BASE amount — Stripe applies tax rate automatically
+            int baseAmountCents = amount.multiply(java.math.BigDecimal.valueOf(100)).intValue();
 
-            // Customer already has card from SetupIntent — subscription charges immediately
+            // Customer already has card from SetupIntent — charge_automatically charges immediately
             String customerId = request.getStripeCustomerId();
             var stripeResult = createAutoSubscription(
-                normalizedEmail, name.trim(), amountCents, "BeWorking " + planLabel, customerId
+                normalizedEmail, name.trim(), baseAmountCents, "BeWorking " + planLabel,
+                customerId, taxExempt
             );
 
             Subscription sub = new Subscription();
@@ -463,8 +462,9 @@ public class RegisterService {
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> createAutoSubscription(String email, String name,
-                                                        int amountCentsWithVat,
-                                                        String description, String customerId) {
+                                                        int baseAmountCents,
+                                                        String description, String customerId,
+                                                        boolean taxExempt) {
         try {
             String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
                 ? System.getenv("STRIPE_SERVICE_URL")
@@ -473,10 +473,12 @@ public class RegisterService {
             Map<String, Object> body = new java.util.HashMap<>();
             body.put("customer_email", email);
             body.put("customer_name", name);
-            body.put("amount_cents", amountCentsWithVat);
+            body.put("amount_cents", baseAmountCents);
             body.put("currency", "eur");
             body.put("description", description);
             body.put("tenant", "bw");
+            body.put("collection_method", "charge_automatically");
+            body.put("tax_exempt", taxExempt);
             if (customerId != null && !customerId.isBlank()) {
                 body.put("customer_id", customerId);
             }
