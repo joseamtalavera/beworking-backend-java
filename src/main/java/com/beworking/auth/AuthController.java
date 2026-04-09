@@ -295,12 +295,7 @@ public class AuthController {
 
     @PostMapping("/register-with-trial")
     public ResponseEntity<AuthResponse> registerWithTrial(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
-        var turnstileResult = turnstileService.verify(request.getTurnstileToken(), httpRequest.getRemoteAddr());
-        if (!turnstileResult.isSuccess()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new AuthResponse("Turnstile verification failed", null, null));
-        }
-
+        // Turnstile skipped for paid registration — Stripe payment setup is the anti-fraud gate
         var result = registerService.registerUserWithTrial(request);
         if (result == null) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
