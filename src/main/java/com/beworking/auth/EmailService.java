@@ -122,13 +122,20 @@ public class EmailService {
                 + "</table>"
                 + "</td></tr></table>"
                 + "</body></html>";
+        String plainText = "Restablecer contrase\u00f1a \u2014 BeWorking\n\n"
+                + "Hemos recibido una solicitud para restablecer tu contrase\u00f1a.\n\n"
+                + "Pulsa el siguiente enlace para crear una nueva contrase\u00f1a (caduca en 1 hora):\n"
+                + resetLink + "\n\n"
+                + "Si no has solicitado restablecer tu contrase\u00f1a, puedes ignorar este mensaje.\n\n"
+                + "\u00bfNecesitas ayuda? WhatsApp: +34 640 369 759\n\n"
+                + "\u00a9 BeWorking \u00b7 M\u00e1laga";
         try {
             logger.info("Attempting to send password reset email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setTo(to);
             helper.setSubject(subject);
-            helper.setText(content, true);
+            helper.setText(plainText, content);
             mailSender.send(message);
             logger.info("Password reset email sent successfully to {}", to);
         } catch (Exception e) {
