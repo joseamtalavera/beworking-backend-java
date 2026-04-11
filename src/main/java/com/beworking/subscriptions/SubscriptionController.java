@@ -34,6 +34,7 @@ public class SubscriptionController {
     private final UserRepository userRepository;
     private final ContactProfileRepository contactRepository;
     private final ProductoRepository productoRepository;
+    private final com.beworking.plans.PlanRepository planRepository;
     private final com.beworking.contacts.ViesVatService viesVatService;
     private final RestClient http;
 
@@ -41,12 +42,14 @@ public class SubscriptionController {
                                   UserRepository userRepository,
                                   ContactProfileRepository contactRepository,
                                   ProductoRepository productoRepository,
+                                  com.beworking.plans.PlanRepository planRepository,
                                   com.beworking.contacts.ViesVatService viesVatService,
                                   @Value("${app.payments.base-url:http://beworking-stripe-service:8081}") String paymentsBaseUrl) {
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
         this.contactRepository = contactRepository;
         this.productoRepository = productoRepository;
+        this.planRepository = planRepository;
         this.viesVatService = viesVatService;
         this.http = RestClient.builder().baseUrl(paymentsBaseUrl).build();
     }
