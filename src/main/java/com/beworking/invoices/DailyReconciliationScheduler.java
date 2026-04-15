@@ -163,6 +163,8 @@ public class DailyReconciliationScheduler {
     }
 
     private void persist(AccountResult result) {
+        logger.info("Persisting reconciliation for {}: dbActive={} dbStripe={} dbBank={} stripeActive={}",
+            result.account, result.dbActive, result.dbStripe, result.dbBankTransfer, result.stripeActive);
         try {
             String missingJson = objectMapper.writeValueAsString(result.missingInvoices);
             String pastDueJson = objectMapper.writeValueAsString(result.pastDueSubs);
