@@ -78,11 +78,16 @@ public class DailyReconciliationScheduler {
     private AccountResult reconcileAccount(String account) {
         AccountResult result = new AccountResult(account);
 
-        // 1. DB active count
-        Integer dbActive = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM beworking.subscriptions WHERE active = true AND cuenta = ?",
+        // 1. DB active counts by billing method
+        Integer dbStripe = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM beworking.subscriptions WHERE active = true AND cuenta = ? AND billing_method = 'stripe'",
             Integer.class, account);
-        result.dbActive = dbActive != null ? dbActive : 0;
+        Integer dbBankTransfer = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM beworking.subscriptions WHERE active = true AND cuenta = ? AND billing_method = 'bank_transfer'",
+            Integer.class, account);
+        result.dbStripe = dbStripe != null ? dbStripe : 0;
+        result.dbBankTransfer = dbBankTransfer != null ? dbBankTransfer : 0;
+        result.dbActive = result.dbStripe + result.dbBankTransfer;
 
         // 2. Stripe data
         Map<String, Object> stripeData = http.get()
@@ -166,12 +171,14 @@ public class DailyReconciliationScheduler {
 
             jdbcTemplate.update("""
                 INSERT INTO beworking.reconciliation_results
-                    (run_date, account, db_active, stripe_active, stripe_past_due,
+                    (run_date, account, db_active, db_stripe, db_bank_transfer, stripe_active, stripe_past_due,
                      past_due_amount, missing_invoice_count, missing_invoices, past_due_subs,
                      db_only_subs, stripe_only_subs)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb)
                 ON CONFLICT (run_date, account) DO UPDATE SET
                     db_active = EXCLUDED.db_active,
+                    db_stripe = EXCLUDED.db_stripe,
+                    db_bank_transfer = EXCLUDED.db_bank_transfer,
                     stripe_active = EXCLUDED.stripe_active,
                     stripe_past_due = EXCLUDED.stripe_past_due,
                     past_due_amount = EXCLUDED.past_due_amount,
@@ -182,8 +189,8 @@ public class DailyReconciliationScheduler {
                     stripe_only_subs = EXCLUDED.stripe_only_subs,
                     created_at = CURRENT_TIMESTAMP
                 """,
-                LocalDate.now(), result.account, result.dbActive, result.stripeActive,
-                result.stripePastDue, result.pastDueAmount, result.missingInvoices.size(),
+                LocalDate.now(), result.account, result.dbActive, result.dbStripe, result.dbBankTransfer,
+                result.stripeActive, result.stripePastDue, result.pastDueAmount, result.missingInvoices.size(),
                 missingJson, pastDueJson, dbOnlyJson, stripeOnlyJson);
 
         } catch (Exception e) {
@@ -288,6 +295,8 @@ public class DailyReconciliationScheduler {
     static class AccountResult {
         String account;
         int dbActive;
+        int dbStripe;
+        int dbBankTransfer;
         int stripeActive;
         int stripePastDue;
         BigDecimal pastDueAmount = BigDecimal.ZERO;

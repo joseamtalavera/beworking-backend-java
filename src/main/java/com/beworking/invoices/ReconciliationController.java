@@ -27,6 +27,8 @@ public class ReconciliationController {
                 account,
                 run_date,
                 db_active,
+                db_stripe,
+                db_bank_transfer,
                 stripe_active,
                 stripe_past_due,
                 past_due_amount,
