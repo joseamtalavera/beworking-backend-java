@@ -51,6 +51,7 @@ public class DailyReconciliationScheduler {
         List<AccountResult> results = new ArrayList<>();
         boolean hasIssues = false;
 
+        RuntimeException firstError = null;
         for (String account : ACCOUNTS) {
             try {
                 AccountResult result = reconcileAccount(account);
@@ -65,7 +66,13 @@ public class DailyReconciliationScheduler {
                 errResult.error = e.getMessage();
                 results.add(errResult);
                 hasIssues = true;
+                if (firstError == null) {
+                    firstError = new RuntimeException("[" + account + "] " + e.getMessage(), e);
+                }
             }
+        }
+        if (firstError != null) {
+            throw firstError;
         }
 
         if (hasIssues) {
@@ -197,6 +204,7 @@ public class DailyReconciliationScheduler {
 
         } catch (Exception e) {
             logger.error("Failed to persist reconciliation result for {}: {}", result.account, e.getMessage(), e);
+            throw new RuntimeException("persist(" + result.account + "): " + e.getMessage(), e);
         }
     }
 

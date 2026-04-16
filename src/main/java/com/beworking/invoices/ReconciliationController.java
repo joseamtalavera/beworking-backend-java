@@ -115,8 +115,26 @@ public class ReconciliationController {
     }
 
     @PostMapping("/run")
-    public ResponseEntity<Map<String, String>> triggerRun() {
-        scheduler.runDailyReconciliation();
-        return ResponseEntity.ok(Map.of("status", "ok", "message", "Reconciliation triggered"));
+    public ResponseEntity<Map<String, Object>> triggerRun() {
+        long t0 = System.currentTimeMillis();
+        try {
+            scheduler.runDailyReconciliation();
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                "status", "error",
+                "message", "Reconciliation failed: " + e.getClass().getSimpleName() + ": " + (e.getMessage() != null ? e.getMessage() : ""),
+                "durationMs", System.currentTimeMillis() - t0
+            ));
+        }
+        // Count rows persisted today to verify the run actually saved
+        Integer rowsToday = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM beworking.reconciliation_results WHERE run_date = CURRENT_DATE",
+            Integer.class);
+        return ResponseEntity.ok(Map.of(
+            "status", "ok",
+            "message", "Reconciliation triggered",
+            "rowsToday", rowsToday != null ? rowsToday : 0,
+            "durationMs", System.currentTimeMillis() - t0
+        ));
     }
 }
