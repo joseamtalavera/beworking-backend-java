@@ -8,4 +8,5 @@ import org.springframework.stereotype.Repository;
 public interface CentroRepository extends JpaRepository<Centro, Long> {
 
     Optional<Centro> findByCodigoIgnoreCase(String codigo);
+    Optional<Centro> findByNombreIgnoreCase(String nombre);
 }

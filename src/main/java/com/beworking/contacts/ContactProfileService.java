@@ -423,11 +423,19 @@ public class ContactProfileService {
         if (trimmed == null) {
             return null;
         }
+        // Try numeric ID first
         try {
             return Long.parseLong(trimmed);
-        } catch (NumberFormatException ex) {
-            return null;
+        } catch (NumberFormatException ignored) {
+            // fall through to name/code lookup
         }
+        // Try matching by nombre (e.g. "MA1 MALAGA DUMAS")
+        var byName = centroRepository.findByNombreIgnoreCase(trimmed);
+        if (byName.isPresent()) return byName.get().getId();
+        // Try matching by codigo (e.g. "MA1")
+        var byCode = centroRepository.findByCodigoIgnoreCase(trimmed);
+        if (byCode.isPresent()) return byCode.get().getId();
+        return null;
     }
 
     @Transactional
