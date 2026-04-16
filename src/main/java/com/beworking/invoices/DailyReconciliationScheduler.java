@@ -103,10 +103,18 @@ public class DailyReconciliationScheduler {
             .body(new ParameterizedTypeReference<Map<String, Object>>() {});
 
         if (stripeData == null) throw new RuntimeException("Null response from stripe-service");
+        logger.info("Stripe reconciliation payload [{}] keys: {}", account, stripeData.keySet());
 
-        result.stripeActive = ((Number) stripeData.get("stripeActive")).intValue();
-        result.stripePastDue = ((Number) stripeData.get("stripePastDue")).intValue();
-        result.pastDueAmount = new BigDecimal(stripeData.get("pastDueAmount").toString());
+        Object sa = stripeData.get("stripeActive");
+        Object spd = stripeData.get("stripePastDue");
+        Object pda = stripeData.get("pastDueAmount");
+        if (sa == null || spd == null) {
+            throw new RuntimeException("stripe-service missing required fields for " + account
+                + " (stripeActive=" + sa + ", stripePastDue=" + spd + ", keys=" + stripeData.keySet() + ")");
+        }
+        result.stripeActive = ((Number) sa).intValue();
+        result.stripePastDue = ((Number) spd).intValue();
+        result.pastDueAmount = pda != null ? new BigDecimal(pda.toString()) : BigDecimal.ZERO;
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> pastDueSubs = (List<Map<String, Object>>) stripeData.get("pastDueSubs");
@@ -136,9 +144,9 @@ public class DailyReconciliationScheduler {
             java.util.Set<String> dbIds = new java.util.HashSet<>(dbSubIds);
 
             // In DB but not in Stripe (cancelled in Stripe but still active in DB)
-            result.dbOnlySubIds = dbSubIds.stream().filter(id -> !stripeIds.contains(id)).toList();
+            result.dbOnlySubIds = new ArrayList<>(dbSubIds.stream().filter(id -> !stripeIds.contains(id)).toList());
             // In Stripe but not in DB (exists in Stripe but no DB record)
-            result.stripeOnlySubIds = activeSubIds.stream().filter(id -> !dbIds.contains(id)).toList();
+            result.stripeOnlySubIds = new ArrayList<>(activeSubIds.stream().filter(id -> !dbIds.contains(id)).toList());
             result.stripeOnlySubIds.addAll(pastDueSubIds.stream().filter(id -> !dbIds.contains(id)).toList());
         }
 
