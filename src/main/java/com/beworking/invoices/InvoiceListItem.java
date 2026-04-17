@@ -18,6 +18,7 @@ public record InvoiceListItem(
     String holdedInvoicePdf,
     String clientName,
     String clientEmail,
+    String clientTaxId,
     String tenantType,
     String products
 ) { }

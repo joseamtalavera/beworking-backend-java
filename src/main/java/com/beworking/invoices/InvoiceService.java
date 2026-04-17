@@ -181,6 +181,7 @@ public class InvoiceService {
                         c.representative_email
                     )
                 ) AS client_email,
+                MAX(c.billing_tax_id) AS client_tax_id,
                 MAX(c.tenant_type) AS tenant_type,
                 LEFT(STRING_AGG(DISTINCT COALESCE(
                     p.nombre,
@@ -241,6 +242,7 @@ public class InvoiceService {
                     rs.getString("holdedinvoicepdf"),
                     rs.getString("client_name"),
                     rs.getString("client_email"),
+                    rs.getString("client_tax_id"),
                     rs.getString("tenant_type"),
                     rs.getString("products")
                 );
