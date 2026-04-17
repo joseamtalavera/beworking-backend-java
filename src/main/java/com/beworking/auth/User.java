@@ -78,7 +78,7 @@ public class User {
     private String stripeCustomerId;
 
     public enum Role {
-        ADMIN, USER;
+        ADMIN, USER, ACCOUNTANT;
         // For future extensibility, you can add more roles here
     }
 
@@ -123,6 +123,12 @@ public class User {
      */
     public boolean isUser() {
         return this.role == Role.USER;
+    }
+    /**
+     * Staff = ADMIN or ACCOUNTANT (read-only access to invoices and related endpoints).
+     */
+    public boolean isStaff() {
+        return this.role == Role.ADMIN || this.role == Role.ACCOUNTANT;
     }
 
     @Override

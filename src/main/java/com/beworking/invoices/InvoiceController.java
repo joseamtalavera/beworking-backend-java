@@ -177,7 +177,7 @@ public class InvoiceController {
         if (userOpt.isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        if (userOpt.get().getRole() != User.Role.ADMIN) {
+        if (!userOpt.get().isStaff()) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
