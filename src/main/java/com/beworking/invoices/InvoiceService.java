@@ -812,6 +812,15 @@ public class InvoiceService {
             return "Pendiente";
         }
         String value = status.trim().toLowerCase();
+        if (value.contains("rectificativ")) {
+            return "Rectificativa";
+        }
+        if (value.contains("rectificad")) {
+            return "Rectificado";
+        }
+        if (value.contains("anul") || value.contains("void") || value.contains("cancel")) {
+            return "Anulado";
+        }
         if (value.contains("pag")) {
             return "Pagado";
         }
@@ -987,7 +996,7 @@ public class InvoiceService {
             INSERT INTO beworking.facturas
             (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado,
              creacionfecha, holdedcuenta, id_cuenta, holdedinvoicenum)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pagado', CURRENT_TIMESTAMP, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Rectificativa', CURRENT_TIMESTAMP, ?, ?, ?)
             """,
             nextId, nextLegacy, origClientId, origCenterId, description,
             creditTotal, origIva, creditTotalIva,
