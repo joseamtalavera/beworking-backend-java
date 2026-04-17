@@ -90,6 +90,12 @@ public class InvoiceController {
             }
         }
 
+        // Accountant role is scoped to PT cuenta only (Spanish entity — only one that files IVA)
+        String effectiveCuenta = cuenta;
+        if (user.getRole() == User.Role.ACCOUNTANT) {
+            effectiveCuenta = "PT";
+        }
+
         InvoiceService.InvoiceFilters filters = new InvoiceService.InvoiceFilters(
             name,
             effectiveEmail,
@@ -100,7 +106,7 @@ public class InvoiceController {
             actualStartDate,
             actualEndDate,
             restrictedContactId,
-            cuenta
+            effectiveCuenta
         );
         Page<InvoiceListItem> invoices = invoiceService.findInvoices(page, size, filters);
         BigDecimal totalRevenue = invoiceService.calculateTotalRevenue(filters);
