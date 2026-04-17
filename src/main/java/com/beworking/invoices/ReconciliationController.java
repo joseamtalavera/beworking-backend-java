@@ -55,36 +55,7 @@ public class ReconciliationController {
     public ResponseEntity<Map<String, Object>> getBreakdown(@PathVariable String account) {
         String acct = account.toUpperCase();
 
-        List<Map<String, Object>> stripeActive = jdbcTemplate.queryForList("""
-            SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id,
-                   s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary
-            FROM beworking.subscriptions s
-            JOIN beworking.contact_profiles cp ON cp.id = s.contact_id
-            WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'stripe'
-            AND s.stripe_subscription_id NOT LIKE 'sub_sched_%'
-            ORDER BY cp.name
-            """, acct);
-
-        List<Map<String, Object>> stripeScheduled = jdbcTemplate.queryForList("""
-            SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id,
-                   s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary
-            FROM beworking.subscriptions s
-            JOIN beworking.contact_profiles cp ON cp.id = s.contact_id
-            WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'stripe'
-            AND s.stripe_subscription_id LIKE 'sub_sched_%'
-            ORDER BY cp.name
-            """, acct);
-
-        List<Map<String, Object>> bankTransfer = jdbcTemplate.queryForList("""
-            SELECT s.id, s.contact_id, s.monthly_amount, s.billing_interval,
-                   s.last_invoiced_month, s.start_date, cp.name, cp.email_primary
-            FROM beworking.subscriptions s
-            JOIN beworking.contact_profiles cp ON cp.id = s.contact_id
-            WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'bank_transfer'
-            ORDER BY cp.name
-            """, acct);
-
-        // Past due + db-only (ghost) subs from latest reconciliation run
+        // Load ghost sub IDs from latest reconciliation run FIRST — used to exclude from stripeActive
         List<Map<String, Object>> lastRunRow = jdbcTemplate.queryForList("""
             SELECT past_due_subs, stripe_past_due, past_due_amount, db_only_subs
             FROM beworking.reconciliation_results
@@ -113,6 +84,56 @@ public class ReconciliationController {
                 } catch (Exception ignored) {}
             }
         }
+
+        // Stripe active = DB stripe-billing rows that are NOT scheduled AND NOT ghost (in db_only_subs).
+        // Ghost subs are surfaced in the stripeDeviation bucket instead.
+        List<Map<String, Object>> stripeActive;
+        if (dbOnlyIds.isEmpty()) {
+            stripeActive = jdbcTemplate.queryForList("""
+                SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id,
+                       s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary
+                FROM beworking.subscriptions s
+                JOIN beworking.contact_profiles cp ON cp.id = s.contact_id
+                WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'stripe'
+                AND s.stripe_subscription_id NOT LIKE 'sub_sched_%'
+                ORDER BY cp.name
+                """, acct);
+        } else {
+            String ph = String.join(",", java.util.Collections.nCopies(dbOnlyIds.size(), "?"));
+            Object[] args = new Object[dbOnlyIds.size() + 1];
+            args[0] = acct;
+            for (int i = 0; i < dbOnlyIds.size(); i++) args[i + 1] = dbOnlyIds.get(i);
+            stripeActive = jdbcTemplate.queryForList(
+                "SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id, "
+                + "s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary "
+                + "FROM beworking.subscriptions s "
+                + "JOIN beworking.contact_profiles cp ON cp.id = s.contact_id "
+                + "WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'stripe' "
+                + "AND s.stripe_subscription_id NOT LIKE 'sub_sched_%' "
+                + "AND s.stripe_subscription_id NOT IN (" + ph + ") "
+                + "ORDER BY cp.name",
+                args
+            );
+        }
+
+        List<Map<String, Object>> stripeScheduled = jdbcTemplate.queryForList("""
+            SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id,
+                   s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary
+            FROM beworking.subscriptions s
+            JOIN beworking.contact_profiles cp ON cp.id = s.contact_id
+            WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'stripe'
+            AND s.stripe_subscription_id LIKE 'sub_sched_%'
+            ORDER BY cp.name
+            """, acct);
+
+        List<Map<String, Object>> bankTransfer = jdbcTemplate.queryForList("""
+            SELECT s.id, s.contact_id, s.monthly_amount, s.billing_interval,
+                   s.last_invoiced_month, s.start_date, cp.name, cp.email_primary
+            FROM beworking.subscriptions s
+            JOIN beworking.contact_profiles cp ON cp.id = s.contact_id
+            WHERE s.cuenta = ? AND s.active = true AND s.billing_method = 'bank_transfer'
+            ORDER BY cp.name
+            """, acct);
 
         // Enrich ghost sub IDs with DB contact info
         List<Map<String, Object>> stripeDeviation = new java.util.ArrayList<>();
