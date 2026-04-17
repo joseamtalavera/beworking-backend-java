@@ -61,7 +61,8 @@ public class InvoiceController {
         @RequestParam(value = "endDate", required = false) String endDate,
         @RequestParam(value = "from", required = false) String from,
         @RequestParam(value = "to", required = false) String to,
-        @RequestParam(value = "cuenta", required = false) String cuenta
+        @RequestParam(value = "cuenta", required = false) String cuenta,
+        @RequestParam(value = "sortDir", required = false, defaultValue = "desc") String sortDir
     ) {
         Optional<User> userOpt = resolveUser(authentication);
         if (userOpt.isEmpty()) {
@@ -108,7 +109,7 @@ public class InvoiceController {
             restrictedContactId,
             effectiveCuenta
         );
-        Page<InvoiceListItem> invoices = invoiceService.findInvoices(page, size, filters);
+        Page<InvoiceListItem> invoices = invoiceService.findInvoices(page, size, filters, sortDir);
         BigDecimal totalRevenue = invoiceService.calculateTotalRevenue(filters);
         
         // Create a custom response that includes both invoices and total revenue

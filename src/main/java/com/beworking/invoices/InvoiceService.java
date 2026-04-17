@@ -67,9 +67,14 @@ public class InvoiceService {
     }
 
     public Page<InvoiceListItem> findInvoices(int page, int size, InvoiceFilters filters) {
+        return findInvoices(page, size, filters, "desc");
+    }
+
+    public Page<InvoiceListItem> findInvoices(int page, int size, InvoiceFilters filters, String sortDir) {
         int pageIndex = Math.max(page, 0);
         int pageSize = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
         int offset = pageIndex * pageSize;
+        boolean asc = sortDir != null && sortDir.equalsIgnoreCase("asc");
 
         String baseFrom = """
             FROM beworking.facturas f
@@ -209,7 +214,8 @@ public class InvoiceService {
                 f.creacionfecha,
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf
-            ORDER BY f.creacionfecha DESC NULLS LAST, f.id DESC
+            ORDER BY f.creacionfecha """ + (asc ? "ASC NULLS FIRST" : "DESC NULLS LAST") + ", f.id " + (asc ? "ASC" : "DESC") + """
+
             OFFSET ? LIMIT ?
             """;
 
