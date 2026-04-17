@@ -214,7 +214,7 @@ public class InvoiceService {
                 f.creacionfecha,
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf
-            ORDER BY f.creacionfecha """ + (asc ? "ASC NULLS FIRST" : "DESC NULLS LAST") + ", f.id " + (asc ? "ASC" : "DESC") + """
+            ORDER BY f.creacionfecha """ + (asc ? " ASC NULLS FIRST" : " DESC NULLS LAST") + ", f.id" + (asc ? " ASC" : " DESC") + """
 
             OFFSET ? LIMIT ?
             """;
