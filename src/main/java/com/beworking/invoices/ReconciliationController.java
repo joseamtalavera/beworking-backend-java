@@ -78,9 +78,9 @@ public class ReconciliationController {
             ORDER BY cp.name
             """, acct);
 
-        // Past due from latest reconciliation run
-        List<Map<String, Object>> pastDueRow = jdbcTemplate.queryForList("""
-            SELECT past_due_subs, stripe_past_due, past_due_amount
+        // Past due + db-only (ghost) subs from latest reconciliation run
+        List<Map<String, Object>> lastRunRow = jdbcTemplate.queryForList("""
+            SELECT past_due_subs, stripe_past_due, past_due_amount, db_only_subs
             FROM beworking.reconciliation_results
             WHERE account = ? AND run_date = (SELECT MAX(run_date) FROM beworking.reconciliation_results WHERE account = ?)
             """, acct, acct);
@@ -88,14 +88,40 @@ public class ReconciliationController {
         List<?> pastDueSubs = List.of();
         int pastDueCount = 0;
         Object pastDueAmount = 0;
-        if (!pastDueRow.isEmpty()) {
-            Object raw = pastDueRow.get(0).get("past_due_subs");
+        List<String> dbOnlyIds = new java.util.ArrayList<>();
+        if (!lastRunRow.isEmpty()) {
+            Object raw = lastRunRow.get(0).get("past_due_subs");
             if (raw instanceof List<?> l) pastDueSubs = l;
             else if (raw instanceof String s) {
                 try { pastDueSubs = new com.fasterxml.jackson.databind.ObjectMapper().readValue(s, List.class); } catch (Exception ignored) {}
             }
-            pastDueCount = ((Number) pastDueRow.get(0).getOrDefault("stripe_past_due", 0)).intValue();
-            pastDueAmount = pastDueRow.get(0).getOrDefault("past_due_amount", 0);
+            pastDueCount = ((Number) lastRunRow.get(0).getOrDefault("stripe_past_due", 0)).intValue();
+            pastDueAmount = lastRunRow.get(0).getOrDefault("past_due_amount", 0);
+            Object rawDbOnly = lastRunRow.get(0).get("db_only_subs");
+            if (rawDbOnly instanceof List<?> l) {
+                for (Object o : l) if (o instanceof String s) dbOnlyIds.add(s);
+            } else if (rawDbOnly instanceof String s) {
+                try {
+                    List<?> parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(s, List.class);
+                    for (Object o : parsed) if (o instanceof String str) dbOnlyIds.add(str);
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // Enrich ghost sub IDs with DB contact info
+        List<Map<String, Object>> stripeDeviation = new java.util.ArrayList<>();
+        if (!dbOnlyIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(dbOnlyIds.size(), "?"));
+            Object[] qArgs = dbOnlyIds.toArray();
+            stripeDeviation = jdbcTemplate.queryForList(
+                "SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id, "
+                + "s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary "
+                + "FROM beworking.subscriptions s "
+                + "JOIN beworking.contact_profiles cp ON cp.id = s.contact_id "
+                + "WHERE s.stripe_subscription_id IN (" + placeholders + ") "
+                + "ORDER BY cp.name",
+                qArgs
+            );
         }
 
         Map<String, Object> result = new HashMap<>();
@@ -109,6 +135,8 @@ public class ReconciliationController {
         result.put("pastDueSubs", pastDueSubs);
         result.put("pastDueCount", pastDueCount);
         result.put("pastDueAmount", pastDueAmount);
+        result.put("stripeDeviation", stripeDeviation);
+        result.put("stripeDeviationCount", stripeDeviation.size());
         result.put("totalActive", stripeActive.size() + stripeScheduled.size() + bankTransfer.size());
 
         return ResponseEntity.ok(result);
