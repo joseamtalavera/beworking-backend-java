@@ -48,6 +48,27 @@ public class ReconciliationController {
     }
 
     @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> fetchStripeEnrichedDeviation(String account, List<String> subIds) {
+        if (paymentsBaseUrl == null || paymentsBaseUrl.isBlank() || subIds == null || subIds.isEmpty()) {
+            return List.of();
+        }
+        try {
+            Map<String, Object> resp = http.post()
+                .uri(paymentsBaseUrl + "/api/reconciliation/" + account + "/enrich-subs")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(Map.of("subscriptionIds", subIds))
+                .retrieve()
+                .body(Map.class);
+            if (resp == null) return List.of();
+            Object rows = resp.get("rows");
+            return rows instanceof List<?> l ? (List<Map<String, Object>>) l : List.of();
+        } catch (Exception e) {
+            logger.warn("Failed to enrich deviation subs from Stripe for {}: {}", account, e.getMessage());
+            return List.of();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     private Map<String, Object> fetchStripeCounts(String account) {
         if (paymentsBaseUrl == null || paymentsBaseUrl.isBlank()) return null;
         try {
@@ -155,27 +176,37 @@ public class ReconciliationController {
             Object rawDbOnly = lastRunRow.get(0).get("db_only_subs");
             if (rawDbOnly instanceof List<?> l) {
                 for (Object o : l) if (o instanceof String s) dbOnlyIds.add(s);
-            } else if (rawDbOnly instanceof String s) {
+            } else if (rawDbOnly != null) {
+                // Postgres JSONB typically comes back as PGobject — fall back to toString()
+                String json = rawDbOnly instanceof String s ? s : rawDbOnly.toString();
                 try {
-                    List<?> parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(s, List.class);
+                    List<?> parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, List.class);
                     for (Object o : parsed) if (o instanceof String str) dbOnlyIds.add(str);
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.warn("Failed to parse db_only_subs JSON for {}: {} ({})", acct, json, e.getMessage());
+                }
             }
         }
+        logger.info("Reconciliation breakdown [{}] ghostIds={}", acct, dbOnlyIds.size());
 
         List<Map<String, Object>> stripeDeviation = new ArrayList<>();
         if (!dbOnlyIds.isEmpty()) {
-            String placeholders = String.join(",", java.util.Collections.nCopies(dbOnlyIds.size(), "?"));
-            Object[] qArgs = dbOnlyIds.toArray();
-            stripeDeviation = jdbcTemplate.queryForList(
-                "SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id, "
-                + "s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary "
-                + "FROM beworking.subscriptions s "
-                + "JOIN beworking.contact_profiles cp ON cp.id = s.contact_id "
-                + "WHERE s.stripe_subscription_id IN (" + placeholders + ") "
-                + "ORDER BY cp.name",
-                qArgs
-            );
+            // Ghost subs enriched with Stripe's perspective (cancelled_at, reason, customer)
+            stripeDeviation = fetchStripeEnrichedDeviation(acct, dbOnlyIds);
+            if (stripeDeviation.isEmpty()) {
+                // Fallback to DB if Stripe enrichment fails — at least show something
+                String placeholders = String.join(",", java.util.Collections.nCopies(dbOnlyIds.size(), "?"));
+                Object[] qArgs = dbOnlyIds.toArray();
+                stripeDeviation = jdbcTemplate.queryForList(
+                    "SELECT s.id, s.contact_id, s.stripe_subscription_id, s.stripe_customer_id, "
+                    + "s.monthly_amount, s.billing_interval, s.start_date, cp.name, cp.email_primary "
+                    + "FROM beworking.subscriptions s "
+                    + "JOIN beworking.contact_profiles cp ON cp.id = s.contact_id "
+                    + "WHERE s.stripe_subscription_id IN (" + placeholders + ") "
+                    + "ORDER BY cp.name",
+                    qArgs
+                );
+            }
         }
 
         Map<String, Object> result = new HashMap<>();
