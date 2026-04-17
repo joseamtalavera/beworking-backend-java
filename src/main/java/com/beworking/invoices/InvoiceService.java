@@ -991,7 +991,7 @@ public class InvoiceService {
             """,
             nextId, nextLegacy, origClientId, origCenterId, description,
             creditTotal, origIva, creditTotalIva,
-            origCuenta, origCuentaId, null
+            origCuenta, origCuentaId, "RECT-" + origInvoiceNum
         );
 
         // Insert negated line items
