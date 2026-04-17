@@ -24,23 +24,29 @@ public class ReconciliationController {
     public ResponseEntity<List<Map<String, Object>>> getLatest() {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
             SELECT
-                account,
-                run_date,
-                db_active,
-                db_stripe,
-                db_bank_transfer,
-                stripe_active,
-                stripe_past_due,
-                past_due_amount,
-                missing_invoice_count,
-                missing_invoices,
-                past_due_subs,
-                COALESCE(db_only_subs, '[]'::jsonb) as db_only_subs,
-                COALESCE(stripe_only_subs, '[]'::jsonb) as stripe_only_subs,
-                created_at
-            FROM beworking.reconciliation_results
-            WHERE run_date = (SELECT MAX(run_date) FROM beworking.reconciliation_results)
-            ORDER BY account
+                r.account,
+                r.run_date,
+                r.db_active,
+                r.db_stripe,
+                r.db_bank_transfer,
+                r.stripe_active,
+                r.stripe_past_due,
+                r.past_due_amount,
+                r.missing_invoice_count,
+                r.missing_invoices,
+                r.past_due_subs,
+                COALESCE(r.db_only_subs, '[]'::jsonb) as db_only_subs,
+                COALESCE(r.stripe_only_subs, '[]'::jsonb) as stripe_only_subs,
+                r.created_at,
+                COALESCE((
+                    SELECT COUNT(*) FROM beworking.subscriptions s
+                    WHERE s.cuenta = r.account AND s.active = true
+                      AND s.billing_method = 'stripe'
+                      AND s.stripe_subscription_id LIKE 'sub_sched_%'
+                ), 0) AS db_scheduled
+            FROM beworking.reconciliation_results r
+            WHERE r.run_date = (SELECT MAX(run_date) FROM beworking.reconciliation_results)
+            ORDER BY r.account
             """);
         return ResponseEntity.ok(rows);
     }
