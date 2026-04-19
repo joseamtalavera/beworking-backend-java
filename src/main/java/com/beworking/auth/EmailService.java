@@ -22,8 +22,17 @@ public class EmailService {
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
+    @Value("${app.mail.from:}")
+    private String mailFrom;
+
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
+    }
+
+    private void applyFrom(MimeMessageHelper helper) throws jakarta.mail.MessagingException {
+        if (mailFrom != null && !mailFrom.isBlank()) {
+            helper.setFrom(mailFrom);
+        }
     }
 
     public void sendConfirmationEmail(String to, String token) {
@@ -71,6 +80,7 @@ public class EmailService {
             logger.info("Attempting to send confirmation email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(content, true);
@@ -133,6 +143,7 @@ public class EmailService {
             logger.info("Attempting to send password reset email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(plainText, content);
@@ -182,6 +193,7 @@ public class EmailService {
             logger.info("Attempting to send welcome email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(content, true);
@@ -234,6 +246,7 @@ public class EmailService {
             logger.info("Attempting to send booking welcome email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(content, true);
@@ -307,6 +320,7 @@ public class EmailService {
             logger.info("Attempting to send trial welcome email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(content, true);
@@ -479,6 +493,7 @@ public class EmailService {
             logger.info("Attempting to send HTML email with attachment to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(htmlContent, true);
@@ -496,6 +511,7 @@ public class EmailService {
             logger.info("Attempting to send HTML email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(htmlContent, true);
