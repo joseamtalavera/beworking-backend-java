@@ -35,8 +35,11 @@ public class AuthController {
     private String cookieDomain;
     @Value("${app.frontend-url:https://www.be-working.com}")
     private String frontendUrl;
-    private static final String ACCESS_COOKIE = "beworking_access";
-    private static final String REFRESH_COOKIE = "beworking_refresh";
+    @Value("${app.security.cookie-name-prefix:beworking}")
+    private String cookieNamePrefix;
+
+    private String accessCookieName() { return cookieNamePrefix + "_access"; }
+    private String refreshCookieName() { return cookieNamePrefix + "_refresh"; }
 
     public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService,
                           UserRepository userRepository, ContactProfileRepository contactProfileRepository,
@@ -214,8 +217,8 @@ public class AuthController {
         String access = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getTenantId());
         String refresh = jwtUtil.generateRefreshToken(user.getEmail(), user.getRole().name(), user.getTenantId());
 
-        ResponseCookie accessCookie = buildCookie(ACCESS_COOKIE, access, "/", Duration.ofHours(1));
-        ResponseCookie refreshCookie = buildCookie(REFRESH_COOKIE, refresh, "/api/auth/refresh", Duration.ofDays(7));
+        ResponseCookie accessCookie = buildCookie(accessCookieName(), access, "/", Duration.ofHours(1));
+        ResponseCookie refreshCookie = buildCookie(refreshCookieName(), refresh, "/api/auth/refresh", Duration.ofDays(7));
 
         return ResponseEntity.ok()
                 .header("Set-Cookie", accessCookie.toString())
@@ -224,7 +227,7 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refresh(@CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
+    public ResponseEntity<AuthResponse> refresh(@CookieValue(name = "${app.security.cookie-name-prefix:beworking}_refresh", required = false) String refreshToken) {
         if (refreshToken == null || refreshToken.isBlank()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new AuthResponse("Missing refresh token", null, null));
@@ -241,8 +244,8 @@ public class AuthController {
 
             String newAccess = jwtUtil.generateAccessToken(email, role, tenantId);
             String newRefresh = jwtUtil.generateRefreshToken(email, role, tenantId);
-            ResponseCookie accessCookie = buildCookie(ACCESS_COOKIE, newAccess, "/", Duration.ofHours(1));
-            ResponseCookie refreshCookie = buildCookie(REFRESH_COOKIE, newRefresh, "/api/auth/refresh", Duration.ofDays(7));
+            ResponseCookie accessCookie = buildCookie(accessCookieName(), newAccess, "/", Duration.ofHours(1));
+            ResponseCookie refreshCookie = buildCookie(refreshCookieName(), newRefresh, "/api/auth/refresh", Duration.ofDays(7));
 
             return ResponseEntity.ok()
                     .header("Set-Cookie", accessCookie.toString())

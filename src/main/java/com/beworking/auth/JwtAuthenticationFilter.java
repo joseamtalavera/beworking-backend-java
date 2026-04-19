@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -20,10 +21,13 @@ import java.util.Collections;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtUtil jwtUtil;
+    private final String accessCookieName;
     private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil) {
+    public JwtAuthenticationFilter(JwtUtil jwtUtil,
+                                   @Value("${app.security.cookie-name-prefix:beworking}") String cookieNamePrefix) {
         this.jwtUtil = jwtUtil;
+        this.accessCookieName = cookieNamePrefix + "_access";
     }
 
     @Override
@@ -61,7 +65,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         if (request.getCookies() != null) {
             for (Cookie cookie : request.getCookies()) {
-                if ("beworking_access".equals(cookie.getName())) {
+                if (accessCookieName.equals(cookie.getName())) {
                     return cookie.getValue();
                 }
             }
