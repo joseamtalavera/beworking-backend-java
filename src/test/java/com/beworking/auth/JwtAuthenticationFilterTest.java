@@ -33,7 +33,7 @@ class JwtAuthenticationFilterTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         SecurityContextHolder.clearContext();
-        jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil);
+        jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil, "beworking");
     }
 
     /**
