@@ -360,6 +360,23 @@ public class SubscriptionService {
         "SE","SI","SK"
     );
 
+    private static final java.util.Map<String, Integer> EU_VAT_RATES = java.util.Map.ofEntries(
+        java.util.Map.entry("AT", 20), java.util.Map.entry("BE", 21),
+        java.util.Map.entry("BG", 20), java.util.Map.entry("CY", 19),
+        java.util.Map.entry("CZ", 21), java.util.Map.entry("DE", 19),
+        java.util.Map.entry("DK", 25), java.util.Map.entry("EE", 24),
+        java.util.Map.entry("ES", 21), java.util.Map.entry("FI", 25),
+        java.util.Map.entry("FR", 20), java.util.Map.entry("GR", 24),
+        java.util.Map.entry("HR", 25), java.util.Map.entry("HU", 27),
+        java.util.Map.entry("IE", 23), java.util.Map.entry("IT", 22),
+        java.util.Map.entry("LT", 21), java.util.Map.entry("LU", 17),
+        java.util.Map.entry("LV", 21), java.util.Map.entry("MT", 18),
+        java.util.Map.entry("NL", 21), java.util.Map.entry("PL", 23),
+        java.util.Map.entry("PT", 23), java.util.Map.entry("RO", 19),
+        java.util.Map.entry("SE", 25), java.util.Map.entry("SI", 22),
+        java.util.Map.entry("SK", 23)
+    );
+
     /**
      * Re-evaluates the correct VAT percentage from the contact's current billing
      * data and the subscription's cuenta, applying intra-EU reverse charge rules.
@@ -412,7 +429,11 @@ public class SubscriptionService {
         }
 
         // Intra-EU reverse charge: 0% when supplier and customer are in different EU countries
-        int resolved = supplierCountry.equals(customerCountry) ? fallback : 0;
+        // Same country → charge that country's VAT rate.
+        // Cross-border EU (customer VAT-registered) → 0, reverse charge.
+        int resolved = supplierCountry.equals(customerCountry)
+            ? EU_VAT_RATES.getOrDefault(supplierCountry, fallback)
+            : 0;
 
         // Keep subscription record in sync
         if (subscription.getVatPercent() == null || subscription.getVatPercent() != resolved) {
