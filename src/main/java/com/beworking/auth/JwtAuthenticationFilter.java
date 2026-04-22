@@ -52,7 +52,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(auth);
             } catch (Exception e) {
+                // Token was present but invalid/expired. Respond 401 so the client
+                // can trigger its refresh flow (otherwise Spring's stateless default
+                // falls through to 403, which bypasses client refresh logic).
+                // Exception: auth endpoints (login/refresh/logout) must keep processing
+                // so the refresh cookie can issue a new access token.
                 logger.warn("Invalid or expired JWT: {}", e.getMessage());
+                String path = request.getRequestURI();
+                if (path == null || !path.startsWith("/api/auth/")) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    return;
+                }
             }
         }
         filterChain.doFilter(request, response);
