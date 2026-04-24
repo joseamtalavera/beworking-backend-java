@@ -446,6 +446,17 @@ public class SubscriptionService {
         return resolved;
     }
 
+    /** Returns the standard VAT rate for an ISO-2 country, or 21 as a safe default. */
+    public static int vatRateFor(String iso) {
+        if (iso == null) return 21;
+        return EU_VAT_RATES.getOrDefault(iso.toUpperCase(), 21);
+    }
+
+    /** True when the given ISO-2 code is an EU member (matches EU_VAT_PREFIXES). */
+    public static boolean isEuCountry(String iso) {
+        return iso != null && EU_VAT_PREFIXES.contains(iso.toUpperCase());
+    }
+
     public static String countryNameToIso(String countryName) {
         if (countryName == null || countryName.isBlank()) return null;
         String s = countryName.trim();

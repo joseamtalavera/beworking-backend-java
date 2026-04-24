@@ -1312,26 +1312,34 @@ public class InvoiceService {
             if ("GT".equalsIgnoreCase(cuenta)) supplierCountry = "EE";
         } catch (EmptyResultDataAccessException ignored) {}
 
-        int localVat = localVatRate(supplierCountry);
-
         String taxId = null;
+        String billingCountry = null;
         Boolean vatValid = null;
         try {
             Map<String, Object> row = jdbcTemplate.queryForMap(
-                "SELECT billing_tax_id, vat_valid FROM beworking.contact_profiles WHERE id = ?",
+                "SELECT billing_tax_id, billing_country, vat_valid FROM beworking.contact_profiles WHERE id = ?",
                 contactId);
             taxId = (String) row.get("billing_tax_id");
+            billingCountry = (String) row.get("billing_country");
             vatValid = (Boolean) row.get("vat_valid");
         } catch (EmptyResultDataAccessException ignored) {}
-        if (taxId == null || taxId.isBlank()) return localVat;
 
-        String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
-        if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
-            String customerCountry = normalized.substring(0, 2);
-            if (!supplierCountry.equals(customerCountry)) return 0;
+        String customerCountry = resolveCustomerCountry(billingCountry, taxId);
+        if (customerCountry == null) return com.beworking.subscriptions.SubscriptionService.vatRateFor(supplierCountry);
+
+        if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals(customerCountry)) return 0;
+        return com.beworking.subscriptions.SubscriptionService.vatRateFor(customerCountry);
+    }
+
+    private String resolveCustomerCountry(String billingCountry, String taxId) {
+        String iso = com.beworking.subscriptions.SubscriptionService.countryNameToIso(billingCountry);
+        if (iso == null && taxId != null && !taxId.isBlank()) {
+            String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
+            if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
+                iso = normalized.substring(0, 2);
+            }
         }
-        if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals("EE")) return 0;
-        return localVat;
+        return com.beworking.subscriptions.SubscriptionService.isEuCountry(iso) ? iso : null;
     }
 
     /**
@@ -1358,14 +1366,6 @@ public class InvoiceService {
                 "SELECT setval('beworking.facturasdesglose_id_seq', ? + 1)", Long.class, maxId);
         }
         return nextId;
-    }
-
-    private static int localVatRate(String countryCode) {
-        return switch (countryCode) {
-            case "EE" -> 24;
-            case "ES" -> 21;
-            default -> 21;
-        };
     }
 
     private record LineComputation(String concept, BigDecimal quantity, BigDecimal unitPrice, BigDecimal total) { }

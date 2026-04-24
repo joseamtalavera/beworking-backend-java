@@ -239,54 +239,49 @@ public class MonthlyInvoiceScheduler {
     }
 
     /**
-     * Resolves VAT percentage using intra-EU reverse charge rules.
-     * Same logic as SubscriptionService.resolveVatPercent().
+     * Resolves VAT percentage.
+     * Rule: VAT-registered customer in a different country from supplier → 0% (reverse charge).
+     * Otherwise → customer country's local VAT (falls back to supplier country if unknown).
      */
     private int resolveContactVatPercent(Long contactId, String cuenta) {
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
-        int localVat = localVatRate(supplierCountry);
 
         String taxId = null;
+        String billingCountry = null;
         Boolean vatValid = null;
         try {
             Map<String, Object> row = jdbcTemplate.queryForMap(
-                "SELECT billing_tax_id, vat_valid FROM beworking.contact_profiles WHERE id = ?",
+                "SELECT billing_tax_id, billing_country, vat_valid FROM beworking.contact_profiles WHERE id = ?",
                 contactId);
             taxId = (String) row.get("billing_tax_id");
+            billingCountry = (String) row.get("billing_country");
             vatValid = (Boolean) row.get("vat_valid");
         } catch (EmptyResultDataAccessException ignored) {}
 
-        if (taxId == null || taxId.isBlank()) {
-            return localVat;
+        String customerCountry = resolveCustomerCountry(billingCountry, taxId);
+        if (customerCountry == null) {
+            return com.beworking.subscriptions.SubscriptionService.vatRateFor(supplierCountry);
         }
-
-        // Check EU prefix on tax ID
-        String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
-        if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
-            String customerCountry = normalized.substring(0, 2);
-            if (!supplierCountry.equals(customerCountry)) {
-                logger.info("Reverse charge: contact {} taxId={} (country={}) vs supplier {} → 0% VAT",
-                    contactId, taxId, customerCountry, supplierCountry);
-                return 0;
-            }
-        }
-
-        // Fallback: if VIES validated (vat_valid=true), treat as intra-EU reverse charge
-        if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals("EE")) {
-            logger.info("Reverse charge (vat_valid): contact {} taxId={} vs supplier {} → 0% VAT",
-                contactId, taxId, supplierCountry);
+        if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals(customerCountry)) {
+            logger.info("Reverse charge: contact {} taxId={} (country={}) vs supplier {} → 0% VAT",
+                contactId, taxId, customerCountry, supplierCountry);
             return 0;
         }
-
-        return localVat;
+        int rate = com.beworking.subscriptions.SubscriptionService.vatRateFor(customerCountry);
+        logger.info("VAT resolved: contact {} taxId={} customerCountry={} supplier={} vatValid={} → {}%",
+            contactId, taxId, customerCountry, supplierCountry, vatValid, rate);
+        return rate;
     }
 
-    private static int localVatRate(String countryCode) {
-        return switch (countryCode) {
-            case "EE" -> 24;
-            case "ES" -> 21;
-            default -> 21;
-        };
+    private String resolveCustomerCountry(String billingCountry, String taxId) {
+        String iso = com.beworking.subscriptions.SubscriptionService.countryNameToIso(billingCountry);
+        if (iso == null && taxId != null && !taxId.isBlank()) {
+            String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
+            if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
+                iso = normalized.substring(0, 2);
+            }
+        }
+        return com.beworking.subscriptions.SubscriptionService.isEuCountry(iso) ? iso : null;
     }
 
     private void sendStatusEmail(YearMonth month, int successCount, int failCount, List<String> errors) {
