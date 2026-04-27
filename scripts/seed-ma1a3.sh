@@ -14,7 +14,7 @@ DATABASE=${3:-mydatabase}
 USER=${4:-postgres}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SQL_FILE="$SCRIPT_DIR/../src/main/resources/db/V002__seed_ma1a3_room.sql"
+SQL_FILE="$SCRIPT_DIR/seed/V002__seed_ma1a3_room.sql"
 
 if [ ! -f "$SQL_FILE" ]; then
     echo "Error: SQL file not found at $SQL_FILE"
