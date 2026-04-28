@@ -1534,6 +1534,7 @@ public class InvoiceService {
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """;
 
+                java.util.List<Long> linkedBloqueoIds = new java.util.ArrayList<>();
                 for (int i = 0; i < request.getLineItems().size(); i++) {
                     CreateManualInvoiceRequest.LineItem item = request.getLineItems().get(i);
                     BigDecimal unitPrice = item.getPrice().setScale(2, RoundingMode.HALF_UP);
@@ -1543,6 +1544,11 @@ public class InvoiceService {
                     String lineConcept = item.getDescription();
                     if (lineConcept == null || lineConcept.isBlank()) {
                         lineConcept = "Manual line item";
+                    }
+
+                    Long bloqueoId = item.getBloqueoId();
+                    if (bloqueoId != null) {
+                        linkedBloqueoIds.add(bloqueoId);
                     }
 
                     Long nextDesgloseId = jdbcTemplate.queryForObject(
@@ -1555,7 +1561,18 @@ public class InvoiceService {
                         item.getQuantity(),
                         lineTotal,
                         1,
-                        null
+                        bloqueoId
+                    );
+                }
+
+                // Mark linked bloqueos as 'Invoiced' so the monthly scheduler
+                // can't re-bill them. Stripe webhook will later promote to 'Pagado'.
+                if (!linkedBloqueoIds.isEmpty()) {
+                    String placeholders = linkedBloqueoIds.stream()
+                        .map(id -> "?").collect(java.util.stream.Collectors.joining(","));
+                    jdbcTemplate.update(
+                        "UPDATE beworking.bloqueos SET estado = 'Invoiced', edicion_fecha = NOW() WHERE id IN (" + placeholders + ")",
+                        linkedBloqueoIds.toArray()
                     );
                 }
             }

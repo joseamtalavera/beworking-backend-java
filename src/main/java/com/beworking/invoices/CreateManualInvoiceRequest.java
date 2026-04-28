@@ -169,15 +169,20 @@ public class CreateManualInvoiceRequest {
     public static class LineItem {
         @NotBlank
         private String description;
-        
+
         @NotNull
         private BigDecimal quantity;
-        
+
         @NotNull
         private BigDecimal price;
-        
+
         @NotNull
         private BigDecimal vatPercent;
+
+        // Optional. When set, links this line to the given bloqueo so the
+        // bloqueo's estado is updated to 'Invoiced' and the monthly scheduler
+        // won't re-bill it.
+        private Long bloqueoId;
 
         // Getters and Setters
         public String getDescription() {
@@ -210,6 +215,14 @@ public class CreateManualInvoiceRequest {
 
         public void setVatPercent(BigDecimal vatPercent) {
             this.vatPercent = vatPercent;
+        }
+
+        public Long getBloqueoId() {
+            return bloqueoId;
+        }
+
+        public void setBloqueoId(Long bloqueoId) {
+            this.bloqueoId = bloqueoId;
         }
     }
 
