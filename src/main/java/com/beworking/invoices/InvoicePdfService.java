@@ -93,36 +93,28 @@ public class InvoicePdfService {
 
         List<LineItem> lines = fetchLines(invoiceId);
 
-        // Fallback for old invoices with no desglose rows: synthesise a single line from header data
-        if (lines.isEmpty() && header.total() != null && header.total().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal vatPct = header.vatPercent() != null ? header.vatPercent() : BigDecimal.ZERO;
+        // facturas.total is the legal source of truth (what was billed / paid). Derive
+        // subtotal and tax from it instead of summing desglose rows, so the PDF totals
+        // can never drift from the stored header even if line items get out of sync.
+        BigDecimal vatPct = header.vatPercent() != null ? header.vatPercent() : BigDecimal.ZERO;
+        BigDecimal subtotal = null;
+        BigDecimal taxAmount = null;
+        BigDecimal total = header.total();
+        if (total != null && total.compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal divisor = BigDecimal.ONE.add(vatPct.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
-            BigDecimal syntheticSubtotal = header.total().divide(divisor, 2, RoundingMode.HALF_UP);
+            subtotal = total.divide(divisor, 2, RoundingMode.HALF_UP);
+            taxAmount = total.subtract(subtotal);
+        }
+
+        // Fallback for old invoices with no desglose rows: synthesise a single line.
+        if (lines.isEmpty() && subtotal != null) {
             String concept = header.description() != null && !header.description().isBlank()
                 ? header.description() : "Servicio mensual";
-            lines = List.of(new LineItem(concept, BigDecimal.ONE, syntheticSubtotal, syntheticSubtotal));
+            lines = List.of(new LineItem(concept, BigDecimal.ONE, subtotal, subtotal));
         }
 
         ClientInfo clientInfo = fetchClientInfo(header.clientId());
         String centerName = fetchCenterName(header.centerId());
-
-        BigDecimal subtotal = lines.stream()
-            .map(LineItem::total)
-            .filter(Objects::nonNull)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (subtotal != null && subtotal.compareTo(BigDecimal.ZERO) == 0) {
-            subtotal = null;
-        }
-
-        BigDecimal taxAmount = null;
-        if (header.vatPercent() != null && subtotal != null) {
-            taxAmount = subtotal.multiply(header.vatPercent())
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-        }
-        BigDecimal total = subtotal;
-        if (total != null && taxAmount != null) {
-            total = total.add(taxAmount);
-        }
 
         try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             PDPage page = new PDPage(PDRectangle.A4);
