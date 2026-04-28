@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 class StaticTokenProvider implements TokenProvider {
     private final String apiToken;
 
-    StaticTokenProvider(@Value("${akiles.api.token}") String apiToken) {
+    StaticTokenProvider(@Value("${akiles.api.token:}") String apiToken) {
         this.apiToken = apiToken;
     }
 
