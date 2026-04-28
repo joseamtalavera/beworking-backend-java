@@ -219,8 +219,8 @@ public class SubscriptionService {
             """
             INSERT INTO beworking.facturasdesglose (
                 id, idfacturadesglose, conceptodesglose, precioundesglose,
-                cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado, factura_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             nextDesgloseId,
             invoiceId,
@@ -229,7 +229,8 @@ public class SubscriptionService {
             BigDecimal.ONE,
             subtotal,
             1,
-            null
+            null,
+            nextInternalId
         );
 
         logger.info("Created subscription invoice: invoiceNumber={} contactId={} estado={} stripeInvoiceId={}",
@@ -320,8 +321,8 @@ public class SubscriptionService {
             """
             INSERT INTO beworking.facturasdesglose (
                 id, idfacturadesglose, conceptodesglose, precioundesglose,
-                cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado, factura_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             nextDesgloseId,
             invoiceId,
@@ -330,7 +331,8 @@ public class SubscriptionService {
             BigDecimal.ONE,
             subtotal,
             1,
-            null
+            null,
+            nextInternalId
         );
 
         logger.info("Created bank_transfer invoice: invoiceNumber={} contactId={} month={}",

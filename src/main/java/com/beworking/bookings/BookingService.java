@@ -303,8 +303,8 @@ class BookingService {
                         jdbcTemplate.update("""
                             INSERT INTO beworking.facturasdesglose (
                                 id, idfacturadesglose, conceptodesglose, precioundesglose,
-                                cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado
-                            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                                cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado, factura_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
                             """,
                             nextDesgloseId,
                             invoiceId,
@@ -312,7 +312,8 @@ class BookingService {
                             perSession,
                             BigDecimal.ONE,
                             perSession,
-                            bi.id()
+                            bi.id(),
+                            nextId
                         );
 
                         // Update bloqueo status

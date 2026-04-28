@@ -479,8 +479,8 @@ public class InvoiceService {
             jdbcTemplate.update(
                 """
                 INSERT INTO beworking.facturasdesglose
-                (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado, factura_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 nextDesgloseId,
                 nextLegacy,
@@ -489,7 +489,8 @@ public class InvoiceService {
                 line.quantity(),
                 line.total(),
                 1,
-                bloqueo.getId()
+                bloqueo.getId(),
+                nextId
             );
         }
 
@@ -503,8 +504,8 @@ public class InvoiceService {
                     jdbcTemplate.update(
                         """
                         INSERT INTO beworking.facturasdesglose
-                        (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado, factura_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         nextDesgloseId,
                         nextLegacy,
@@ -513,7 +514,8 @@ public class InvoiceService {
                         extra.getQuantity(),
                         lineTotal,
                         1,
-                        null
+                        null,
+                        nextId
                     );
                 }
             }
@@ -764,9 +766,11 @@ public class InvoiceService {
             id
         );
 
-        // Delete existing line items and re-insert
+        // Delete existing line items by factura_id (internal PK, unique) — using
+        // the legacy idfacturadesglose would wipe rows belonging to *other*
+        // facturas that share the same idfactura value across cuentas.
         jdbcTemplate.update(
-            "DELETE FROM beworking.facturasdesglose WHERE idfacturadesglose = ?", idfactura);
+            "DELETE FROM beworking.facturasdesglose WHERE factura_id = ?", id);
 
         if (request.getLineItems() != null && !request.getLineItems().isEmpty()) {
             for (int i = 0; i < request.getLineItems().size(); i++) {
@@ -786,11 +790,11 @@ public class InvoiceService {
                 jdbcTemplate.update(
                     """
                     INSERT INTO beworking.facturasdesglose
-                    (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado)
-                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                    (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, factura_id)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?)
                     """,
                     nextDesgloseId, idfactura,
-                    description, unitPrice, item.getQuantity(), lineTotal
+                    description, unitPrice, item.getQuantity(), lineTotal, id
                 );
             }
         }
@@ -1028,12 +1032,12 @@ public class InvoiceService {
                 jdbcTemplate.update(
                     """
                     INSERT INTO beworking.facturasdesglose
-                    (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado)
-                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                    (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, factura_id)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?)
                     """,
                     nextDesgloseId, nextLegacy,
                     "Rectificación: " + (concept != null ? concept : "—"),
-                    unitPrice, qty, lineTotal
+                    unitPrice, qty, lineTotal, nextId
                 );
             }
         }
@@ -1246,10 +1250,10 @@ public class InvoiceService {
             jdbcTemplate.update(
                 """
                 INSERT INTO beworking.facturasdesglose
-                (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado, factura_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                nextDesgloseId, nextLegacy, concept, unitPrice, quantity, lineTotal, 1, bloqueoId
+                nextDesgloseId, nextLegacy, concept, unitPrice, quantity, lineTotal, 1, bloqueoId, nextId
             );
 
             Map<String, Object> entry = new HashMap<>();
@@ -1530,8 +1534,8 @@ public class InvoiceService {
                 String lineItemSql = """
                     INSERT INTO beworking.facturasdesglose (
                         id, idfacturadesglose, conceptodesglose, precioundesglose,
-                        cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        cantidaddesglose, totaldesglose, desgloseconfirmado, idbloqueovinculado, factura_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """;
 
                 java.util.List<Long> linkedBloqueoIds = new java.util.ArrayList<>();
@@ -1561,7 +1565,8 @@ public class InvoiceService {
                         item.getQuantity(),
                         lineTotal,
                         1,
-                        bloqueoId
+                        bloqueoId,
+                        nextInternalId
                     );
                 }
 
