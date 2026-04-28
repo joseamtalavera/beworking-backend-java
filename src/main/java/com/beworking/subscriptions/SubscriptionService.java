@@ -355,7 +355,7 @@ public class SubscriptionService {
     // ── VAT resolution ──────────────────────────────────────────────────
 
     private static final java.util.Set<String> EU_VAT_PREFIXES = java.util.Set.of(
-        "AT","BE","BG","CY","CZ","DE","DK","EE","ES","FI","FR","GR",
+        "AT","BE","BG","CY","CZ","DE","DK","EE","EL","ES","FI","FR",
         "HR","HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO",
         "SE","SI","SK"
     );
@@ -366,7 +366,7 @@ public class SubscriptionService {
         java.util.Map.entry("CZ", 21), java.util.Map.entry("DE", 19),
         java.util.Map.entry("DK", 25), java.util.Map.entry("EE", 24),
         java.util.Map.entry("ES", 21), java.util.Map.entry("FI", 25),
-        java.util.Map.entry("FR", 20), java.util.Map.entry("GR", 24),
+        java.util.Map.entry("FR", 20), java.util.Map.entry("EL", 24),
         java.util.Map.entry("HR", 25), java.util.Map.entry("HU", 27),
         java.util.Map.entry("IE", 23), java.util.Map.entry("IT", 22),
         java.util.Map.entry("LT", 21), java.util.Map.entry("LU", 17),
@@ -387,12 +387,14 @@ public class SubscriptionService {
 
         String taxId = null;
         String billingCountry = null;
+        Boolean vatValid = null;
         try {
             Map<String, Object> row = jdbcTemplate.queryForMap(
-                "SELECT billing_tax_id, billing_country FROM beworking.contact_profiles WHERE id = ?",
+                "SELECT billing_tax_id, billing_country, vat_valid FROM beworking.contact_profiles WHERE id = ?",
                 subscription.getContactId());
             taxId = (String) row.get("billing_tax_id");
             billingCountry = (String) row.get("billing_country");
+            vatValid = (Boolean) row.get("vat_valid");
         } catch (EmptyResultDataAccessException ignored) {}
 
         // Supplier country: GT = Estonia (EE), PT/OF = Spain (ES)
@@ -428,20 +430,13 @@ public class SubscriptionService {
             return fallback;
         }
 
-        // Intra-EU reverse charge: 0% when supplier and customer are in different EU countries
-        // Same country → charge that country's VAT rate.
-        // Cross-border EU (customer VAT-registered) → 0, reverse charge.
-        int resolved = supplierCountry.equals(customerCountry)
-            ? EU_VAT_RATES.getOrDefault(supplierCountry, fallback)
-            : 0;
+        // Reverse charge requires the contact to be confirmed VAT-registered (vat_valid == TRUE)
+        // AND supplier/customer countries must differ. Otherwise charge the customer-country rate.
+        boolean reverseCharge = Boolean.TRUE.equals(vatValid) && !supplierCountry.equals(customerCountry);
+        int resolved = reverseCharge ? 0 : EU_VAT_RATES.getOrDefault(customerCountry, fallback);
 
-        // Keep subscription record in sync
-        if (subscription.getVatPercent() == null || subscription.getVatPercent() != resolved) {
-            subscription.setVatPercent(resolved);
-            subscriptionRepository.save(subscription);
-            logger.info("Updated subscription {} vatPercent {} → {} (cuenta={}, taxId={}, customerCountry={})",
-                subscription.getId(), fallback, resolved, cuenta, taxId, customerCountry);
-        }
+        logger.info("VAT resolved for subscription {}: cuenta={}, supplier={}, customer={}, taxId={}, vatValid={}, reverseCharge={} → {}%",
+            subscription.getId(), cuenta, supplierCountry, customerCountry, taxId, vatValid, reverseCharge, resolved);
 
         return resolved;
     }
@@ -474,7 +469,7 @@ public class SubscriptionService {
             case "denmark", "dinamarca" -> "DK";
             case "finland", "finlandia" -> "FI";
             case "austria" -> "AT";
-            case "greece", "grecia" -> "GR";
+            case "greece", "grecia" -> "EL";
             case "poland", "polonia" -> "PL";
             case "czech republic", "república checa", "czechia" -> "CZ";
             case "hungary", "hungría", "hungria" -> "HU";
