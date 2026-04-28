@@ -191,15 +191,17 @@ public class InvoicePdfService {
     }
 
     List<LineItem> fetchLines(Long id) {
+        // Joins via factura_id (unique internal PK) instead of the legacy
+        // idfacturadesglose -> facturas.idfactura join. The legacy join can
+        // pull in lines from other facturas that share the same idfactura
+        // value across cuentas (e.g. PT4767 + GT4767), causing PDF cross-talk.
         return jdbcTemplate.query(
             "SELECT conceptodesglose AS concept,"
                 + " cantidaddesglose AS quantity,"
                 + " precioundesglose AS unit_price,"
                 + " totaldesglose AS line_total"
                 + " FROM beworking.facturasdesglose"
-                + " WHERE idfacturadesglose = ("
-                + "   SELECT idfactura FROM beworking.facturas WHERE id = ?"
-                + " )"
+                + " WHERE factura_id = ?"
                 + " ORDER BY id",
             (rs, rowNum) -> new LineItem(
                 rs.getString("concept"),
