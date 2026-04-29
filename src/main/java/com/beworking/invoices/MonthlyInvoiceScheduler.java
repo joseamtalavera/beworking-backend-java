@@ -280,14 +280,7 @@ public class MonthlyInvoiceScheduler {
     }
 
     private String resolveCustomerCountry(String billingCountry, String taxId) {
-        String iso = com.beworking.subscriptions.SubscriptionService.countryNameToIso(billingCountry);
-        if (iso == null && taxId != null && !taxId.isBlank()) {
-            String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
-            if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
-                iso = normalized.substring(0, 2);
-            }
-        }
-        return com.beworking.subscriptions.SubscriptionService.isEuCountry(iso) ? iso : null;
+        return com.beworking.subscriptions.SubscriptionService.deriveCustomerCountry(taxId, billingCountry);
     }
 
     private void sendStatusEmail(YearMonth month, int successCount, int failCount, List<String> errors) {

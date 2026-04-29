@@ -609,22 +609,60 @@ public class ContactProfileService {
         return repository.save(profile);
     }
 
+    private static final java.util.Set<String> EU_VAT_PREFIXES = java.util.Set.of(
+        "AT","BE","BG","CY","CZ","DE","DK","EE","EL","ES","FI","FR",
+        "HR","HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO",
+        "SE","SI","SK","XI"
+    );
+    private static final java.time.Duration VAT_CACHE_TTL = java.time.Duration.ofDays(7);
+
+    /**
+     * Runs VIES validation for the contact and stores a definitive TRUE/FALSE
+     * in vat_valid + vat_validated_at = now().
+     *
+     * Country resolution (in order):
+     *   1. EU country prefix in the tax ID itself (e.g., "ES B72959687").
+     *   2. billing_country mapped to ISO-2 via {@link ViesVatService#countryNameToIso}.
+     *   3. ES default — BeWorking is Spain-based; bare NIF/CIF without country
+     *      context is overwhelmingly Spanish (autónomo or empresa). Spanish
+     *      autónomos with personal-NIF format are validated by VIES too.
+     *
+     * Result is always TRUE or FALSE when a tax ID is present; only NULL when
+     * the contact has no tax ID at all. VIES network errors → FALSE so the
+     * caller never reverse-charges based on an unknown state.
+     */
     private void runVatValidation(ContactProfile profile) {
+        profile.setVatValidatedAt(LocalDateTime.now());
         String taxId = profile.getBillingTaxId();
         if (taxId == null || taxId.isBlank()) {
             profile.setVatValid(null);
-            profile.setVatValidatedAt(null);
             return;
         }
-        String countryHint = ViesVatService.countryNameToIso(profile.getBillingCountry());
+        String countryHint = resolveCountryHint(profile);
         try {
             ViesVatService.VatValidationResult result = viesVatService.validate(taxId, countryHint);
             profile.setVatValid(result.valid());
         } catch (Exception e) {
-            LOGGER.warn("VIES validation threw for contact {}: {}", profile.getId(), e.getMessage());
-            profile.setVatValid(null);
+            LOGGER.warn("VIES error for contact {} (taxId={}, hint={}): {}",
+                profile.getId(), taxId, countryHint, e.getMessage());
+            profile.setVatValid(false);
         }
-        profile.setVatValidatedAt(LocalDateTime.now());
+    }
+
+    private static String resolveCountryHint(ContactProfile profile) {
+        String taxId = profile.getBillingTaxId();
+        if (taxId != null && !taxId.isBlank()) {
+            String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
+            if (normalized.length() >= 2) {
+                String maybePrefix = normalized.substring(0, 2);
+                if (EU_VAT_PREFIXES.contains(maybePrefix)) {
+                    return maybePrefix;
+                }
+            }
+        }
+        String fromBillingCountry = ViesVatService.countryNameToIso(profile.getBillingCountry());
+        if (fromBillingCountry != null) return fromBillingCountry;
+        return "ES";
     }
 
     @Transactional
@@ -637,18 +675,19 @@ public class ContactProfileService {
     }
 
     /**
-     * Just-in-time VIES validation: short-circuits if vat_valid is already TRUE,
-     * otherwise calls VIES, persists, and returns the latest value. Used by
-     * VAT-resolution paths so a missing validation is healed before the rate is
-     * computed (instead of silently falling back to a wrong rate).
+     * Just-in-time VIES validation. Cached for {@link #VAT_CACHE_TTL}; older or
+     * never-validated entries are re-checked against VIES and persisted. Used
+     * by every VAT-resolution path so the rate is always computed from the
+     * latest definitive state — never NULL.
      */
     @Transactional
     public Boolean ensureVatValidated(Long contactId) {
         if (contactId == null) return null;
         ContactProfile profile = repository.findById(contactId).orElse(null);
         if (profile == null) return null;
-        if (Boolean.TRUE.equals(profile.getVatValid())) return true;
-        if (profile.getBillingTaxId() == null || profile.getBillingTaxId().isBlank()) {
+        if (profile.getVatValid() != null
+            && profile.getVatValidatedAt() != null
+            && profile.getVatValidatedAt().isAfter(LocalDateTime.now().minus(VAT_CACHE_TTL))) {
             return profile.getVatValid();
         }
         runVatValidation(profile);

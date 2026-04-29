@@ -409,32 +409,12 @@ public class SubscriptionService {
         String cuenta = subscription.getCuenta() != null ? subscription.getCuenta().toUpperCase() : "PT";
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
 
-        // Try to extract EU country prefix from taxId (e.g. "ESB09665258" → "ES")
-        String customerCountry = null;
-        if (taxId != null && !taxId.isBlank()) {
-            String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
-            if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
-                customerCountry = normalized.substring(0, 2);
-            }
-        }
-
-        // No prefix found — try VIES with billing_country as hint (e.g. "B09665258" + "Spain" → "ESB09665258")
+        // Derive customer country: prefix in taxId → billing_country → ES default.
+        // ensureVatValidated() above already confirmed vat_valid against VIES, so we
+        // don't re-call VIES here (a runtime VIES failure would otherwise drop us to
+        // the fallback rate even when vat_valid is TRUE).
+        String customerCountry = deriveCustomerCountry(taxId, billingCountry);
         if (customerCountry == null) {
-            String countryHint = countryNameToIso(billingCountry);
-            if (countryHint != null) {
-                ViesVatService.VatValidationResult result = viesVatService.validate(taxId, countryHint);
-                if (result.valid()) {
-                    customerCountry = countryHint;
-                    logger.info("VIES confirmed {} as {} for subscription {}",
-                        taxId, countryHint, subscription.getId());
-                } else {
-                    logger.info("VIES could not validate {} (hint={}) for subscription {}: {}",
-                        taxId, countryHint, subscription.getId(), result.error());
-                }
-            }
-        }
-
-        if (customerCountry == null || !EU_VAT_PREFIXES.contains(customerCountry)) {
             return fallback;
         }
 
@@ -447,6 +427,27 @@ public class SubscriptionService {
             subscription.getId(), cuenta, supplierCountry, customerCountry, taxId, vatValid, reverseCharge, resolved);
 
         return resolved;
+    }
+
+    /**
+     * Resolves the customer country for VAT purposes:
+     *   1. EU country prefix in the tax ID (e.g., "ESB09665258" → ES).
+     *   2. billing_country mapped via countryNameToIso.
+     *   3. ES default (BeWorking is Spain-based).
+     *
+     * Returns null only if the resolved country is not in the EU set —
+     * caller should treat that as "fallback to supplier-country VAT".
+     */
+    public static String deriveCustomerCountry(String taxId, String billingCountry) {
+        if (taxId != null && !taxId.isBlank()) {
+            String normalized = taxId.trim().replaceAll("\\s+", "").toUpperCase();
+            if (normalized.length() >= 2 && EU_VAT_PREFIXES.contains(normalized.substring(0, 2))) {
+                return normalized.substring(0, 2);
+            }
+        }
+        String iso = countryNameToIso(billingCountry);
+        if (iso == null) iso = "ES";
+        return EU_VAT_PREFIXES.contains(iso) ? iso : null;
     }
 
     /** Returns the standard VAT rate for an ISO-2 country, or 21 as a safe default. */
