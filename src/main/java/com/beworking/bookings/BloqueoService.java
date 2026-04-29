@@ -212,55 +212,37 @@ class BloqueoService {
 
     @Transactional
     void deleteBloqueo(Long id) {
-        // Void any linked unpaid Stripe invoices before deleting the bloqueo
-        try {
-            List<Map<String, Object>> linkedInvoices = jdbcTemplate.queryForList(
-                """
-                SELECT f.id, f.estado, f.stripeinvoiceid
-                FROM beworking.facturasdesglose fd
-                JOIN beworking.facturas f ON f.idfactura = fd.idfacturadesglose
-                WHERE fd.idbloqueovinculado = ?
-                """, id);
+        // Block deletion if any linked invoice is still active. Per accounting
+        // rules, an invoice can only be cancelled via a credit note (Abono);
+        // the bloqueo deletion is then driven from that flow with the admin's
+        // explicit consent. Direct bloqueo deletion that would leave a dangling
+        // line on a live invoice is not allowed.
+        List<Map<String, Object>> linkedInvoices = jdbcTemplate.queryForList(
+            """
+            SELECT f.id, f.idfactura, f.estado
+            FROM beworking.facturasdesglose fd
+            JOIN beworking.facturas f ON f.id = fd.factura_id
+            WHERE fd.idbloqueovinculado = ?
+            """, id);
 
-            for (Map<String, Object> invoice : linkedInvoices) {
-                String estado = (String) invoice.get("estado");
-                String stripeInvoiceId = (String) invoice.get("stripeinvoiceid");
-                Long facturaId = ((Number) invoice.get("id")).longValue();
-
-                boolean isPaid = estado != null && (
-                    estado.equalsIgnoreCase("Pagado") || estado.equalsIgnoreCase("Paid"));
-
-                // Void unpaid Stripe invoice
-                if (!isPaid && stripeInvoiceId != null && !stripeInvoiceId.isBlank()
-                        && paymentsBaseUrl != null && !paymentsBaseUrl.isBlank()) {
-                    try {
-                        http.post()
-                            .uri(paymentsBaseUrl + "/api/void-invoice")
-                            .header("Content-Type", "application/json")
-                            .body(Map.of("invoice_id", stripeInvoiceId))
-                            .retrieve()
-                            .toBodilessEntity();
-                        LOGGER.info("Voided Stripe invoice {} for bloqueo {}", stripeInvoiceId, id);
-                    } catch (Exception ex) {
-                        LOGGER.warn("Failed to void Stripe invoice {} for bloqueo {}: {}",
-                            stripeInvoiceId, id, ex.getMessage());
-                    }
-                }
-
-                // Mark local invoice as voided if not paid
-                if (!isPaid) {
-                    jdbcTemplate.update(
-                        "UPDATE beworking.facturas SET estado = 'Anulado' WHERE id = ?", facturaId);
-                    LOGGER.info("Marked factura {} as Anulado for deleted bloqueo {}", facturaId, id);
-                }
+        for (Map<String, Object> invoice : linkedInvoices) {
+            String estado = (String) invoice.get("estado");
+            String estadoLower = estado != null ? estado.toLowerCase() : "";
+            boolean alreadyCredited = estadoLower.contains("rectific");
+            if (!alreadyCredited) {
+                Object invNum = invoice.get("idfactura");
+                throw new IllegalStateException(
+                    "Cannot delete bloqueo: linked invoice #" + invNum
+                        + " must be credited (Abono) first."
+                );
             }
-
-            // Clean up desglose records linking to this bloqueo
-            jdbcTemplate.update(
-                "DELETE FROM beworking.facturasdesglose WHERE idbloqueovinculado = ?", id);
-        } catch (Exception ex) {
-            LOGGER.warn("Invoice cleanup failed for bloqueo {}: {}", id, ex.getMessage());
         }
+
+        // Linked invoices are all already credited — safe to unlink the
+        // dangling desglose references (the invoice line stays for legal
+        // record, just no longer points at this bloqueo).
+        jdbcTemplate.update(
+            "UPDATE beworking.facturasdesglose SET idbloqueovinculado = NULL WHERE idbloqueovinculado = ?", id);
 
         try {
             bloqueoRepository.deleteById(id);

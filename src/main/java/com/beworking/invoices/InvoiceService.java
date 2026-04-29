@@ -974,6 +974,19 @@ public class InvoiceService {
 
     @Transactional
     public Map<String, Object> creditInvoice(Long originalId) {
+        return creditInvoice(originalId, false);
+    }
+
+    /**
+     * Issues a credit note (Rectificativa) for the given invoice and marks the
+     * original as Rectificado. Refunds Stripe if the invoice was paid; voids
+     * the Stripe invoice if it was unpaid.
+     *
+     * @param deleteLinkedBookings when true, also deletes the bloqueos linked
+     *     via desglose rows. When false, those bloqueos are reverted to
+     *     'Booked' so they remain on the calendar.
+     */
+    public Map<String, Object> creditInvoice(Long originalId, boolean deleteLinkedBookings) {
         // Load original invoice
         Map<String, Object> original;
         try {
@@ -1062,17 +1075,40 @@ public class InvoiceService {
             originalId
         );
 
-        // Revert linked bloqueos to Booked when invoice is credited
-        jdbcTemplate.update(
-            """
-            UPDATE beworking.bloqueos SET estado = 'Booked'
-            WHERE id IN (
-                SELECT fd.idbloqueovinculado FROM beworking.facturasdesglose fd
-                WHERE fd.idfacturadesglose = ? AND fd.idbloqueovinculado IS NOT NULL
-              )
-            """,
-            origLegacy
-        );
+        // Handle the linked bloqueos: either delete them (admin chose to) or
+        // revert their state to 'Booked' so they remain on the calendar.
+        if (deleteLinkedBookings) {
+            List<Long> linkedBloqueoIds = jdbcTemplate.queryForList(
+                "SELECT DISTINCT idbloqueovinculado FROM beworking.facturasdesglose"
+                    + " WHERE idfacturadesglose = ? AND idbloqueovinculado IS NOT NULL",
+                Long.class, origLegacy
+            );
+            if (!linkedBloqueoIds.isEmpty()) {
+                // Unlink desglose rows first so the bloqueo delete doesn't trip the
+                // BloqueoService's "linked invoice exists" guard.
+                jdbcTemplate.update(
+                    "UPDATE beworking.facturasdesglose SET idbloqueovinculado = NULL"
+                        + " WHERE idfacturadesglose = ?",
+                    origLegacy
+                );
+                String placeholders = String.join(",", java.util.Collections.nCopies(linkedBloqueoIds.size(), "?"));
+                jdbcTemplate.update(
+                    "DELETE FROM beworking.bloqueos WHERE id IN (" + placeholders + ")",
+                    linkedBloqueoIds.toArray()
+                );
+            }
+        } else {
+            jdbcTemplate.update(
+                """
+                UPDATE beworking.bloqueos SET estado = 'Booked'
+                WHERE id IN (
+                    SELECT fd.idbloqueovinculado FROM beworking.facturasdesglose fd
+                    WHERE fd.idfacturadesglose = ? AND fd.idbloqueovinculado IS NOT NULL
+                  )
+                """,
+                origLegacy
+            );
+        }
 
         // Stripe: refund if paid, void invoice if not paid
         String stripeRefundId = null;

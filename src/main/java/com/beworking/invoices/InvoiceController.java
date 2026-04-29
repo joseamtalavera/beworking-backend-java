@@ -322,7 +322,8 @@ public class InvoiceController {
     @PostMapping("/{id}/credit")
     public ResponseEntity<Map<String, Object>> creditInvoice(
         Authentication authentication,
-        @PathVariable Long id
+        @PathVariable Long id,
+        @RequestBody(required = false) Map<String, Object> body
     ) {
         Optional<User> userOpt = resolveUser(authentication);
         if (userOpt.isEmpty()) {
@@ -332,8 +333,10 @@ public class InvoiceController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
+        boolean deleteLinkedBookings = body != null && Boolean.TRUE.equals(body.get("deleteLinkedBookings"));
+
         try {
-            Map<String, Object> result = invoiceService.creditInvoice(id);
+            Map<String, Object> result = invoiceService.creditInvoice(id, deleteLinkedBookings);
             return ResponseEntity.status(HttpStatus.CREATED).body(result);
         } catch (IllegalArgumentException e) {
             Map<String, Object> error = new HashMap<>();
