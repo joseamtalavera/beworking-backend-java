@@ -73,7 +73,7 @@ class BookingService {
                    JdbcTemplate jdbcTemplate,
                    CuentaService cuentaService,
                    RegisterService registerService,
-                   com.beworking.contacts.ContactProfileService contactProfileService) {
+                   @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;

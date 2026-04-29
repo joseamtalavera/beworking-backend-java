@@ -59,7 +59,7 @@ public class InvoiceService {
             JdbcTemplate jdbcTemplate,
             BloqueoRepository bloqueoRepository,
             CuentaService cuentaService,
-            com.beworking.contacts.ContactProfileService contactProfileService,
+            @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
             @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
         this.http = RestClient.create();

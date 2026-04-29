@@ -32,7 +32,7 @@ public class SubscriptionService {
                                CuentaService cuentaService,
                                JdbcTemplate jdbcTemplate,
                                ViesVatService viesVatService,
-                               com.beworking.contacts.ContactProfileService contactProfileService) {
+                               @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService) {
         this.subscriptionRepository = subscriptionRepository;
         this.cuentaService = cuentaService;
         this.jdbcTemplate = jdbcTemplate;

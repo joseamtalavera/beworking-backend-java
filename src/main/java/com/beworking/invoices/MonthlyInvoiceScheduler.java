@@ -47,7 +47,7 @@ public class MonthlyInvoiceScheduler {
                                    InvoiceService invoiceService,
                                    EmailService emailService,
                                    JdbcTemplate jdbcTemplate,
-                                   com.beworking.contacts.ContactProfileService contactProfileService,
+                                   @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
                                    @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.bloqueoRepository = bloqueoRepository;
         this.invoiceService = invoiceService;
