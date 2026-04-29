@@ -62,6 +62,7 @@ class BookingService {
     private final JdbcTemplate jdbcTemplate;
     private final CuentaService cuentaService;
     private final RegisterService registerService;
+    private final com.beworking.contacts.ContactProfileService contactProfileService;
 
     BookingService(ReservaRepository reservaRepository,
                    BloqueoRepository bloqueoRepository,
@@ -71,7 +72,8 @@ class BookingService {
                    EmailService emailService,
                    JdbcTemplate jdbcTemplate,
                    CuentaService cuentaService,
-                   RegisterService registerService) {
+                   RegisterService registerService,
+                   com.beworking.contacts.ContactProfileService contactProfileService) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
@@ -81,6 +83,7 @@ class BookingService {
         this.jdbcTemplate = jdbcTemplate;
         this.cuentaService = cuentaService;
         this.registerService = registerService;
+        this.contactProfileService = contactProfileService;
     }
 
     @Transactional(readOnly = true)
@@ -363,6 +366,10 @@ class BookingService {
 
     private int resolveContactVatPercent(Long contactId, String cuenta) {
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
+
+        // JIT VIES validation: heal vat_valid before reading it.
+        contactProfileService.ensureVatValidated(contactId);
+
         String taxId = null;
         String billingCountry = null;
         Boolean vatValid = null;

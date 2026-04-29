@@ -39,6 +39,7 @@ public class MonthlyInvoiceScheduler {
     private final InvoiceService invoiceService;
     private final EmailService emailService;
     private final JdbcTemplate jdbcTemplate;
+    private final com.beworking.contacts.ContactProfileService contactProfileService;
     private final RestClient http;
     private final String paymentsBaseUrl;
 
@@ -46,11 +47,13 @@ public class MonthlyInvoiceScheduler {
                                    InvoiceService invoiceService,
                                    EmailService emailService,
                                    JdbcTemplate jdbcTemplate,
+                                   com.beworking.contacts.ContactProfileService contactProfileService,
                                    @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.bloqueoRepository = bloqueoRepository;
         this.invoiceService = invoiceService;
         this.emailService = emailService;
         this.jdbcTemplate = jdbcTemplate;
+        this.contactProfileService = contactProfileService;
         this.http = RestClient.create();
         this.paymentsBaseUrl = paymentsBaseUrl;
     }
@@ -245,6 +248,9 @@ public class MonthlyInvoiceScheduler {
      */
     private int resolveContactVatPercent(Long contactId, String cuenta) {
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
+
+        // JIT VIES validation: heal vat_valid before reading it.
+        contactProfileService.ensureVatValidated(contactId);
 
         String taxId = null;
         String billingCountry = null;

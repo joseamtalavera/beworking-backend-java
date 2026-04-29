@@ -52,17 +52,20 @@ public class InvoiceService {
     private final RestClient http;
     private final BloqueoRepository bloqueoRepository;
     private final CuentaService cuentaService;
+    private final com.beworking.contacts.ContactProfileService contactProfileService;
     private final String paymentsBaseUrl;
 
     public InvoiceService(
             JdbcTemplate jdbcTemplate,
             BloqueoRepository bloqueoRepository,
             CuentaService cuentaService,
+            com.beworking.contacts.ContactProfileService contactProfileService,
             @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
         this.http = RestClient.create();
         this.bloqueoRepository = bloqueoRepository;
         this.cuentaService = cuentaService;
+        this.contactProfileService = contactProfileService;
         this.paymentsBaseUrl = paymentsBaseUrl;
     }
 
@@ -1318,6 +1321,10 @@ public class InvoiceService {
 
     private int resolveContactVatPercent(Long contactId) {
         if (contactId == null) return 21;
+
+        // JIT VIES validation: heal vat_valid before reading it.
+        contactProfileService.ensureVatValidated(contactId);
+
         // Determine supplier country from contact's active subscription cuenta
         String supplierCountry = "ES";
         try {

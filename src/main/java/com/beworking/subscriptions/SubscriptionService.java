@@ -26,15 +26,18 @@ public class SubscriptionService {
     private final CuentaService cuentaService;
     private final JdbcTemplate jdbcTemplate;
     private final ViesVatService viesVatService;
+    private final com.beworking.contacts.ContactProfileService contactProfileService;
 
     public SubscriptionService(SubscriptionRepository subscriptionRepository,
                                CuentaService cuentaService,
                                JdbcTemplate jdbcTemplate,
-                               ViesVatService viesVatService) {
+                               ViesVatService viesVatService,
+                               com.beworking.contacts.ContactProfileService contactProfileService) {
         this.subscriptionRepository = subscriptionRepository;
         this.cuentaService = cuentaService;
         this.jdbcTemplate = jdbcTemplate;
         this.viesVatService = viesVatService;
+        this.contactProfileService = contactProfileService;
     }
 
     public List<Subscription> findAll() {
@@ -386,6 +389,9 @@ public class SubscriptionService {
      */
     int resolveVatPercent(Subscription subscription) {
         int fallback = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
+
+        // JIT VIES validation: heal vat_valid before reading it.
+        contactProfileService.ensureVatValidated(subscription.getContactId());
 
         String taxId = null;
         String billingCountry = null;

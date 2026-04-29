@@ -636,6 +636,26 @@ public class ContactProfileService {
         return Boolean.TRUE.equals(profile.getVatValid());
     }
 
+    /**
+     * Just-in-time VIES validation: short-circuits if vat_valid is already TRUE,
+     * otherwise calls VIES, persists, and returns the latest value. Used by
+     * VAT-resolution paths so a missing validation is healed before the rate is
+     * computed (instead of silently falling back to a wrong rate).
+     */
+    @Transactional
+    public Boolean ensureVatValidated(Long contactId) {
+        if (contactId == null) return null;
+        ContactProfile profile = repository.findById(contactId).orElse(null);
+        if (profile == null) return null;
+        if (Boolean.TRUE.equals(profile.getVatValid())) return true;
+        if (profile.getBillingTaxId() == null || profile.getBillingTaxId().isBlank()) {
+            return profile.getVatValid();
+        }
+        runVatValidation(profile);
+        repository.save(profile);
+        return profile.getVatValid();
+    }
+
     @Transactional
     public java.util.Map<String, Integer> revalidateAllStaleVat() {
         java.util.List<ContactProfile> all = repository.findAll();
