@@ -51,6 +51,42 @@ public class ViesVatService {
         return m.matches() && EU_COUNTRIES.contains(m.group(1));
     }
 
+    public static String countryNameToIso(String countryName) {
+        if (countryName == null || countryName.isBlank()) return null;
+        String s = countryName.trim();
+        if (s.length() == 2) return s.toUpperCase();
+        return switch (s.toLowerCase()) {
+            case "spain", "españa", "espana" -> "ES";
+            case "ireland", "irlanda" -> "IE";
+            case "italy", "italia" -> "IT";
+            case "france", "francia" -> "FR";
+            case "germany", "alemania" -> "DE";
+            case "portugal" -> "PT";
+            case "netherlands", "holanda", "países bajos", "paises bajos" -> "NL";
+            case "belgium", "bélgica", "belgica" -> "BE";
+            case "sweden", "suecia" -> "SE";
+            case "denmark", "dinamarca" -> "DK";
+            case "finland", "finlandia" -> "FI";
+            case "austria" -> "AT";
+            case "greece", "grecia" -> "EL";
+            case "poland", "polonia" -> "PL";
+            case "czech republic", "república checa", "republica checa", "czechia" -> "CZ";
+            case "hungary", "hungría", "hungria" -> "HU";
+            case "romania", "rumania" -> "RO";
+            case "bulgaria" -> "BG";
+            case "croatia", "croacia" -> "HR";
+            case "slovakia", "eslovaquia" -> "SK";
+            case "slovenia", "eslovenia" -> "SI";
+            case "estonia" -> "EE";
+            case "latvia", "letonia" -> "LV";
+            case "lithuania", "lituania" -> "LT";
+            case "luxembourg", "luxemburgo" -> "LU";
+            case "malta" -> "MT";
+            case "cyprus", "chipre" -> "CY";
+            default -> null;
+        };
+    }
+
     public VatValidationResult validate(String taxId) {
         return validate(taxId, null);
     }

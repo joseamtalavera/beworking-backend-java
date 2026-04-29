@@ -256,13 +256,36 @@ public class ContactProfileController {
     @GetMapping("/vat/validate")
     public ResponseEntity<Map<String, Object>> validateVat(
             @RequestParam String vatNumber,
-            @RequestParam(required = false) String countryHint) {
+            @RequestParam(required = false) String countryHint,
+            @RequestParam(required = false) Long contactId) {
         ViesVatService.VatValidationResult result = viesVatService.validate(vatNumber, countryHint);
+        if (contactId != null) {
+            try {
+                contactProfileService.revalidateVat(contactId);
+            } catch (Exception e) {
+                logger.warn("Failed to persist VAT validation for contact {}: {}", contactId, e.getMessage());
+            }
+        }
         Map<String, Object> body = new HashMap<>();
         body.put("valid", result.valid());
         body.put("name", result.name());
         body.put("address", result.address());
         body.put("error", result.error());
+        return ResponseEntity.ok(body);
+    }
+
+    @PostMapping("/vat/revalidate-all")
+    public ResponseEntity<Map<String, Object>> revalidateAllVat(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        Map<String, Integer> stats = contactProfileService.revalidateAllStaleVat();
+        Map<String, Object> body = new HashMap<>(stats);
         return ResponseEntity.ok(body);
     }
 

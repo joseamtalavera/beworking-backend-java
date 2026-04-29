@@ -22,6 +22,7 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import com.beworking.contacts.ViesVatService;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -386,6 +387,16 @@ public class InvoicePdfService {
             cs.setNonStrokingColor(INK);
             addTextRightAligned(cs, PDType1Font.HELVETICA, 10, margin + contentWidth, summaryY, formatCurrency(taxAmount, currencyFormat));
 
+            // Reverse-charge note (intra-EU B2B with VAT-registered buyer in different country)
+            boolean reverseCharge = isReverseCharge(header.vatPercent(),
+                header.cuentaCodigo(), clientInfo != null ? clientInfo.country() : null);
+            if (reverseCharge) {
+                summaryY -= 14;
+                cs.setNonStrokingColor(MUTED);
+                addText(cs, PDType1Font.HELVETICA_OBLIQUE, 8, margin, summaryY,
+                    "Inversión del sujeto pasivo · Art. 196 Directiva 2006/112/CE · Reverse charge");
+            }
+
             // Divider before total
             summaryY -= 12;
             cs.setStrokingColor(BRAND_GREEN);
@@ -710,6 +721,23 @@ public class InvoicePdfService {
         if (!addressPieces.isEmpty()) parts.add(String.join("\n", addressPieces));
         if (info.taxId() != null && !info.taxId().isBlank()) parts.add("CIF: " + info.taxId());
         return parts.isEmpty() ? "\u2014" : String.join("\n", parts);
+    }
+
+    private static String supplierCountryFor(String cuentaCodigo) {
+        if (cuentaCodigo == null) return "ES";
+        String key = cuentaCodigo.trim().toUpperCase();
+        return "GT".equals(key) ? "EE" : "ES";
+    }
+
+    private static boolean isReverseCharge(BigDecimal vatPct, String cuentaCodigo, String customerCountryName) {
+        if (vatPct == null || vatPct.compareTo(BigDecimal.ZERO) != 0) return false;
+        String supplier = supplierCountryFor(cuentaCodigo);
+        String customer = ViesVatService.countryNameToIso(customerCountryName);
+        if (customer == null) return false;
+        if (supplier.equals(customer)) return false;
+        return ViesVatService.countryNameToIso(supplier) != null
+            || java.util.Set.of("AT","BE","BG","CY","CZ","DE","DK","EE","EL","ES","FI","FR",
+                "HR","HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO","SE","SI","SK").contains(customer);
     }
 
     private static float sum(float[] values) {

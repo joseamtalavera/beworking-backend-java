@@ -467,11 +467,13 @@ public class ContactProfileService {
         profile.setBillingProvince(request.getBillingCounty());
         profile.setBillingCountry(request.getBillingCountry());
 
+        runVatValidation(profile);
+
         // Set default values
         profile.setActive(true);
         profile.setCreatedAt(LocalDateTime.now());
         profile.setStatusChangedAt(LocalDateTime.now());
-        
+
         // Save the profile
         ContactProfile savedProfile = repository.save(profile);
         
@@ -573,22 +575,11 @@ public class ContactProfileService {
         if (request.getBillingCompany() != null) {
             profile.setBillingName(blankToNull(request.getBillingCompany()));
         }
+        boolean taxIdChanged = false;
         if (request.getBillingTaxId() != null) {
             String newTaxId = blankToNull(request.getBillingTaxId());
             profile.setBillingTaxId(newTaxId);
-            if (newTaxId != null && viesVatService.isEuVatFormat(newTaxId)) {
-                try {
-                    ViesVatService.VatValidationResult result = viesVatService.validate(newTaxId);
-                    profile.setVatValid(result.valid());
-                    profile.setVatValidatedAt(LocalDateTime.now());
-                } catch (Exception e) {
-                    profile.setVatValid(null);
-                    profile.setVatValidatedAt(LocalDateTime.now());
-                }
-            } else {
-                profile.setVatValid(null);
-                profile.setVatValidatedAt(null);
-            }
+            taxIdChanged = true;
         }
         if (request.getBillingEmail() != null) {
             profile.setEmailSecondary(blankToNull(request.getBillingEmail()));
@@ -605,11 +596,67 @@ public class ContactProfileService {
         if (request.getBillingCounty() != null) {
             profile.setBillingProvince(blankToNull(request.getBillingCounty()));
         }
+        boolean countryChanged = false;
         if (request.getBillingCountry() != null) {
             profile.setBillingCountry(blankToNull(request.getBillingCountry()));
+            countryChanged = true;
+        }
+
+        if (taxIdChanged || countryChanged) {
+            runVatValidation(profile);
         }
 
         return repository.save(profile);
+    }
+
+    private void runVatValidation(ContactProfile profile) {
+        String taxId = profile.getBillingTaxId();
+        if (taxId == null || taxId.isBlank()) {
+            profile.setVatValid(null);
+            profile.setVatValidatedAt(null);
+            return;
+        }
+        String countryHint = ViesVatService.countryNameToIso(profile.getBillingCountry());
+        try {
+            ViesVatService.VatValidationResult result = viesVatService.validate(taxId, countryHint);
+            profile.setVatValid(result.valid());
+        } catch (Exception e) {
+            LOGGER.warn("VIES validation threw for contact {}: {}", profile.getId(), e.getMessage());
+            profile.setVatValid(null);
+        }
+        profile.setVatValidatedAt(LocalDateTime.now());
+    }
+
+    @Transactional
+    public boolean revalidateVat(Long contactId) {
+        ContactProfile profile = repository.findById(contactId).orElse(null);
+        if (profile == null) return false;
+        runVatValidation(profile);
+        repository.save(profile);
+        return Boolean.TRUE.equals(profile.getVatValid());
+    }
+
+    @Transactional
+    public java.util.Map<String, Integer> revalidateAllStaleVat() {
+        java.util.List<ContactProfile> all = repository.findAll();
+        int processed = 0, validated = 0, invalid = 0, errors = 0;
+        for (ContactProfile p : all) {
+            if (p.getBillingTaxId() == null || p.getBillingTaxId().isBlank()) continue;
+            if (Boolean.TRUE.equals(p.getVatValid())) continue;
+            try {
+                runVatValidation(p);
+                repository.save(p);
+                processed++;
+                if (Boolean.TRUE.equals(p.getVatValid())) validated++; else invalid++;
+            } catch (Exception e) {
+                errors++;
+            }
+        }
+        return java.util.Map.of(
+            "processed", processed,
+            "validated", validated,
+            "invalid", invalid,
+            "errors", errors);
     }
 
     @Transactional
