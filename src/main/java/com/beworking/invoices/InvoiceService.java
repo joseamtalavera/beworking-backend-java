@@ -685,6 +685,17 @@ public class InvoiceService {
         if (updated == 0) {
             throw new IllegalArgumentException("Invoice not found: " + id);
         }
+
+        if ("Pagado".equals(normalized)) {
+            jdbcTemplate.update("""
+                UPDATE beworking.bloqueos b SET estado = 'Pagado'
+                FROM beworking.facturasdesglose fd
+                WHERE fd.idbloqueovinculado = b.id
+                  AND fd.factura_id = ?
+                  AND b.estado <> 'Pagado'
+                """, id);
+        }
+
         Map<String, Object> response = new HashMap<>();
         response.put("id", id);
         response.put("status", normalized);
