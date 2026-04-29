@@ -64,8 +64,9 @@ public class InvoiceAuditService {
 
     private List<Map<String, Object>> sameDayDuplicates(LocalDate start, LocalDate end, String cuentaIn, Object[] cuentaParams) {
         String sql = "SELECT f.idcliente, c.name AS client_name, f.total, f.creacionfecha::date AS dia,"
-            + "        COUNT(*) AS dupes, ARRAY_AGG(f.idfactura ORDER BY f.id) AS facturas,"
-            + "        ARRAY_AGG(f.id ORDER BY f.id) AS ids"
+            + "        COUNT(*) AS dupes,"
+            + "        STRING_AGG(f.idfactura::text, ', ' ORDER BY f.id) AS facturas,"
+            + "        STRING_AGG(f.id::text, ', ' ORDER BY f.id) AS ids"
             + " FROM beworking.facturas f"
             + " LEFT JOIN beworking.contact_profiles c ON c.id = f.idcliente"
             + " WHERE f.holdedcuenta " + cuentaIn
@@ -78,9 +79,10 @@ public class InvoiceAuditService {
 
     private List<Map<String, Object>> crossDayDuplicates(LocalDate start, LocalDate end, String cuentaIn, Object[] cuentaParams) {
         String sql = "SELECT f.idcliente, c.name AS client_name, f.total,"
-            + "        COUNT(*) AS dupes, ARRAY_AGG(f.idfactura ORDER BY f.id) AS facturas,"
-            + "        ARRAY_AGG(f.creacionfecha::date ORDER BY f.id) AS dates,"
-            + "        ARRAY_AGG(f.id ORDER BY f.id) AS ids"
+            + "        COUNT(*) AS dupes,"
+            + "        STRING_AGG(f.idfactura::text, ', ' ORDER BY f.id) AS facturas,"
+            + "        STRING_AGG(f.creacionfecha::date::text, ', ' ORDER BY f.id) AS dates,"
+            + "        STRING_AGG(f.id::text, ', ' ORDER BY f.id) AS ids"
             + " FROM beworking.facturas f"
             + " LEFT JOIN beworking.contact_profiles c ON c.id = f.idcliente"
             + " WHERE f.holdedcuenta " + cuentaIn

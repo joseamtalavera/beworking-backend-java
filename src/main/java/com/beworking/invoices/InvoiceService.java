@@ -845,7 +845,8 @@ public class InvoiceService {
             return "Rectificado";
         }
         if (value.contains("anul") || value.contains("void") || value.contains("cancel")) {
-            return "Anulado";
+            throw new IllegalArgumentException(
+                "Invoice cancellation must be issued as a credit note (Abono), not via status change.");
         }
         if (value.contains("pag")) {
             return "Pagado";
