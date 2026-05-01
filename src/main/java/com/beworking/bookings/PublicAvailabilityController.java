@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -32,17 +33,20 @@ public class PublicAvailabilityController {
     private final SubscriptionRepository subscriptionRepository;
     private final ProductoRepository productoRepository;
     private final ContactProfileRepository contactProfileRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public PublicAvailabilityController(
         BloqueoRepository bloqueoRepository,
         SubscriptionRepository subscriptionRepository,
         ProductoRepository productoRepository,
-        ContactProfileRepository contactProfileRepository
+        ContactProfileRepository contactProfileRepository,
+        JdbcTemplate jdbcTemplate
     ) {
         this.bloqueoRepository = bloqueoRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.productoRepository = productoRepository;
         this.contactProfileRepository = contactProfileRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @GetMapping
@@ -104,6 +108,21 @@ public class PublicAvailabilityController {
             probe.map(s -> "active=" + s.getActive() + " productoId=" + s.getProductoId()
                 + " startDate=" + s.getStartDate() + " endDate=" + s.getEndDate()
                 + " vatPercent=" + s.getVatPercent()).orElse("(not found)"));
+
+        // Raw JDBC probe — bypasses Hibernate entity mapping. If this shows '40' but
+        // Hibernate sees null, the entity mapping is broken; if both show null, the
+        // backend's DB connection genuinely doesn't see the UPDATE (replica lag, wrong env).
+        try {
+            String rawProductoId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(producto_id::text, 'NULL') FROM beworking.subscriptions WHERE id = 425",
+                String.class);
+            String dbInfo = jdbcTemplate.queryForObject(
+                "SELECT current_database() || '@' || inet_server_addr() || ':' || inet_server_port()",
+                String.class);
+            LOGGER.info("DEBUG raw JDBC sub 425 producto_id={} dbInfo={}", rawProductoId, dbInfo);
+        } catch (Exception e) {
+            LOGGER.warn("DEBUG raw JDBC probe failed: {}", e.getMessage());
+        }
 
         if (subs.isEmpty()) return Collections.emptyList();
 
