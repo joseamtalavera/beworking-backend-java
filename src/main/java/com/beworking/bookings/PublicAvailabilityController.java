@@ -13,6 +13,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +25,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping(path = "/api/public/availability", produces = MediaType.APPLICATION_JSON_VALUE)
 public class PublicAvailabilityController {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(PublicAvailabilityController.class);
 
     private final BloqueoRepository bloqueoRepository;
     private final SubscriptionRepository subscriptionRepository;
@@ -90,6 +94,8 @@ public class PublicAvailabilityController {
         LocalDateTime end
     ) {
         List<Subscription> subs = subscriptionRepository.findActiveCoveringDate(date);
+        LOGGER.info("subscriptionResponses date={} subs.size={} ids={}", date, subs.size(),
+            subs.stream().map(s -> s.getId() + ":" + s.getProductoId()).toList());
         if (subs.isEmpty()) return Collections.emptyList();
 
         Set<Long> productoIds = subs.stream()
@@ -114,17 +120,32 @@ public class PublicAvailabilityController {
         List<PublicAvailabilityResponse> out = new ArrayList<>();
         for (Subscription sub : subs) {
             Producto producto = productosById.get(sub.getProductoId());
-            if (producto == null) continue;
+            if (producto == null) {
+                LOGGER.warn("subscriptionResponses: sub id={} skipped — no producto for productoId={}", sub.getId(), sub.getProductoId());
+                continue;
+            }
 
             if (filterByName) {
                 String name = producto.getNombre();
-                if (name == null) continue;
-                if (!normalizedProductNames.contains(name.toLowerCase(Locale.ROOT))) continue;
+                if (name == null) {
+                    LOGGER.warn("subscriptionResponses: sub id={} skipped — producto {} has null name", sub.getId(), producto.getId());
+                    continue;
+                }
+                if (!normalizedProductNames.contains(name.toLowerCase(Locale.ROOT))) {
+                    LOGGER.warn("subscriptionResponses: sub id={} skipped — name '{}' not in {}", sub.getId(), name, normalizedProductNames);
+                    continue;
+                }
             }
             if (filterByCenter) {
                 String centro = producto.getCentroCodigo();
-                if (centro == null) continue;
-                if (!normalizedCenters.contains(centro.toLowerCase(Locale.ROOT))) continue;
+                if (centro == null) {
+                    LOGGER.warn("subscriptionResponses: sub id={} skipped — producto {} has null centro", sub.getId(), producto.getId());
+                    continue;
+                }
+                if (!normalizedCenters.contains(centro.toLowerCase(Locale.ROOT))) {
+                    LOGGER.warn("subscriptionResponses: sub id={} skipped — centro '{}' not in {}", sub.getId(), centro, normalizedCenters);
+                    continue;
+                }
             }
 
             ContactProfile cliente = sub.getContactId() != null ? contactsById.get(sub.getContactId()) : null;
