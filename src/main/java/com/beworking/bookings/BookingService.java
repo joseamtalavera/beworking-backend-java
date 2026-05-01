@@ -235,10 +235,22 @@ class BookingService {
                 List<BloqueoResponse> allBloqueos = response.bloqueos();
                 int sessionCount = allBloqueos.size();
 
-                // Calculate price from room hourly rate × hours × sessions
-                BigDecimal hourlyRate = jdbcTemplate.queryForObject(
+                // Calculate price from room hourly rate × hours × sessions.
+                // queryForList instead of queryForObject so per-desk products (e.g. MA1O1-1..16)
+                // — which exist in `productos` but not in `rooms` — return an empty list rather
+                // than throwing EmptyResultDataAccessException. When the lookup is empty we skip
+                // auto-invoicing instead of refunding the payment; the booking is preserved and
+                // the invoice can be added manually until proper desk hourly pricing exists.
+                List<BigDecimal> rateList = jdbcTemplate.queryForList(
                     "SELECT price_from FROM beworking.rooms WHERE code = ?",
                     BigDecimal.class, producto.getNombre());
+                BigDecimal hourlyRate = rateList.isEmpty() ? null : rateList.get(0);
+
+                if (hourlyRate == null) {
+                    LOGGER.warn(
+                        "Skipping auto-invoice for booking on product '{}' — no rooms row matches this code. PaymentIntent: {}. The booking is preserved; create an invoice manually.",
+                        producto.getNombre(), request.getStripePaymentIntentId());
+                }
 
                 if (hourlyRate != null) {
                     LocalTime startTime = LocalTime.parse(request.getStartTime());
