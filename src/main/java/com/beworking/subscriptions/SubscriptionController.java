@@ -36,6 +36,7 @@ public class SubscriptionController {
     private final ProductoRepository productoRepository;
     private final com.beworking.plans.PlanRepository planRepository;
     private final com.beworking.contacts.ViesVatService viesVatService;
+    private final com.beworking.invoices.InvoiceEmailService invoiceEmailService;
     private final RestClient http;
 
     public SubscriptionController(SubscriptionService subscriptionService,
@@ -44,6 +45,7 @@ public class SubscriptionController {
                                   ProductoRepository productoRepository,
                                   com.beworking.plans.PlanRepository planRepository,
                                   com.beworking.contacts.ViesVatService viesVatService,
+                                  com.beworking.invoices.InvoiceEmailService invoiceEmailService,
                                   @Value("${app.payments.base-url:http://beworking-stripe-service:8081}") String paymentsBaseUrl) {
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
@@ -51,6 +53,7 @@ public class SubscriptionController {
         this.productoRepository = productoRepository;
         this.planRepository = planRepository;
         this.viesVatService = viesVatService;
+        this.invoiceEmailService = invoiceEmailService;
         this.http = RestClient.builder().baseUrl(paymentsBaseUrl).build();
     }
 
@@ -125,15 +128,28 @@ public class SubscriptionController {
 
             Subscription saved = subscriptionService.save(sub);
 
-            // Create first Pendiente invoice for the start month
+            // Create first Pendiente invoice for the start month and email it to
+            // the customer + info@be-working.com.
             try {
                 String month = saved.getStartDate().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
-                subscriptionService.createBankTransferInvoice(saved, month);
+                Map<String, Object> invoice = subscriptionService.createBankTransferInvoice(saved, month);
                 saved.setLastInvoicedMonth(month);
                 subscriptionService.save(saved);
                 logger.info("Created first Pendiente invoice for bank_transfer subscription {} (month={})", saved.getId(), month);
+
+                Object internalIdObj = invoice != null ? invoice.get("id") : null;
+                if (internalIdObj instanceof Long invoiceId) {
+                    var emailResult = invoiceEmailService.sendForInvoice(invoiceId);
+                    if (emailResult.clientEmailSent) {
+                        logger.info("Invoice email auto-sent for bank_transfer sub {} to {} (#{})",
+                            saved.getId(), emailResult.clientEmail, emailResult.invoiceNumber);
+                    } else {
+                        logger.warn("Bank-transfer invoice created for sub {} but email send failed: {}",
+                            saved.getId(), emailResult.error);
+                    }
+                }
             } catch (Exception e) {
-                logger.warn("Failed to create first bank_transfer invoice: {}", e.getMessage(), e);
+                logger.warn("Failed to create/email first bank_transfer invoice: {}", e.getMessage(), e);
             }
 
             return ResponseEntity.status(HttpStatus.CREATED).body(saved);
