@@ -79,7 +79,7 @@ public class EmailService {
         try {
             logger.info("Attempting to send confirmation email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
@@ -192,7 +192,7 @@ public class EmailService {
         try {
             logger.info("Attempting to send welcome email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
@@ -245,7 +245,7 @@ public class EmailService {
         try {
             logger.info("Attempting to send booking welcome email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
@@ -319,7 +319,7 @@ public class EmailService {
         try {
             logger.info("Attempting to send trial welcome email to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             applyFrom(helper);
             helper.setTo(to);
             helper.setSubject(subject);
