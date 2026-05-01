@@ -298,7 +298,8 @@ public class EmailService {
                 + (locationLabel.isEmpty() ? "" : "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Sede:</strong> " + locationLabel + "</p>")
                 + "<p style=\"margin:6px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Estado:</strong> Activa</p>"
                 + "</div>"
-                + "<p style=\"margin:0 0 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Ya puedes acceder a tu panel de control con el email y contrase\u00f1a que has elegido.</p>"
+                + "<p style=\"margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Ya puedes acceder a tu panel de control con el email y contrase\u00f1a que has elegido.</p>"
+                + "<p style=\"margin:0 0 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Tus facturas con todos los datos fiscales (IVA, n\u00famero PT-####) est\u00e1n disponibles en la secci\u00f3n <strong>Mis Facturas</strong> de la app. Es el documento oficial; cualquier otro recibo de pago es solo confirmaci\u00f3n.</p>"
                 // CTA button
                 + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto;\">"
                 + "<tr><td align=\"center\" style=\"border-radius:8px;background:#009624;\">"
