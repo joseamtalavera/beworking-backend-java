@@ -96,6 +96,15 @@ public class PublicAvailabilityController {
         List<Subscription> subs = subscriptionRepository.findActiveCoveringDate(date);
         LOGGER.info("subscriptionResponses date={} subs.size={} ids={}", date, subs.size(),
             subs.stream().map(s -> s.getId() + ":" + s.getProductoId()).toList());
+
+        // Targeted probe: can we load sub 425 directly? If yes, the WHERE clause is dropping it.
+        var probe = subscriptionRepository.findById(425);
+        LOGGER.info("DEBUG findById(425) present={} {}",
+            probe.isPresent(),
+            probe.map(s -> "active=" + s.getActive() + " productoId=" + s.getProductoId()
+                + " startDate=" + s.getStartDate() + " endDate=" + s.getEndDate()
+                + " vatPercent=" + s.getVatPercent()).orElse("(not found)"));
+
         if (subs.isEmpty()) return Collections.emptyList();
 
         Set<Long> productoIds = subs.stream()
