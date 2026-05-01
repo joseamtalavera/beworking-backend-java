@@ -233,16 +233,17 @@ public class SubscriptionController {
                     }
                 }
 
-                // Calculate amount including VAT for Stripe
+                // Send base amount (pre-tax) to Stripe. When apply_tax=true (i.e.
+                // not tax-exempt), stripe-service attaches default_tax_rates with the
+                // configured IVA percentage, and Stripe layers VAT on top automatically.
+                // Pre-fix: we were sending base + VAT to Stripe AND letting Stripe add
+                // VAT again — double-taxation. Customer was charged ~21% over.
                 BigDecimal baseAmount = request.getMonthlyAmount();
                 int vatPercent = taxExempt ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21);
-                BigDecimal vatAmount = baseAmount.multiply(BigDecimal.valueOf(vatPercent))
-                    .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
-                BigDecimal totalAmount = baseAmount.add(vatAmount);
-                int amountCents = totalAmount.multiply(BigDecimal.valueOf(100)).intValue();
+                int amountCents = baseAmount.multiply(BigDecimal.valueOf(100)).intValue();
 
-                logger.info("Creating Stripe sub: base={} vat={}% vatAmount={} total={} taxExempt={}",
-                    baseAmount, vatPercent, vatAmount, totalAmount, taxExempt);
+                logger.info("Creating Stripe sub: base={} vat={}% taxExempt={} (Stripe applies VAT via default_tax_rates)",
+                    baseAmount, vatPercent, taxExempt);
 
                 Map<String, Object> stripeRequest = new HashMap<>();
                 stripeRequest.put("customer_email", email);
