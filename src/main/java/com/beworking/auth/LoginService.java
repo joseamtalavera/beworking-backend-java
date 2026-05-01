@@ -23,9 +23,10 @@ public class LoginService {
         if (userOpt.isPresent()) {
             User user = userOpt.get();
             if (passwordEncoder.matches(password, user.getPassword())) {
-                if (!user.isEmailConfirmed()) {
-                    return Optional.empty(); // Email not confirmed yet
-                }
+                // Return the user even if email is not yet confirmed. The
+                // controller distinguishes "wrong credentials" (Optional.empty)
+                // from "unconfirmed email" (user present, isEmailConfirmed=false)
+                // and surfaces the right 403 + message to the client.
                 return Optional.of(user);
             }
         }
