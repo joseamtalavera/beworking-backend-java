@@ -235,29 +235,49 @@ class BookingService {
                 List<BloqueoResponse> allBloqueos = response.bloqueos();
                 int sessionCount = allBloqueos.size();
 
-                // Calculate price from room hourly rate × hours × sessions.
-                // queryForList instead of queryForObject so per-desk products (e.g. MA1O1-1..16)
-                // — which exist in `productos` but not in `rooms` — return an empty list rather
-                // than throwing EmptyResultDataAccessException. When the lookup is empty we skip
-                // auto-invoicing instead of refunding the payment; the booking is preserved and
-                // the invoice can be added manually until proper desk hourly pricing exists.
-                List<BigDecimal> rateList = jdbcTemplate.queryForList(
-                    "SELECT price_from FROM beworking.rooms WHERE code = ?",
-                    BigDecimal.class, producto.getNombre());
-                BigDecimal hourlyRate = rateList.isEmpty() ? null : rateList.get(0);
+                // Calculate price per session — branches on producto.tipo:
+                //   - Mesa (desk): 1 bloqueo = 1 day. Rate comes from price_day on the
+                //     parent rooms row (looked up by type + centro_code, since per-desk
+                //     products MA1O1-N don't have their own rooms row).
+                //   - Aula (meeting room): hourly. Rate comes from price_from on the
+                //     rooms row whose code matches producto.nombre (e.g. MA1A1).
+                String tipo = producto.getTipo();
+                BigDecimal perSession = null;
 
-                if (hourlyRate == null) {
-                    LOGGER.warn(
-                        "Skipping auto-invoice for booking on product '{}' — no rooms row matches this code. PaymentIntent: {}. The booking is preserved; create an invoice manually.",
-                        producto.getNombre(), request.getStripePaymentIntentId());
+                if ("Mesa".equalsIgnoreCase(tipo)) {
+                    List<BigDecimal> dayRates = jdbcTemplate.queryForList(
+                        "SELECT price_day FROM beworking.rooms " +
+                        "WHERE type = ? AND centro_code = ? AND status = 'Activo' " +
+                        "ORDER BY id LIMIT 1",
+                        BigDecimal.class, tipo, producto.getCentroCodigo());
+                    BigDecimal dailyRate = dayRates.isEmpty() ? null : dayRates.get(0);
+                    if (dailyRate != null) {
+                        // Each bloqueo represents one day for desk bookings.
+                        perSession = dailyRate.setScale(2, RoundingMode.HALF_UP);
+                    } else {
+                        LOGGER.warn(
+                            "Skipping auto-invoice for desk product '{}' (centro={}) — no price_day on parent rooms row. PaymentIntent: {}.",
+                            producto.getNombre(), producto.getCentroCodigo(), request.getStripePaymentIntentId());
+                    }
+                } else {
+                    List<BigDecimal> rateList = jdbcTemplate.queryForList(
+                        "SELECT price_from FROM beworking.rooms WHERE code = ?",
+                        BigDecimal.class, producto.getNombre());
+                    BigDecimal hourlyRate = rateList.isEmpty() ? null : rateList.get(0);
+                    if (hourlyRate != null) {
+                        LocalTime startTime = LocalTime.parse(request.getStartTime());
+                        LocalTime endTime = LocalTime.parse(request.getEndTime());
+                        long minutes = Duration.between(startTime, endTime).toMinutes();
+                        BigDecimal hours = new BigDecimal(minutes).divide(new BigDecimal("60"), 4, RoundingMode.HALF_UP);
+                        perSession = hourlyRate.multiply(hours).setScale(2, RoundingMode.HALF_UP);
+                    } else {
+                        LOGGER.warn(
+                            "Skipping auto-invoice for booking on product '{}' — no rooms row matches this code. PaymentIntent: {}.",
+                            producto.getNombre(), request.getStripePaymentIntentId());
+                    }
                 }
 
-                if (hourlyRate != null) {
-                    LocalTime startTime = LocalTime.parse(request.getStartTime());
-                    LocalTime endTime = LocalTime.parse(request.getEndTime());
-                    long minutes = Duration.between(startTime, endTime).toMinutes();
-                    BigDecimal hours = new BigDecimal(minutes).divide(new BigDecimal("60"), 4, RoundingMode.HALF_UP);
-                    BigDecimal perSession = hourlyRate.multiply(hours).setScale(2, RoundingMode.HALF_UP);
+                if (perSession != null) {
                     BigDecimal subtotal = perSession.multiply(BigDecimal.valueOf(sessionCount)).setScale(2, RoundingMode.HALF_UP);
 
                     // Resolve cuenta and VAT rate per contact
