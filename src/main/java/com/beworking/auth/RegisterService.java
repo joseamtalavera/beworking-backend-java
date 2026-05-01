@@ -55,8 +55,61 @@ public class RegisterService {
     }
 
     /**
-     * Creates a new user account with a trial subscription when inputs are valid and the email is unused.
-     * Also creates a Subscription record and populates ContactProfile with billing data.
+     * Creates a User + ContactProfile in pending-payment state BEFORE Stripe customer creation.
+     * Called by /auth/register-pending at the start of the signup flow so we always have a DB
+     * record that can be reconciled with Stripe (or recovered if signup is abandoned).
+     *
+     * Idempotent: if a pending user with this email already exists, fields are updated.
+     * Throws IllegalStateException if an ACTIVE (emailConfirmed) user with this email exists.
+     */
+    @Transactional
+    public User registerPendingUser(RegisterRequest request) {
+        String name = request.getName();
+        String email = request.getEmail();
+        String password = request.getPassword();
+
+        if (!isNonBlank(name) || !isNonBlank(email) || !isPasswordValid(password)) {
+            throw new IllegalArgumentException("Invalid data: name, email and password (8-64 chars) are required");
+        }
+
+        String normalizedEmail = email.toLowerCase().trim();
+        var existingUser = userRepository.findByEmail(normalizedEmail);
+
+        if (existingUser.isPresent() && existingUser.get().isEmailConfirmed()) {
+            throw new IllegalStateException("User already exists");
+        }
+
+        User user;
+        if (existingUser.isPresent()) {
+            // Pending user retry — refresh fields with latest input
+            user = existingUser.get();
+            user.setPassword(passwordEncoder.encode(password));
+            user.setName(name.trim());
+            user.setPhone(request.getPhone());
+        } else {
+            user = new User(normalizedEmail, passwordEncoder.encode(password), User.Role.USER);
+            user.setName(name.trim());
+            user.setPhone(request.getPhone());
+            user.setEmailConfirmed(false); // pending until payment completes
+        }
+
+        // Auto-link or create ContactProfile in pending state
+        ContactProfile cp = applyContactProfileFromRequest(user, request, normalizedEmail, "Pendiente Pago");
+
+        contactProfileRepository.save(cp);
+        userRepository.save(user);
+
+        logger.info("Created pending user (no Stripe yet) email={} cp={}", normalizedEmail, cp.getId());
+        return user;
+    }
+
+    /**
+     * Creates a new user account with a trial subscription when inputs are valid.
+     * If a pending user already exists for this email (created via registerPendingUser),
+     * the user is finalized: emailConfirmed flips to true, ContactProfile.status -> "Activo",
+     * and the subscription is provisioned.
+     * Otherwise (legacy direct signup), a fresh user is created and finalized atomically.
+     * Throws IllegalStateException if an active user already exists.
      */
     @Transactional
     public User registerUserWithTrial(RegisterRequest request) {
@@ -69,62 +122,30 @@ public class RegisterService {
         }
 
         String normalizedEmail = email.toLowerCase().trim();
+        var existingUser = userRepository.findByEmail(normalizedEmail);
 
-        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
+        User user;
+        if (existingUser.isPresent() && existingUser.get().isEmailConfirmed()) {
             throw new IllegalStateException("User already exists");
-        }
-
-        User user = new User(normalizedEmail, passwordEncoder.encode(password), User.Role.USER);
-        user.setName(name.trim());
-        user.setPhone(request.getPhone());
-        user.setEmailConfirmed(true); // Auto-confirm: payment method already proves identity
-        user.setStripeCustomerId(request.getStripeCustomerId());
-
-        // Auto-link or create ContactProfile with billing data
-        var existingProfile = contactProfileRepository
-            .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
-                normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail);
-
-        ContactProfile cp;
-        if (existingProfile.isPresent()) {
-            cp = existingProfile.get();
-            user.setTenantId(cp.getId());
-        } else {
-            cp = new ContactProfile();
-            cp.setId(System.currentTimeMillis());
-            cp.setName(name.trim());
-            cp.setEmailPrimary(normalizedEmail);
-            cp.setStatus("Activo");
-            cp.setTenantType("Usuario Virtual");
-            cp.setActive(true);
-            cp.setCreatedAt(LocalDateTime.now());
-            cp.setStatusChangedAt(LocalDateTime.now());
-            cp.setChannel("Self-registration");
-            user.setTenantId(cp.getId());
-        }
-
-        // Update contact with company/billing data if provided
-        if (request.getCompany() != null && !request.getCompany().isBlank()) {
-            cp.setBillingName(request.getCompany().trim());
-        }
-        if (request.getTaxId() != null && !request.getTaxId().isBlank()) {
-            cp.setBillingTaxId(request.getTaxId().trim());
-        }
-        if (request.getPhone() != null && !request.getPhone().isBlank()) {
-            cp.setPhonePrimary(request.getPhone().trim());
-        }
-
-        // Auto-populate billing address from selected location
-        if (request.getLocation() != null && !request.getLocation().isBlank()) {
-            String loc = request.getLocation().toLowerCase().trim();
-            if ("malaga".equals(loc)) {
-                cp.setBillingAddress("Calle Alejandro Dumas, 17 · Oficinas");
-                cp.setBillingCity("Málaga");
-                cp.setBillingPostalCode("29004");
-                cp.setBillingProvince("Málaga");
-                cp.setBillingCountry("España");
+        } else if (existingUser.isPresent()) {
+            // Pending user from /auth/register-pending — finalize
+            user = existingUser.get();
+            user.setName(name.trim());
+            user.setPhone(request.getPhone());
+            user.setEmailConfirmed(true);
+            if (request.getStripeCustomerId() != null && !request.getStripeCustomerId().isBlank()) {
+                user.setStripeCustomerId(request.getStripeCustomerId());
             }
+        } else {
+            // Legacy direct signup — create user from scratch
+            user = new User(normalizedEmail, passwordEncoder.encode(password), User.Role.USER);
+            user.setName(name.trim());
+            user.setPhone(request.getPhone());
+            user.setEmailConfirmed(true); // Auto-confirm: payment method already proves identity
+            user.setStripeCustomerId(request.getStripeCustomerId());
         }
+
+        ContactProfile cp = applyContactProfileFromRequest(user, request, normalizedEmail, "Activo");
         contactProfileRepository.save(cp);
         userRepository.save(user);
 
@@ -463,6 +484,66 @@ public class RegisterService {
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
         return true;
+    }
+
+    /**
+     * Builds or updates the ContactProfile attached to {@code user} from RegisterRequest fields,
+     * setting status (e.g. "Activo" for active, "Pendiente Pago" for pending). Auto-fills
+     * billing address from the location code when known. Caller is responsible for save().
+     */
+    private ContactProfile applyContactProfileFromRequest(
+            User user, RegisterRequest request, String normalizedEmail, String status) {
+        var existingProfile = contactProfileRepository
+            .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail);
+
+        ContactProfile cp;
+        if (existingProfile.isPresent()) {
+            cp = existingProfile.get();
+            // Only flip status if we're activating; never downgrade an active profile.
+            if (!"Activo".equalsIgnoreCase(cp.getStatus()) || "Activo".equals(status)) {
+                if (!status.equalsIgnoreCase(cp.getStatus())) {
+                    cp.setStatus(status);
+                    cp.setStatusChangedAt(LocalDateTime.now());
+                }
+            }
+            user.setTenantId(cp.getId());
+        } else {
+            cp = new ContactProfile();
+            cp.setId(System.currentTimeMillis());
+            cp.setName(request.getName().trim());
+            cp.setEmailPrimary(normalizedEmail);
+            cp.setStatus(status);
+            cp.setTenantType("Usuario Virtual");
+            cp.setActive(true);
+            cp.setCreatedAt(LocalDateTime.now());
+            cp.setStatusChangedAt(LocalDateTime.now());
+            cp.setChannel("Self-registration");
+            user.setTenantId(cp.getId());
+        }
+
+        if (request.getCompany() != null && !request.getCompany().isBlank()) {
+            cp.setBillingName(request.getCompany().trim());
+        }
+        if (request.getTaxId() != null && !request.getTaxId().isBlank()) {
+            cp.setBillingTaxId(request.getTaxId().trim());
+        }
+        if (request.getPhone() != null && !request.getPhone().isBlank()) {
+            cp.setPhonePrimary(request.getPhone().trim());
+        }
+
+        if (request.getLocation() != null && !request.getLocation().isBlank()) {
+            String loc = request.getLocation().toLowerCase().trim();
+            if ("malaga".equals(loc)) {
+                cp.setBillingAddress("Calle Alejandro Dumas, 17 · Oficinas");
+                cp.setBillingCity("Málaga");
+                cp.setBillingPostalCode("29004");
+                cp.setBillingProvince("Málaga");
+                cp.setBillingCountry("España");
+            }
+        }
+
+        return cp;
     }
 
     private boolean isNonBlank(String value) {

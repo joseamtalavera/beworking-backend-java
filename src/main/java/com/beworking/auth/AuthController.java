@@ -296,6 +296,28 @@ public class AuthController {
         }
     }
 
+    /**
+     * First step of the trial signup flow: persists a User + ContactProfile in pending-payment
+     * state BEFORE any Stripe interaction. Idempotent — pending users can re-call this endpoint
+     * with updated data when retrying the flow.
+     */
+    @PostMapping("/register-pending")
+    public ResponseEntity<?> registerPending(@Valid @RequestBody RegisterRequest request) {
+        try {
+            User user = registerService.registerPendingUser(request);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(Map.of(
+                        "userId", user.getId(),
+                        "email", user.getEmail(),
+                        "status", "pending_payment"
+                    ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/register-with-trial")
     public ResponseEntity<AuthResponse> registerWithTrial(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
         try {
@@ -322,6 +344,8 @@ public class AuthController {
             return ResponseEntity.badRequest().body(Map.of("error", "Email and name are required"));
         }
 
+        String normalizedEmail = email.toLowerCase().trim();
+
         try {
             String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
                 ? System.getenv("STRIPE_SERVICE_URL")
@@ -329,7 +353,7 @@ public class AuthController {
 
             String jsonBody = String.format(
                 "{\"customer_email\":\"%s\",\"customer_name\":\"%s\",\"tenant\":\"beworking\"}",
-                email.toLowerCase().trim().replace("\"", "\\\""),
+                normalizedEmail.replace("\"", "\\\""),
                 name.trim().replace("\"", "\\\"")
             );
 
@@ -337,11 +361,23 @@ public class AuthController {
             var headers = new org.springframework.http.HttpHeaders();
             headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
             var entity = new org.springframework.http.HttpEntity<>(jsonBody, headers);
-            var response = client.postForObject(
+            @SuppressWarnings("unchecked")
+            var response = (Map<String, Object>) client.postForObject(
                 stripeServiceUrl + "/api/setup-intents",
                 entity,
                 Map.class
             );
+
+            // Link the new Stripe customer to the pending user, if present, so the orphaned-
+            // customer pattern (Stripe customer with no DB row) cannot recur.
+            if (response != null && response.get("customerId") instanceof String customerId) {
+                userRepository.findByEmail(normalizedEmail).ifPresent(u -> {
+                    if (!u.isEmailConfirmed()) {
+                        u.setStripeCustomerId(customerId);
+                        userRepository.save(u);
+                    }
+                });
+            }
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
