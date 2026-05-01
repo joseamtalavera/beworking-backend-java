@@ -1,5 +1,6 @@
 package com.beworking.subscriptions;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -24,4 +25,12 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Inte
 
     @Query("SELECT s FROM Subscription s WHERE s.billingMethod = 'bank_transfer' AND s.active = true AND (s.lastInvoicedMonth IS NULL OR s.lastInvoicedMonth <> :month)")
     List<Subscription> findBankTransferDueForMonth(@Param("month") String month);
+
+    /**
+     * Active subscriptions whose coverage period contains :date. Used by the
+     * public availability endpoint to mark subscribed-desk products as occupied
+     * for the day, even when no per-day Bloqueo exists.
+     */
+    @Query("SELECT s FROM Subscription s WHERE s.active = true AND s.productoId IS NOT NULL AND s.startDate <= :date AND (s.endDate IS NULL OR s.endDate >= :date)")
+    List<Subscription> findActiveCoveringDate(@Param("date") LocalDate date);
 }
