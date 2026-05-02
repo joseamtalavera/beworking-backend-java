@@ -469,6 +469,62 @@ public class EmailService {
         sendHtml("info@be-working.com", "\uD83D\uDFE2 Nuevo registro — " + (name != null ? name : email), content);
     }
 
+    public void sendSubscriptionAdminNotification(String contactName, String contactEmail,
+                                                   String description, String monthlyAmount,
+                                                   String currency, String billingInterval,
+                                                   String cuenta, String stripeSubscriptionId) {
+        String intervalLabel = billingInterval != null ? switch (billingInterval.toLowerCase()) {
+            case "month" -> "Mensual";
+            case "quarter" -> "Trimestral";
+            case "year" -> "Anual";
+            default -> billingInterval;
+        } : "Mensual";
+
+        String cuentaLabel = cuenta != null ? switch (cuenta.toUpperCase()) {
+            case "PT" -> "PT (España)";
+            case "GT" -> "GT (Estonia)";
+            case "BW" -> "BW";
+            default -> cuenta;
+        } : "—";
+
+        String stripeLink = stripeSubscriptionId != null && !stripeSubscriptionId.isBlank()
+                ? "https://dashboard.stripe.com/subscriptions/" + stripeSubscriptionId
+                : "#";
+
+        String dash = "—";
+        String content = "<!doctype html>"
+                + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                + "<title>Nueva suscripción</title></head>"
+                + "<body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\">"
+                + "<tr><td align=\"center\" style=\"padding:24px 0;\">"
+                + "<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:600px;max-width:600px;margin:0 auto;\">"
+                + "<tr><td style=\"background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:28px 32px;color:#ffffff;border-radius:14px 14px 0 0;\">"
+                + "<p style=\"margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;\">BEWORKING</p>"
+                + "<h1 style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;line-height:1.2;color:#ffffff;\">Nueva suscripción creada</h1>"
+                + "</td></tr>"
+                + "<tr><td style=\"background:#ffffff;padding:28px 32px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">"
+                + "<p style=\"margin:0 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#555;\">Se ha registrado una nueva suscripción desde el panel de admin. Stripe enviará la primera factura al cliente con las opciones de pago (tarjeta y SEPA).</p>"
+                + "<div style=\"padding:8px 0;border-bottom:1px dashed #eee;\"><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;\">Cliente</div><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#111;\">" + (contactName != null ? contactName : dash) + "</div></div>"
+                + "<div style=\"padding:8px 0;border-bottom:1px dashed #eee;\"><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;\">Email</div><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#111;\"><a href=\"mailto:" + (contactEmail != null ? contactEmail : "") + "\" style=\"color:#111;text-decoration:none;\">" + (contactEmail != null ? contactEmail : dash) + "</a></div></div>"
+                + "<div style=\"padding:8px 0;border-bottom:1px dashed #eee;\"><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;\">Concepto</div><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#111;\">" + (description != null ? description : dash) + "</div></div>"
+                + "<div style=\"padding:8px 0;border-bottom:1px dashed #eee;\"><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;\">Importe</div><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#111;\">" + (monthlyAmount != null ? monthlyAmount : dash) + " " + (currency != null ? currency.toUpperCase() : "EUR") + " · " + intervalLabel + "</div></div>"
+                + "<div style=\"padding:8px 0;border-bottom:1px dashed #eee;\"><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;\">Cuenta</div><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#111;\">" + cuentaLabel + "</div></div>"
+                + "<div style=\"padding:8px 0;\"><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;\">Stripe ID</div><div style=\"font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111;word-break:break-all;\">" + (stripeSubscriptionId != null && !stripeSubscriptionId.isBlank() ? stripeSubscriptionId : dash) + "</div></div>"
+                + "<div style=\"margin-top:18px;text-align:center;\">"
+                + "<a href=\"" + stripeLink + "\" style=\"display:inline-block;background:#009624;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:14px;padding:12px 24px;border-radius:8px;\">Ver en Stripe</a>"
+                + "</div>"
+                + "</td></tr>"
+                + "</table>"
+                + "</td></tr></table>"
+                + "</body></html>";
+
+        sendHtml("info@be-working.com",
+                 "🟢 Nueva suscripción — " + (contactName != null ? contactName : contactEmail),
+                 content);
+    }
+
     @Async
     public void sendHtml(String to, String subject, String htmlContent) {
         sendHtml(to, subject, htmlContent, null);

@@ -36,7 +36,7 @@ public class SubscriptionController {
     private final ProductoRepository productoRepository;
     private final com.beworking.plans.PlanRepository planRepository;
     private final com.beworking.contacts.ViesVatService viesVatService;
-    private final com.beworking.invoices.InvoiceEmailService invoiceEmailService;
+    private final com.beworking.auth.EmailService emailService;
     private final RestClient http;
 
     public SubscriptionController(SubscriptionService subscriptionService,
@@ -45,7 +45,7 @@ public class SubscriptionController {
                                   ProductoRepository productoRepository,
                                   com.beworking.plans.PlanRepository planRepository,
                                   com.beworking.contacts.ViesVatService viesVatService,
-                                  com.beworking.invoices.InvoiceEmailService invoiceEmailService,
+                                  com.beworking.auth.EmailService emailService,
                                   @Value("${app.payments.base-url:http://beworking-stripe-service:8081}") String paymentsBaseUrl) {
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
@@ -53,7 +53,7 @@ public class SubscriptionController {
         this.productoRepository = productoRepository;
         this.planRepository = planRepository;
         this.viesVatService = viesVatService;
-        this.invoiceEmailService = invoiceEmailService;
+        this.emailService = emailService;
         this.http = RestClient.builder().baseUrl(paymentsBaseUrl).build();
     }
 
@@ -96,64 +96,13 @@ public class SubscriptionController {
 
         String billingMethod = request.getBillingMethod() != null ? request.getBillingMethod() : "stripe";
 
-        // --- Bank transfer flow: no Stripe interaction ---
-        if ("bank_transfer".equals(billingMethod)) {
-            // Resolve VAT number from contact profile if not explicitly provided
-            String vatNumber = request.getVatNumber();
-            if (vatNumber == null || vatNumber.isBlank()) {
-                Optional<ContactProfile> contactOpt = contactRepository.findById(request.getContactId());
-                if (contactOpt.isPresent() && contactOpt.get().getBillingTaxId() != null) {
-                    vatNumber = contactOpt.get().getBillingTaxId();
-                }
-            }
-
-            Subscription sub = new Subscription();
-            sub.setContactId(request.getContactId());
-            sub.setBillingMethod("bank_transfer");
-            sub.setMonthlyAmount(request.getMonthlyAmount());
-            sub.setCurrency(request.getCurrency() != null ? request.getCurrency() : "EUR");
-            sub.setCuenta(request.getCuenta() != null ? request.getCuenta() : "GT");
-            sub.setDescription(request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
-            sub.setBillingInterval(request.getBillingInterval() != null ? request.getBillingInterval() : "month");
-            boolean hasVat = vatNumber != null && !vatNumber.isBlank();
-            sub.setVatNumber(hasVat ? vatNumber : null);
-            boolean euIntra = isEuVatNumber(vatNumber);
-            sub.setVatPercent(euIntra ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
-            sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
-            sub.setEndDate(request.getEndDate());
-            sub.setProductoId(request.getProductoId());
-            sub.setActive(true);
-            sub.setCreatedAt(LocalDateTime.now());
-            sub.setUpdatedAt(LocalDateTime.now());
-
-            Subscription saved = subscriptionService.save(sub);
-
-            // Create first Pendiente invoice for the start month and email it to
-            // the customer + info@be-working.com.
-            try {
-                String month = saved.getStartDate().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
-                Map<String, Object> invoice = subscriptionService.createBankTransferInvoice(saved, month);
-                saved.setLastInvoicedMonth(month);
-                subscriptionService.save(saved);
-                logger.info("Created first Pendiente invoice for bank_transfer subscription {} (month={})", saved.getId(), month);
-
-                Object internalIdObj = invoice != null ? invoice.get("id") : null;
-                if (internalIdObj instanceof Long invoiceId) {
-                    var emailResult = invoiceEmailService.sendForInvoice(invoiceId);
-                    if (emailResult.clientEmailSent) {
-                        logger.info("Invoice email auto-sent for bank_transfer sub {} to {} (#{})",
-                            saved.getId(), emailResult.clientEmail, emailResult.invoiceNumber);
-                    } else {
-                        logger.warn("Bank-transfer invoice created for sub {} but email send failed: {}",
-                            saved.getId(), emailResult.error);
-                    }
-                }
-            } catch (Exception e) {
-                logger.warn("Failed to create/email first bank_transfer invoice: {}", e.getMessage(), e);
-            }
-
-            return ResponseEntity.status(HttpStatus.CREATED).body(saved);
-        }
+        // --- "trans" flow: legacy "bank_transfer" label, now identical to the
+        // stripe flow below. Customer doesn't have a saved payment method yet,
+        // so Stripe sends them the hosted invoice email; they pick card or SEPA
+        // and pay. After first payment, sub auto-renews silently. We send a
+        // separate admin notification + user welcome from our own templates. ---
+        // (Old behavior — manual Pendiente invoice + bank-transfer reference —
+        // removed. We always go through Stripe now.)
 
         // --- Stripe flow (existing logic) ---
         String stripeSubId = request.getStripeSubscriptionId();
@@ -283,6 +232,14 @@ public class SubscriptionController {
                 String interval = request.getBillingInterval() != null ? request.getBillingInterval() : "month";
                 stripeRequest.put("interval", interval);
 
+                // Admin-created subs: customer hasn't onboarded a payment method
+                // yet, so use send_invoice + card+SEPA. Stripe emails the hosted
+                // invoice; customer adds payment method there. After first paid
+                // invoice, stripe-service auto-switches the sub to
+                // charge_automatically so subsequent cycles bill silently.
+                stripeRequest.put("collection_method", "send_invoice");
+                stripeRequest.put("payment_method_types", List.of("card", "sepa_debit"));
+
                 // Pass billing details from contact profile to Stripe customer
                 Map<String, Object> billing = new HashMap<>();
                 if (contact.getBillingName() != null && !contact.getBillingName().isBlank()) {
@@ -373,6 +330,33 @@ public class SubscriptionController {
         sub.setUpdatedAt(LocalDateTime.now());
 
         Subscription saved = subscriptionService.save(sub);
+
+        // Notify admin (info@be-working.com) and welcome the customer.
+        // Best-effort: any failure is logged but doesn't fail the request — the
+        // subscription is already created in Stripe and persisted locally.
+        try {
+            contactRepository.findById(saved.getContactId()).ifPresent(contact -> {
+                String contactEmail = contact.getEmailPrimary() != null && !contact.getEmailPrimary().isBlank()
+                        ? contact.getEmailPrimary()
+                        : contact.getEmailSecondary();
+                String contactName = contact.getName();
+                String amountStr = saved.getMonthlyAmount() != null ? saved.getMonthlyAmount().toPlainString() : "—";
+
+                emailService.sendSubscriptionAdminNotification(
+                        contactName, contactEmail, saved.getDescription(),
+                        amountStr, saved.getCurrency(), saved.getBillingInterval(),
+                        saved.getCuenta(), saved.getStripeSubscriptionId());
+
+                if (contactEmail != null && !contactEmail.isBlank()) {
+                    emailService.sendSubscriptionWelcomeEmail(
+                            contactEmail, contactName,
+                            saved.getDescription(), saved.getCuenta());
+                }
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to send subscription notification emails for sub {}: {}",
+                    saved.getId(), e.getMessage(), e);
+        }
 
         // Create local invoices from Stripe data
         if (stripeResponse != null && stripeResponse.containsKey("firstInvoice")) {
