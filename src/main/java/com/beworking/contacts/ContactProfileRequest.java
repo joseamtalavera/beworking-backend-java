@@ -16,6 +16,7 @@ public class ContactProfileRequest {
     // Billing information
     private String billingCompany;
     private String billingTaxId;
+    private String billingTaxIdType;  // es_cif | es_nif | eu_vat | no_vat (Stripe-style)
     private String billingEmail;
     private String billingAddress;
     private String billingPostalCode;
@@ -118,6 +119,14 @@ public class ContactProfileRequest {
 
     public void setBillingTaxId(String billingTaxId) {
         this.billingTaxId = billingTaxId;
+    }
+
+    public String getBillingTaxIdType() {
+        return billingTaxIdType;
+    }
+
+    public void setBillingTaxIdType(String billingTaxIdType) {
+        this.billingTaxIdType = billingTaxIdType;
     }
 
     public String getBillingEmail() {

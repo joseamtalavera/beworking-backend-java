@@ -317,6 +317,7 @@ public class ContactProfileService {
             profile.getBillingCity(),
             profile.getBillingCountry(),
             profile.getBillingTaxId(),
+            profile.getBillingTaxIdType(),
             profile.getVatValid()
         );
 
@@ -580,6 +581,11 @@ public class ContactProfileService {
             String newTaxId = blankToNull(request.getBillingTaxId());
             profile.setBillingTaxId(newTaxId);
             taxIdChanged = true;
+        }
+        if (request.getBillingTaxIdType() != null) {
+            // Accept any non-blank string; valid values are es_cif | es_nif | eu_vat | no_vat.
+            // Setting null clears it.
+            profile.setBillingTaxIdType(blankToNull(request.getBillingTaxIdType()));
         }
         if (request.getBillingEmail() != null) {
             profile.setEmailSecondary(blankToNull(request.getBillingEmail()));

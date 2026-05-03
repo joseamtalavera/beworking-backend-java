@@ -30,6 +30,7 @@ public record ContactProfileResponse(
         String city,
         String country,
         @JsonProperty("tax_id") String taxId,
+        @JsonProperty("tax_id_type") String taxIdType,
         @JsonProperty("vat_valid") Boolean vatValid
     ) {}
 }
