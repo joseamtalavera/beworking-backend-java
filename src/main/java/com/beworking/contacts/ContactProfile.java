@@ -107,6 +107,18 @@ public class ContactProfile {
     @Column(name = "vat_validated_at")
     private LocalDateTime vatValidatedAt;
 
+    @Column(name = "billing_tax_id_type")
+    private String billingTaxIdType;
+
+    @Column(name = "vat_failure_streak", nullable = false)
+    private Integer vatFailureStreak = 0;
+
+    @Column(name = "vat_last_failure_at")
+    private LocalDateTime vatLastFailureAt;
+
+    @Column(name = "vat_status_changed_at")
+    private LocalDateTime vatStatusChangedAt;
+
     public ContactProfile() {
     }
 
@@ -380,5 +392,37 @@ public class ContactProfile {
 
     public void setVatValidatedAt(LocalDateTime vatValidatedAt) {
         this.vatValidatedAt = vatValidatedAt;
+    }
+
+    public String getBillingTaxIdType() {
+        return billingTaxIdType;
+    }
+
+    public void setBillingTaxIdType(String billingTaxIdType) {
+        this.billingTaxIdType = billingTaxIdType;
+    }
+
+    public Integer getVatFailureStreak() {
+        return vatFailureStreak;
+    }
+
+    public void setVatFailureStreak(Integer vatFailureStreak) {
+        this.vatFailureStreak = vatFailureStreak;
+    }
+
+    public LocalDateTime getVatLastFailureAt() {
+        return vatLastFailureAt;
+    }
+
+    public void setVatLastFailureAt(LocalDateTime vatLastFailureAt) {
+        this.vatLastFailureAt = vatLastFailureAt;
+    }
+
+    public LocalDateTime getVatStatusChangedAt() {
+        return vatStatusChangedAt;
+    }
+
+    public void setVatStatusChangedAt(LocalDateTime vatStatusChangedAt) {
+        this.vatStatusChangedAt = vatStatusChangedAt;
     }
 }
