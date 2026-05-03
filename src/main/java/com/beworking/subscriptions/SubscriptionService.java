@@ -383,14 +383,41 @@ public class SubscriptionService {
     );
 
     /**
-     * Re-evaluates the correct VAT percentage from the contact's current billing
-     * data and the subscription's cuenta, applying intra-EU reverse charge rules.
-     * Also updates the subscription record if the resolved value differs.
+     * Returns the VAT percentage to apply for invoices on this subscription.
+     *
+     * Lock-in (V48 behaviour, since 2026-05): when the subscription has a
+     * vat_percent stored, that value is the source of truth and is returned
+     * as-is. The rate was computed at sub creation time or set explicitly via
+     * an admin re-validation. Re-resolving every cycle was the cause of the
+     * €15 ↔ €18.15 oscillation customers were complaining about, because
+     * transient VIES failures kept flipping vat_valid and dragging the rate
+     * with it.
+     *
+     * Legacy fallback: if the sub has no stored vat_percent (very old rows
+     * not covered by V48), recompute from contact billing data + cuenta.
      */
     int resolveVatPercent(Subscription subscription) {
-        int fallback = subscription.getVatPercent() != null ? subscription.getVatPercent() : 21;
+        // Lock-in path: stored value wins.
+        if (subscription.getVatPercent() != null) {
+            return subscription.getVatPercent();
+        }
+        // Legacy path: sub has no locked rate, compute from contact data.
+        int resolved = computeFreshVatPercent(subscription);
+        logger.info("VAT resolved for sub {} (legacy fallback — no locked vat_percent): {}%",
+            subscription.getId(), resolved);
+        return resolved;
+    }
 
-        // JIT VIES validation: heal vat_valid before reading it.
+    /**
+     * Always computes the VAT rate from scratch, ignoring any stored
+     * vat_percent. Used by:
+     *   - The legacy fallback above (subs created before the lock-in).
+     *   - The admin "Re-validate VAT" endpoint, which deliberately recomputes
+     *     after a fresh VIES check.
+     */
+    private int computeFreshVatPercent(Subscription subscription) {
+        int fallback = 21;
+
         contactProfileService.ensureVatValidated(subscription.getContactId());
 
         String taxId = null;
@@ -405,29 +432,40 @@ public class SubscriptionService {
             vatValid = (Boolean) row.get("vat_valid");
         } catch (EmptyResultDataAccessException ignored) {}
 
-        // Supplier country: GT = Estonia (EE), PT/OF = Spain (ES)
         String cuenta = subscription.getCuenta() != null ? subscription.getCuenta().toUpperCase() : "PT";
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
 
-        // Derive customer country: prefix in taxId → billing_country → ES default.
-        // ensureVatValidated() above already confirmed vat_valid against VIES, so we
-        // don't re-call VIES here (a runtime VIES failure would otherwise drop us to
-        // the fallback rate even when vat_valid is TRUE).
         String customerCountry = deriveCustomerCountry(taxId, billingCountry);
-        if (customerCountry == null) {
-            return fallback;
-        }
+        if (customerCountry == null) return fallback;
 
-        // Reverse charge requires the contact to be confirmed VAT-registered (vat_valid == TRUE)
-        // AND supplier/customer countries must differ. Otherwise charge the customer-country rate.
         boolean reverseCharge = Boolean.TRUE.equals(vatValid) && !supplierCountry.equals(customerCountry);
-        int resolved = reverseCharge ? 0 : EU_VAT_RATES.getOrDefault(customerCountry, fallback);
-
-        logger.info("VAT resolved for subscription {}: cuenta={}, supplier={}, customer={}, taxId={}, vatValid={}, reverseCharge={} → {}%",
-            subscription.getId(), cuenta, supplierCountry, customerCountry, taxId, vatValid, reverseCharge, resolved);
-
-        return resolved;
+        return reverseCharge ? 0 : EU_VAT_RATES.getOrDefault(customerCountry, fallback);
     }
+
+    /**
+     * Force-recompute and persist vat_percent on a subscription. Used by the
+     * admin "Re-validate VAT" trigger when a customer's VIES status has
+     * genuinely changed (e.g. they just registered, or are disputing a 21%
+     * lock-in by claiming intra-community status).
+     *
+     * Returns a {@link RelockResult} so the caller can show before/after in
+     * the admin UI.
+     */
+    @Transactional
+    public RelockResult relockVatPercent(Subscription subscription) {
+        Integer previous = subscription.getVatPercent();
+        int fresh = computeFreshVatPercent(subscription);
+        boolean changed = previous == null || previous != fresh;
+        if (changed) {
+            subscription.setVatPercent(fresh);
+            subscription.setUpdatedAt(java.time.LocalDateTime.now());
+            subscriptionRepository.save(subscription);
+            logger.info("Relocked VAT for sub {}: {} → {}%", subscription.getId(), previous, fresh);
+        }
+        return new RelockResult(subscription.getId(), previous, fresh, changed);
+    }
+
+    public record RelockResult(Integer subId, Integer previousVatPercent, int newVatPercent, boolean changed) {}
 
     /**
      * Resolves the customer country for VAT purposes:

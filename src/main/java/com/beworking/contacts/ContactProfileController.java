@@ -25,17 +25,20 @@ public class ContactProfileController {
     private final JdbcTemplate jdbcTemplate;
     private final ViesVatService viesVatService;
     private final RegisterService registerService;
+    private final com.beworking.subscriptions.SubscriptionService subscriptionService;
 
     public ContactProfileController(ContactProfileService contactProfileService,
                                      UserRepository userRepository,
                                      JdbcTemplate jdbcTemplate,
                                      ViesVatService viesVatService,
-                                     RegisterService registerService) {
+                                     RegisterService registerService,
+                                     com.beworking.subscriptions.SubscriptionService subscriptionService) {
         this.contactProfileService = contactProfileService;
         this.userRepository = userRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.viesVatService = viesVatService;
         this.registerService = registerService;
+        this.subscriptionService = subscriptionService;
     }
 
     @GetMapping
@@ -271,6 +274,75 @@ public class ContactProfileController {
         body.put("name", result.name());
         body.put("address", result.address());
         body.put("error", result.error());
+        return ResponseEntity.ok(body);
+    }
+
+    /**
+     * Admin trigger: re-validate one contact's VAT against VIES, promote their
+     * tax-ID type if vat_valid flipped TRUE, and re-lock vat_percent on every
+     * active subscription they have. This is the support flow for cohort B
+     * customers who say "I'm actually VIES-registered, why am I being charged
+     * VAT?". Synchronous (one VIES call + a few DB writes), no throttling.
+     */
+    @PostMapping("/{id}/revalidate-vat")
+    public ResponseEntity<Map<String, Object>> revalidateContactVat(
+            Authentication authentication,
+            @PathVariable Long id) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        // Snapshot the before-state for the response.
+        Map<String, Object> before;
+        try {
+            before = jdbcTemplate.queryForMap(
+                "SELECT vat_valid, billing_tax_id_type FROM beworking.contact_profiles WHERE id = ?", id);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // 1. Force VIES check + persist new vat_valid. ContactProfileService.revalidateVat
+        //    bypasses the cache and writes definitively.
+        boolean nowValid = contactProfileService.revalidateVat(id);
+
+        // 2. Promote es_cif → eu_vat if VIES just flipped to TRUE on a Spanish
+        //    company. Idempotent.
+        if (nowValid && "es_cif".equals(before.get("billing_tax_id_type"))) {
+            jdbcTemplate.update(
+                "UPDATE beworking.contact_profiles SET billing_tax_id_type = 'eu_vat' WHERE id = ? AND billing_tax_id_type = 'es_cif'",
+                id);
+        }
+
+        // 3. Re-lock vat_percent on every active sub of this contact.
+        java.util.List<com.beworking.subscriptions.Subscription> subs =
+            subscriptionService.findByContactIdAndActiveTrue(id);
+        java.util.List<Map<String, Object>> relocked = new java.util.ArrayList<>();
+        for (var sub : subs) {
+            var result = subscriptionService.relockVatPercent(sub);
+            relocked.add(Map.of(
+                "subId", result.subId(),
+                "previousVatPercent", result.previousVatPercent() != null ? result.previousVatPercent() : "null",
+                "newVatPercent", result.newVatPercent(),
+                "changed", result.changed()
+            ));
+        }
+
+        // Snapshot after-state for the response.
+        Map<String, Object> after = jdbcTemplate.queryForMap(
+            "SELECT vat_valid, billing_tax_id_type FROM beworking.contact_profiles WHERE id = ?", id);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("contactId", id);
+        body.put("vatValidBefore", before.get("vat_valid"));
+        body.put("vatValidAfter", after.get("vat_valid"));
+        body.put("typeBefore", before.get("billing_tax_id_type"));
+        body.put("typeAfter", after.get("billing_tax_id_type"));
+        body.put("subscriptionsRelocked", relocked);
         return ResponseEntity.ok(body);
     }
 
