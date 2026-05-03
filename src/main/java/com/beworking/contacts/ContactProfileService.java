@@ -296,14 +296,14 @@ public class ContactProfileService {
         );
 
         String plan = firstNonBlank(profile.getAssignment(), profile.getCategory(), profile.getTenantType(), "Custom");
-        // Return the dashboard's "CODE NAME" combined format (e.g. "MA1 MALAGA DUMAS")
+        // Return the dashboard's "CODE - NAME" combined format (e.g. "MA1 - MALAGA DUMAS")
         // so the edit form's dropdown can round-trip the value cleanly.
         String center = profile.getCenterId() != null
             ? centroRepository.findById(profile.getCenterId())
                 .map(c -> {
                     String code = c.getCodigo() != null ? c.getCodigo().trim() : "";
                     String nombre = c.getNombre() != null ? c.getNombre().trim() : "";
-                    return code.isEmpty() ? nombre : (code + " " + nombre).trim();
+                    return code.isEmpty() ? nombre : (code + " - " + nombre).trim();
                 })
                 .orElse(null)
             : null;
@@ -444,10 +444,21 @@ public class ContactProfileService {
         // Try matching by codigo (e.g. "MA1")
         var byCode = centroRepository.findByCodigoIgnoreCase(trimmed);
         if (byCode.isPresent()) return byCode.get().getId();
-        // Try the dashboard's combined "CODE NAME" format (e.g. "MA1 MALAGA DUMAS").
+        // Try the dashboard's combined "CODE - NAME" format (e.g. "MA1 - MALAGA DUMAS").
         // The dropdown labels include the codigo prefix for human readability,
         // but the centros table stores codigo and nombre separately.
-        String[] parts = trimmed.split("\\s+", 2);
+        // Also tolerate the older "CODE NAME" form (no dash) for safety.
+        String dashSplit = trimmed;
+        int dashIdx = trimmed.indexOf(" - ");
+        if (dashIdx > 0) {
+            String left = trimmed.substring(0, dashIdx).trim();
+            String right = trimmed.substring(dashIdx + 3).trim();
+            var byCodeLeft = centroRepository.findByCodigoIgnoreCase(left);
+            if (byCodeLeft.isPresent()) return byCodeLeft.get().getId();
+            var byNameRight = centroRepository.findByNombreIgnoreCase(right);
+            if (byNameRight.isPresent()) return byNameRight.get().getId();
+        }
+        String[] parts = dashSplit.split("\\s+", 2);
         if (parts.length == 2) {
             var byCodeFirst = centroRepository.findByCodigoIgnoreCase(parts[0]);
             if (byCodeFirst.isPresent()) return byCodeFirst.get().getId();

@@ -87,7 +87,10 @@ public class BookingLookupController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
-        List<Long> allowedIds = List.of(1L, 8L);
+        // MAOV (id=8) is the legacy "Oficina Virtual" centro — kept in the DB
+        // because 1423 productos/reservas/bloqueos still reference it, but
+        // hidden from selectors so admins don't assign new contacts to it.
+        List<Long> allowedIds = List.of(1L);
 
         List<CentroLookupResponse> payload = centroRepository.findAll().stream()
             .filter(centro -> allowedIds.contains(centro.getId()))

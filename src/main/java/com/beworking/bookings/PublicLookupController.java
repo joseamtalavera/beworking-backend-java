@@ -31,7 +31,8 @@ public class PublicLookupController {
     @GetMapping("/centros")
     public List<CentroLookupResponse> centros() {
 
-        List<Long> allowedIds = List.of(1L, 8L); // do not understand.
+        // MA1 only — MAOV (id=8) is legacy, hidden from selectors.
+        List<Long> allowedIds = List.of(1L);
         
         return centroRepository.findAll().stream()
             .filter(centro -> allowedIds.contains(centro.getId()))
