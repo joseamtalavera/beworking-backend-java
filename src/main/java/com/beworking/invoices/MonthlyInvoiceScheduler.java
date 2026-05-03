@@ -242,11 +242,32 @@ public class MonthlyInvoiceScheduler {
     }
 
     /**
-     * Resolves VAT percentage.
-     * Rule: VAT-registered customer in a different country from supplier → 0% (reverse charge).
-     * Otherwise → customer country's local VAT (falls back to supplier country if unknown).
+     * Resolves VAT percentage for a contact's monthly invoice.
+     *
+     * Lock-in path (since V48, 2026-05): if the contact has an active
+     * subscription with a stored vat_percent, that value is the source of
+     * truth. This stops the monthly oscillation customers were complaining
+     * about (€15 ↔ €18.15 depending on whether the JIT VIES happened to fail).
+     *
+     * Legacy fallback: contacts without a subscription (ad-hoc bookings only)
+     * fall through to the fresh-compute path below — JIT VIES + customer-
+     * country lookup. Same behaviour as before.
      */
     private int resolveContactVatPercent(Long contactId, String cuenta) {
+        // Lock-in path: read the active sub's locked rate, if any.
+        try {
+            Integer lockedRate = jdbcTemplate.queryForObject(
+                "SELECT vat_percent FROM beworking.subscriptions "
+                + "WHERE contact_id = ? AND active = TRUE AND vat_percent IS NOT NULL "
+                + "ORDER BY id LIMIT 1",
+                Integer.class, contactId);
+            if (lockedRate != null) {
+                return lockedRate;
+            }
+        } catch (EmptyResultDataAccessException ignored) {
+            // No active sub with a locked rate — fall through to fresh compute.
+        }
+
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
 
         // JIT VIES validation: heal vat_valid before reading it.

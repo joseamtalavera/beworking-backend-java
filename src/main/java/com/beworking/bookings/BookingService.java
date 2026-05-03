@@ -397,6 +397,17 @@ class BookingService {
     }
 
     private int resolveContactVatPercent(Long contactId, String cuenta) {
+        // Lock-in path (V48, 2026-05): if the contact has an active subscription
+        // with a stored vat_percent, use that. Stops the per-cycle oscillation.
+        try {
+            Integer lockedRate = jdbcTemplate.queryForObject(
+                "SELECT vat_percent FROM beworking.subscriptions "
+                + "WHERE contact_id = ? AND active = TRUE AND vat_percent IS NOT NULL "
+                + "ORDER BY id LIMIT 1",
+                Integer.class, contactId);
+            if (lockedRate != null) return lockedRate;
+        } catch (EmptyResultDataAccessException ignored) {}
+
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
 
         // JIT VIES validation: heal vat_valid before reading it.
