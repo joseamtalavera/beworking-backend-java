@@ -745,8 +745,13 @@ public class ContactProfileService {
      * under the implicit VIES rate limit. Skips contacts already known TRUE so
      * the 15 confirmed-good ones aren't re-burned. Use when seeding fresh data
      * after a validator-logic fix or DB restore.
+     *
+     * NOT @Transactional — running for ~33 min in one transaction would hold a
+     * single connection open the whole time and only commit at the end. Each
+     * repository.save() below is its own short transaction (Spring Data JPA's
+     * SimpleJpaRepository wraps save() in @Transactional internally), so
+     * progress lands on disk per contact and is visible to other sessions.
      */
-    @Transactional
     public java.util.Map<String, Integer> revalidateAllStaleVat() {
         java.util.List<ContactProfile> all = repository.findAll();
         int processed = 0, validated = 0, invalid = 0, errors = 0;
@@ -755,11 +760,12 @@ public class ContactProfileService {
             if (Boolean.TRUE.equals(p.getVatValid())) continue;
             try {
                 runVatValidation(p);
-                repository.save(p);
+                repository.save(p);  // its own short transaction → commits now
                 processed++;
                 if (Boolean.TRUE.equals(p.getVatValid())) validated++; else invalid++;
             } catch (Exception e) {
                 errors++;
+                LOGGER.warn("Reseed failed for contact {}: {}", p.getId(), e.getMessage());
             }
             // VIES rate-limit safety: ~1 req/sec. 1972 contacts ≈ 33 min worst case.
             try { Thread.sleep(1000); } catch (InterruptedException ie) {
