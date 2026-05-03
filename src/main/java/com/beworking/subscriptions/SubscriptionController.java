@@ -700,6 +700,33 @@ public class SubscriptionController {
         ));
     }
 
+    /**
+     * Bulk re-lock: recompute vat_percent + push Stripe sync for every active
+     * sub. Use this AFTER a reseed completes so freshly-healed vat_valid values
+     * propagate to sub.vat_percent (V48/V49 only saw the pre-reseed state).
+     */
+    @PostMapping("/relock-all")
+    public ResponseEntity<?> bulkRelockAllActiveSubs(Authentication authentication) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        new Thread(() -> {
+            long start = System.currentTimeMillis();
+            logger.info("Bulk relock starting");
+            try {
+                var stats = subscriptionService.bulkRelockAllActiveSubs();
+                long elapsedMin = (System.currentTimeMillis() - start) / 60_000;
+                logger.info("Bulk relock completed in {} min: {}", elapsedMin, stats);
+            } catch (Exception e) {
+                logger.error("Bulk relock failed", e);
+            }
+        }, "bulk-relock-all").start();
+        return ResponseEntity.accepted().body(Map.of(
+            "status", "started",
+            "message", "Bulk relock running in background (~2 min for ~321 subs). Check backend logs for completion counts."
+        ));
+    }
+
     @PostMapping("/{id}/generate-invoice")
     public ResponseEntity<?> generateInvoice(@PathVariable Integer id, @RequestParam String month) {
         Optional<Subscription> opt = subscriptionService.findById(id);

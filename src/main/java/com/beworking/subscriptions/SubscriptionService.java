@@ -461,6 +461,38 @@ public class SubscriptionService {
      *
      * Returns counts: {processed, synced, skipped}.
      */
+    /**
+     * Bulk re-lock: for every active sub, recompute vat_percent from fresh
+     * contact data + push Stripe tax sync. Used on prod AFTER the post-deploy
+     * reseed completes, to apply newly-healed vat_valid values to subs that
+     * V48/V49 (which run on Flyway startup) couldn't see yet.
+     *
+     * Returns counts: {processed, changed, unchanged, errors}.
+     */
+    public java.util.Map<String, Integer> bulkRelockAllActiveSubs() {
+        int processed = 0, changed = 0, unchanged = 0, errors = 0;
+        for (Subscription sub : subscriptionRepository.findByActiveTrue()) {
+            processed++;
+            try {
+                RelockResult r = relockVatPercent(sub);
+                if (r.changed()) changed++; else unchanged++;
+            } catch (Exception e) {
+                errors++;
+                logger.warn("bulkRelockAllActiveSubs: sub {} failed: {}", sub.getId(), e.getMessage());
+            }
+            // Throttle for VIES (legacy fresh path) + Stripe rate limits.
+            try { Thread.sleep(300); } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return java.util.Map.of(
+            "processed", processed,
+            "changed", changed,
+            "unchanged", unchanged,
+            "errors", errors);
+    }
+
     public java.util.Map<String, Integer> bulkSyncStripeTax() {
         int processed = 0, synced = 0, skipped = 0, errors = 0;
         for (Subscription sub : subscriptionRepository.findByActiveTrue()) {
