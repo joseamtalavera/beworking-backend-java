@@ -53,6 +53,7 @@ public class InvoiceService {
     private final BloqueoRepository bloqueoRepository;
     private final CuentaService cuentaService;
     private final com.beworking.contacts.ContactProfileService contactProfileService;
+    private final com.beworking.tax.TaxResolver taxResolver;
     private final String paymentsBaseUrl;
 
     public InvoiceService(
@@ -60,12 +61,14 @@ public class InvoiceService {
             BloqueoRepository bloqueoRepository,
             CuentaService cuentaService,
             @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
+            com.beworking.tax.TaxResolver taxResolver,
             @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
         this.http = RestClient.create();
         this.bloqueoRepository = bloqueoRepository;
         this.cuentaService = cuentaService;
         this.contactProfileService = contactProfileService;
+        this.taxResolver = taxResolver;
         this.paymentsBaseUrl = paymentsBaseUrl;
     }
 
@@ -1359,8 +1362,7 @@ public class InvoiceService {
     private int resolveContactVatPercent(Long contactId) {
         if (contactId == null) return 21;
 
-        // Lock-in path (V48, 2026-05): if the contact has an active subscription
-        // with a stored vat_percent, use that. Stops the per-cycle oscillation.
+        // Single source of truth: TaxResolver (lock-in first, fresh compute fallback).
         try {
             Integer lockedRate = jdbcTemplate.queryForObject(
                 "SELECT vat_percent FROM beworking.subscriptions "
@@ -1369,6 +1371,22 @@ public class InvoiceService {
                 Integer.class, contactId);
             if (lockedRate != null) return lockedRate;
         } catch (EmptyResultDataAccessException ignored) {}
+
+        contactProfileService.ensureVatValidated(contactId);
+
+        String cuenta = "PT";
+        try {
+            String c = jdbcTemplate.queryForObject(
+                "SELECT cuenta FROM beworking.subscriptions WHERE contact_id = ? AND active = true ORDER BY id DESC LIMIT 1",
+                String.class, contactId);
+            if (c != null && !c.isBlank()) cuenta = c;
+        } catch (EmptyResultDataAccessException ignored) {}
+        return taxResolver.computeFreshForContact(contactId, cuenta);
+    }
+
+    @SuppressWarnings("unused")
+    private int resolveContactVatPercentLegacy(Long contactId) {
+        if (contactId == null) return 21;
 
         // JIT VIES validation: heal vat_valid before reading it.
         contactProfileService.ensureVatValidated(contactId);

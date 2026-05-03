@@ -28,19 +28,22 @@ public class SubscriptionService {
     private final ViesVatService viesVatService;
     private final com.beworking.contacts.ContactProfileService contactProfileService;
     private final StripeTaxSyncClient stripeTaxSyncClient;
+    private final com.beworking.tax.TaxResolver taxResolver;
 
     public SubscriptionService(SubscriptionRepository subscriptionRepository,
                                CuentaService cuentaService,
                                JdbcTemplate jdbcTemplate,
                                ViesVatService viesVatService,
                                @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
-                               StripeTaxSyncClient stripeTaxSyncClient) {
+                               StripeTaxSyncClient stripeTaxSyncClient,
+                               com.beworking.tax.TaxResolver taxResolver) {
         this.subscriptionRepository = subscriptionRepository;
         this.cuentaService = cuentaService;
         this.jdbcTemplate = jdbcTemplate;
         this.viesVatService = viesVatService;
         this.contactProfileService = contactProfileService;
         this.stripeTaxSyncClient = stripeTaxSyncClient;
+        this.taxResolver = taxResolver;
     }
 
     public List<Subscription> findAll() {
@@ -404,45 +407,20 @@ public class SubscriptionService {
         if (subscription.getVatPercent() != null) {
             return subscription.getVatPercent();
         }
-        // Legacy path: sub has no locked rate, compute from contact data.
-        int resolved = computeFreshVatPercent(subscription);
-        logger.info("VAT resolved for sub {} (legacy fallback — no locked vat_percent): {}%",
-            subscription.getId(), resolved);
-        return resolved;
+        // Legacy path: delegate to TaxResolver. Triggers JIT VIES via the
+        // legacy fresh-compute branch.
+        contactProfileService.ensureVatValidated(subscription.getContactId());
+        return taxResolver.computeFreshForContact(subscription.getContactId(), subscription.getCuenta());
     }
 
     /**
      * Always computes the VAT rate from scratch, ignoring any stored
-     * vat_percent. Used by:
-     *   - The legacy fallback above (subs created before the lock-in).
-     *   - The admin "Re-validate VAT" endpoint, which deliberately recomputes
-     *     after a fresh VIES check.
+     * vat_percent. Delegates to {@link com.beworking.tax.TaxResolver}.
+     * Used by the admin "Re-validate VAT" endpoint via {@link #relockVatPercent}.
      */
     private int computeFreshVatPercent(Subscription subscription) {
-        int fallback = 21;
-
         contactProfileService.ensureVatValidated(subscription.getContactId());
-
-        String taxId = null;
-        String billingCountry = null;
-        Boolean vatValid = null;
-        try {
-            Map<String, Object> row = jdbcTemplate.queryForMap(
-                "SELECT billing_tax_id, billing_country, vat_valid FROM beworking.contact_profiles WHERE id = ?",
-                subscription.getContactId());
-            taxId = (String) row.get("billing_tax_id");
-            billingCountry = (String) row.get("billing_country");
-            vatValid = (Boolean) row.get("vat_valid");
-        } catch (EmptyResultDataAccessException ignored) {}
-
-        String cuenta = subscription.getCuenta() != null ? subscription.getCuenta().toUpperCase() : "PT";
-        String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
-
-        String customerCountry = deriveCustomerCountry(taxId, billingCountry);
-        if (customerCountry == null) return fallback;
-
-        boolean reverseCharge = Boolean.TRUE.equals(vatValid) && !supplierCountry.equals(customerCountry);
-        return reverseCharge ? 0 : EU_VAT_RATES.getOrDefault(customerCountry, fallback);
+        return taxResolver.computeFreshForContact(subscription.getContactId(), subscription.getCuenta());
     }
 
     /**

@@ -63,6 +63,7 @@ class BookingService {
     private final CuentaService cuentaService;
     private final RegisterService registerService;
     private final com.beworking.contacts.ContactProfileService contactProfileService;
+    private final com.beworking.tax.TaxResolver taxResolver;
 
     BookingService(ReservaRepository reservaRepository,
                    BloqueoRepository bloqueoRepository,
@@ -73,7 +74,8 @@ class BookingService {
                    JdbcTemplate jdbcTemplate,
                    CuentaService cuentaService,
                    RegisterService registerService,
-                   @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService) {
+                   @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
+                   com.beworking.tax.TaxResolver taxResolver) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
@@ -84,6 +86,7 @@ class BookingService {
         this.cuentaService = cuentaService;
         this.registerService = registerService;
         this.contactProfileService = contactProfileService;
+        this.taxResolver = taxResolver;
     }
 
     @Transactional(readOnly = true)
@@ -397,8 +400,7 @@ class BookingService {
     }
 
     private int resolveContactVatPercent(Long contactId, String cuenta) {
-        // Lock-in path (V48, 2026-05): if the contact has an active subscription
-        // with a stored vat_percent, use that. Stops the per-cycle oscillation.
+        // Single source of truth: TaxResolver (lock-in first, fresh compute fallback).
         try {
             Integer lockedRate = jdbcTemplate.queryForObject(
                 "SELECT vat_percent FROM beworking.subscriptions "
@@ -408,6 +410,12 @@ class BookingService {
             if (lockedRate != null) return lockedRate;
         } catch (EmptyResultDataAccessException ignored) {}
 
+        contactProfileService.ensureVatValidated(contactId);
+        return taxResolver.computeFreshForContact(contactId, cuenta);
+    }
+
+    @SuppressWarnings("unused")
+    private int resolveContactVatPercentLegacy(Long contactId, String cuenta) {
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
 
         // JIT VIES validation: heal vat_valid before reading it.

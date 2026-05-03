@@ -40,6 +40,7 @@ public class MonthlyInvoiceScheduler {
     private final EmailService emailService;
     private final JdbcTemplate jdbcTemplate;
     private final com.beworking.contacts.ContactProfileService contactProfileService;
+    private final com.beworking.tax.TaxResolver taxResolver;
     private final RestClient http;
     private final String paymentsBaseUrl;
 
@@ -48,12 +49,14 @@ public class MonthlyInvoiceScheduler {
                                    EmailService emailService,
                                    JdbcTemplate jdbcTemplate,
                                    @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
+                                   com.beworking.tax.TaxResolver taxResolver,
                                    @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.bloqueoRepository = bloqueoRepository;
         this.invoiceService = invoiceService;
         this.emailService = emailService;
         this.jdbcTemplate = jdbcTemplate;
         this.contactProfileService = contactProfileService;
+        this.taxResolver = taxResolver;
         this.http = RestClient.create();
         this.paymentsBaseUrl = paymentsBaseUrl;
     }
@@ -254,20 +257,24 @@ public class MonthlyInvoiceScheduler {
      * country lookup. Same behaviour as before.
      */
     private int resolveContactVatPercent(Long contactId, String cuenta) {
-        // Lock-in path: read the active sub's locked rate, if any.
+        // Single source of truth: TaxResolver consults sub.vat_percent first
+        // (lock-in), then falls back to fresh compute. JIT VIES happens here
+        // as a side effect for the legacy path only.
         try {
             Integer lockedRate = jdbcTemplate.queryForObject(
                 "SELECT vat_percent FROM beworking.subscriptions "
                 + "WHERE contact_id = ? AND active = TRUE AND vat_percent IS NOT NULL "
                 + "ORDER BY id LIMIT 1",
                 Integer.class, contactId);
-            if (lockedRate != null) {
-                return lockedRate;
-            }
-        } catch (EmptyResultDataAccessException ignored) {
-            // No active sub with a locked rate — fall through to fresh compute.
-        }
+            if (lockedRate != null) return lockedRate;
+        } catch (EmptyResultDataAccessException ignored) {}
 
+        contactProfileService.ensureVatValidated(contactId);
+        return taxResolver.computeFreshForContact(contactId, cuenta);
+    }
+
+    @SuppressWarnings("unused")
+    private int resolveContactVatPercentLegacy(Long contactId, String cuenta) {
         String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
 
         // JIT VIES validation: heal vat_valid before reading it.
