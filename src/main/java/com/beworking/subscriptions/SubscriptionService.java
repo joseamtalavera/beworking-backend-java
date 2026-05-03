@@ -27,17 +27,20 @@ public class SubscriptionService {
     private final JdbcTemplate jdbcTemplate;
     private final ViesVatService viesVatService;
     private final com.beworking.contacts.ContactProfileService contactProfileService;
+    private final StripeTaxSyncClient stripeTaxSyncClient;
 
     public SubscriptionService(SubscriptionRepository subscriptionRepository,
                                CuentaService cuentaService,
                                JdbcTemplate jdbcTemplate,
                                ViesVatService viesVatService,
-                               @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService) {
+                               @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
+                               StripeTaxSyncClient stripeTaxSyncClient) {
         this.subscriptionRepository = subscriptionRepository;
         this.cuentaService = cuentaService;
         this.jdbcTemplate = jdbcTemplate;
         this.viesVatService = viesVatService;
         this.contactProfileService = contactProfileService;
+        this.stripeTaxSyncClient = stripeTaxSyncClient;
     }
 
     public List<Subscription> findAll() {
@@ -462,7 +465,50 @@ public class SubscriptionService {
             subscriptionRepository.save(subscription);
             logger.info("Relocked VAT for sub {}: {} → {}%", subscription.getId(), previous, fresh);
         }
+        // Always sync Stripe — even when the local rate didn't change, Stripe's
+        // config might still be drifted from a prior buggy run. Best-effort.
+        if (subscription.getStripeSubscriptionId() != null
+                && !subscription.getStripeSubscriptionId().isBlank()) {
+            stripeTaxSyncClient.syncSubscriptionTax(
+                subscription.getStripeSubscriptionId(), fresh, subscription.getCuenta());
+        }
         return new RelockResult(subscription.getId(), previous, fresh, changed);
+    }
+
+    /**
+     * Bulk-sync Stripe tax config for every active subscription with a
+     * stripe_subscription_id. Idempotent. Used as a one-shot reconciliation
+     * after V48 lands the canonical vat_percent on the local DB — Stripe needs
+     * to be told about the locked rates so its monthly invoices match ours.
+     *
+     * Returns counts: {processed, synced, skipped}.
+     */
+    public java.util.Map<String, Integer> bulkSyncStripeTax() {
+        int processed = 0, synced = 0, skipped = 0;
+        for (Subscription sub : subscriptionRepository.findByActiveTrue()) {
+            processed++;
+            if (sub.getStripeSubscriptionId() == null || sub.getStripeSubscriptionId().isBlank()) {
+                skipped++;
+                continue;
+            }
+            if (sub.getVatPercent() == null) {
+                skipped++;
+                continue;
+            }
+            try {
+                stripeTaxSyncClient.syncSubscriptionTax(
+                    sub.getStripeSubscriptionId(), sub.getVatPercent(), sub.getCuenta());
+                synced++;
+            } catch (Exception e) {
+                logger.warn("bulkSyncStripeTax: sub {} failed: {}", sub.getId(), e.getMessage());
+            }
+            // Stripe rate-limit safety: small delay between calls.
+            try { Thread.sleep(200); } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return java.util.Map.of("processed", processed, "synced", synced, "skipped", skipped);
     }
 
     public record RelockResult(Integer subId, Integer previousVatPercent, int newVatPercent, boolean changed) {}

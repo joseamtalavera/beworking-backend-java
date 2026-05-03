@@ -669,6 +669,37 @@ public class SubscriptionController {
         return null;
     }
 
+    /**
+     * One-shot reconciliation: push every active sub's locked vat_percent into
+     * Stripe so Stripe stops charging stale rates that no longer match
+     * BeWorking's canonical invoices. Run once after V48 lands the lock-in;
+     * also useful any time you suspect Stripe-vs-DB drift.
+     *
+     * Synchronous + throttled (~5 req/sec). For ~322 active subs, ~65 sec.
+     * Wrapped in a background thread so it can complete past ALB timeout.
+     */
+    @PostMapping("/sync-stripe-tax-all")
+    public ResponseEntity<?> bulkSyncStripeTax(Authentication authentication) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        new Thread(() -> {
+            long start = System.currentTimeMillis();
+            logger.info("Stripe tax bulk sync starting");
+            try {
+                var stats = subscriptionService.bulkSyncStripeTax();
+                long elapsed = (System.currentTimeMillis() - start) / 1000;
+                logger.info("Stripe tax bulk sync completed in {}s: {}", elapsed, stats);
+            } catch (Exception e) {
+                logger.error("Stripe tax bulk sync failed", e);
+            }
+        }, "stripe-tax-bulk-sync").start();
+        return ResponseEntity.accepted().body(Map.of(
+            "status", "started",
+            "message", "Stripe tax sync running in background. Check backend logs for completion counts."
+        ));
+    }
+
     @PostMapping("/{id}/generate-invoice")
     public ResponseEntity<?> generateInvoice(@PathVariable Integer id, @RequestParam String month) {
         Optional<Subscription> opt = subscriptionService.findById(id);
