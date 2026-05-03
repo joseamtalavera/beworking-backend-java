@@ -462,7 +462,7 @@ public class SubscriptionService {
      * Returns counts: {processed, synced, skipped}.
      */
     public java.util.Map<String, Integer> bulkSyncStripeTax() {
-        int processed = 0, synced = 0, skipped = 0;
+        int processed = 0, synced = 0, skipped = 0, errors = 0;
         for (Subscription sub : subscriptionRepository.findByActiveTrue()) {
             processed++;
             if (sub.getStripeSubscriptionId() == null || sub.getStripeSubscriptionId().isBlank()) {
@@ -473,20 +473,20 @@ public class SubscriptionService {
                 skipped++;
                 continue;
             }
-            try {
-                stripeTaxSyncClient.syncSubscriptionTax(
-                    sub.getStripeSubscriptionId(), sub.getVatPercent(), sub.getCuenta());
-                synced++;
-            } catch (Exception e) {
-                logger.warn("bulkSyncStripeTax: sub {} failed: {}", sub.getId(), e.getMessage());
-            }
+            boolean ok = stripeTaxSyncClient.syncSubscriptionTax(
+                sub.getStripeSubscriptionId(), sub.getVatPercent(), sub.getCuenta());
+            if (ok) synced++; else errors++;
             // Stripe rate-limit safety: small delay between calls.
             try { Thread.sleep(200); } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
-        return java.util.Map.of("processed", processed, "synced", synced, "skipped", skipped);
+        return java.util.Map.of(
+            "processed", processed,
+            "synced", synced,
+            "skipped", skipped,
+            "errors", errors);
     }
 
     public record RelockResult(Integer subId, Integer previousVatPercent, int newVatPercent, boolean changed) {}

@@ -31,12 +31,13 @@ public class StripeTaxSyncClient {
         this.http = RestClient.create();
     }
 
-    public void syncSubscriptionTax(String stripeSubscriptionId, int vatPercent, String cuenta) {
-        if (stripeSubscriptionId == null || stripeSubscriptionId.isBlank()) return;
+    /** Returns true if Stripe accepted the update; false on any error. Never throws. */
+    public boolean syncSubscriptionTax(String stripeSubscriptionId, int vatPercent, String cuenta) {
+        if (stripeSubscriptionId == null || stripeSubscriptionId.isBlank()) return false;
         if (paymentsBaseUrl == null || paymentsBaseUrl.isBlank()) {
             logger.warn("Stripe payments base URL not configured — skipping tax sync for sub {}",
                 stripeSubscriptionId);
-            return;
+            return false;
         }
 
         boolean taxExempt = vatPercent == 0;
@@ -55,10 +56,12 @@ public class StripeTaxSyncClient {
                 .toBodilessEntity();
             logger.info("Synced Stripe tax for sub {}: vat_percent={}, tax_exempt={}, tenant={}",
                 stripeSubscriptionId, vatPercent, taxExempt, tenant);
+            return true;
         } catch (Exception e) {
             logger.warn("Failed to sync Stripe tax for sub {} (vat_percent={}, tenant={}): {}",
                 stripeSubscriptionId, vatPercent, tenant, e.getMessage());
             // Intentionally not rethrown — local lock is the source of truth.
+            return false;
         }
     }
 }
