@@ -565,7 +565,23 @@ public class ContactProfileService {
         }
 
         if (request.getCenter() != null) {
-            profile.setCenterId(parseCenterId(request.getCenter()));
+            String rawCenter = request.getCenter();
+            if (rawCenter.trim().isEmpty()) {
+                // Empty string from the form clears the center.
+                profile.setCenterId(null);
+            } else {
+                Long resolved = parseCenterId(rawCenter);
+                if (resolved != null) {
+                    profile.setCenterId(resolved);
+                } else {
+                    // Lookup failed (no matching centro by name/code/id). Don't
+                    // silently overwrite the existing value with NULL — that's
+                    // the bug that wiped center_id during routine edits. Log
+                    // and keep the existing assignment.
+                    LOGGER.warn("Could not resolve center '{}' for contact {} — keeping existing center_id={}",
+                        rawCenter, profile.getId(), profile.getCenterId());
+                }
+            }
         }
 
         if (request.getChannel() != null) {
