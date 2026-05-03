@@ -641,12 +641,57 @@ public class ContactProfileService {
         String countryHint = resolveCountryHint(profile);
         try {
             ViesVatService.VatValidationResult result = viesVatService.validate(taxId, countryHint);
-            profile.setVatValid(result.valid());
+            applyValidationResult(profile, result.valid());
         } catch (Exception e) {
-            LOGGER.warn("VIES error for contact {} (taxId={}, hint={}): {}",
-                profile.getId(), taxId, countryHint, e.getMessage());
-            profile.setVatValid(false);
+            // Network / timeout / SOAP error. NEVER write vat_valid=FALSE here —
+            // doing so silently corrupts legitimate B2B customers every time VIES
+            // hiccups. Just record the failure; next successful call settles truth.
+            LOGGER.warn("VIES error for contact {} (taxId={}, hint={}): {} — keeping vat_valid={} as-is",
+                profile.getId(), taxId, countryHint, e.getMessage(), profile.getVatValid());
+            bumpFailureStreak(profile);
         }
+    }
+
+    /**
+     * Apply a definitive VIES result with stickiness:
+     *  - VALID → write TRUE, reset streak, flag status_changed_at if changed.
+     *  - INVALID + currently TRUE → bump streak; only flip to FALSE on 2nd
+     *    consecutive confirmed-invalid result. Protects against one-off
+     *    VIES anomalies where the customer is genuinely registered.
+     *  - INVALID + currently NULL/FALSE → write FALSE.
+     */
+    private void applyValidationResult(ContactProfile profile, boolean viesValid) {
+        LocalDateTime now = LocalDateTime.now();
+        Boolean current = profile.getVatValid();
+
+        if (viesValid) {
+            profile.setVatFailureStreak(0);
+            profile.setVatLastFailureAt(null);
+            if (!Boolean.TRUE.equals(current)) {
+                profile.setVatValid(true);
+                profile.setVatStatusChangedAt(now);
+            }
+            return;
+        }
+
+        if (Boolean.TRUE.equals(current)) {
+            bumpFailureStreak(profile);
+            Integer streak = profile.getVatFailureStreak();
+            if (streak != null && streak >= 2) {
+                profile.setVatValid(false);
+                profile.setVatStatusChangedAt(now);
+            }
+            // else: keep TRUE for now; one negative isn't enough.
+        } else {
+            profile.setVatValid(false);
+            if (current == null) profile.setVatStatusChangedAt(now);
+        }
+    }
+
+    private void bumpFailureStreak(ContactProfile profile) {
+        Integer s = profile.getVatFailureStreak();
+        profile.setVatFailureStreak((s == null ? 0 : s) + 1);
+        profile.setVatLastFailureAt(LocalDateTime.now());
     }
 
     private static String resolveCountryHint(ContactProfile profile) {
@@ -695,6 +740,12 @@ public class ContactProfileService {
         return profile.getVatValid();
     }
 
+    /**
+     * One-shot bulk re-validation against VIES. Throttled to ~1 req/sec to stay
+     * under the implicit VIES rate limit. Skips contacts already known TRUE so
+     * the 15 confirmed-good ones aren't re-burned. Use when seeding fresh data
+     * after a validator-logic fix or DB restore.
+     */
     @Transactional
     public java.util.Map<String, Integer> revalidateAllStaleVat() {
         java.util.List<ContactProfile> all = repository.findAll();
@@ -709,6 +760,11 @@ public class ContactProfileService {
                 if (Boolean.TRUE.equals(p.getVatValid())) validated++; else invalid++;
             } catch (Exception e) {
                 errors++;
+            }
+            // VIES rate-limit safety: ~1 req/sec. 1972 contacts ≈ 33 min worst case.
+            try { Thread.sleep(1000); } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
             }
         }
         return java.util.Map.of(
