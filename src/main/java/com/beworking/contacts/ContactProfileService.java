@@ -490,6 +490,7 @@ public class ContactProfileService {
         // Set billing information
         profile.setBillingName(request.getBillingCompany());
         profile.setBillingTaxId(request.getBillingTaxId());
+        profile.setBillingTaxIdType(blankToNull(request.getBillingTaxIdType()));
         profile.setEmailSecondary(request.getBillingEmail());
         profile.setBillingAddress(request.getBillingAddress());
         profile.setBillingPostalCode(request.getBillingPostalCode());
