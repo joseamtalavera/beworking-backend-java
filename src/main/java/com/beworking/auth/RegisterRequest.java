@@ -22,6 +22,7 @@ public class RegisterRequest {
     private String phone;
     private String company;
     private String taxId;
+    private String taxIdType;     // Stripe-style: es_cif | es_nif | eu_vat | no_vat
     private String plan;          // "basis", "pro", or "max"
     private String setupIntentId; // Stripe SetupIntent ID
     private String stripeCustomerId; // Stripe Customer ID
@@ -67,6 +68,8 @@ public class RegisterRequest {
 
     public String getTaxId() { return taxId; }
     public void setTaxId(String taxId) { this.taxId = taxId; }
+    public String getTaxIdType() { return taxIdType; }
+    public void setTaxIdType(String taxIdType) { this.taxIdType = taxIdType; }
 
     public String getPlan() { return plan; }
     public void setPlan(String plan) { this.plan = plan; }

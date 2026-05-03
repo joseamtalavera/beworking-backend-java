@@ -528,6 +528,9 @@ public class RegisterService {
         if (request.getTaxId() != null && !request.getTaxId().isBlank()) {
             cp.setBillingTaxId(request.getTaxId().trim());
         }
+        if (request.getTaxIdType() != null && !request.getTaxIdType().isBlank()) {
+            cp.setBillingTaxIdType(request.getTaxIdType().trim());
+        }
         if (request.getPhone() != null && !request.getPhone().isBlank()) {
             cp.setPhonePrimary(request.getPhone().trim());
         }
