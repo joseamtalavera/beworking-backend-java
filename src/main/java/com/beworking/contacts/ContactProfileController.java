@@ -274,6 +274,9 @@ public class ContactProfileController {
         return ResponseEntity.ok(body);
     }
 
+    private static final java.util.concurrent.atomic.AtomicBoolean RESEED_IN_PROGRESS =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+
     @PostMapping("/vat/revalidate-all")
     public ResponseEntity<Map<String, Object>> revalidateAllVat(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -284,9 +287,37 @@ public class ContactProfileController {
         if (!isAdmin) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        Map<String, Integer> stats = contactProfileService.revalidateAllStaleVat();
-        Map<String, Object> body = new HashMap<>(stats);
-        return ResponseEntity.ok(body);
+
+        // Fire-and-forget: ~1972 contacts × 1s VIES throttle ≈ 33 min, far over
+        // the ALB's idle timeout. Run in a background thread; results land in
+        // the backend log. Lock prevents two reseeds racing each other.
+        if (!RESEED_IN_PROGRESS.compareAndSet(false, true)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "status", "rejected",
+                "message", "VIES reseed already in progress"
+            ));
+        }
+
+        new Thread(() -> {
+            long start = System.currentTimeMillis();
+            logger.info("VIES bulk reseed starting (admin={})",
+                authentication.getName());
+            try {
+                Map<String, Integer> stats = contactProfileService.revalidateAllStaleVat();
+                long elapsedMin = (System.currentTimeMillis() - start) / 60_000;
+                logger.info("VIES bulk reseed finished in {} min: {}", elapsedMin, stats);
+            } catch (Exception e) {
+                logger.error("VIES bulk reseed failed", e);
+            } finally {
+                RESEED_IN_PROGRESS.set(false);
+            }
+        }, "vies-bulk-reseed").start();
+
+        return ResponseEntity.accepted().body(Map.of(
+            "status", "started",
+            "message", "VIES revalidation running in background. Check backend logs for progress and final counts.",
+            "estimatedMinutes", 33
+        ));
     }
 
     @DeleteMapping("/{id}")
