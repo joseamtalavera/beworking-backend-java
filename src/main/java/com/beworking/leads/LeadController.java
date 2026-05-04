@@ -141,7 +141,13 @@ public class LeadController {
             Math.max(page, 0),
             Math.min(Math.max(size, 1), 200),
             org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
-        var pageResult = leadRepository.search(q, pageable);
+        org.springframework.data.domain.Page<Lead> pageResult;
+        if (q == null || q.isBlank()) {
+            pageResult = leadRepository.findAll(pageable);
+        } else {
+            String pattern = "%" + q.trim().toLowerCase() + "%";
+            pageResult = leadRepository.searchByPattern(pattern, pageable);
+        }
         Map<String, Object> response = new HashMap<>();
         response.put("content", pageResult.getContent().stream().map(this::toResponseMap).toList());
         response.put("page", pageResult.getNumber());

@@ -27,16 +27,19 @@ public interface LeadRepository extends JpaRepository<Lead, UUID> {
 
     /**
      * Search-and-paginate for the admin Leads tab. Matches name / email /
-     * phone / subject case-insensitively. Pass {@code null} or empty {@code q}
-     * to list everything (paged).
+     * phone / subject case-insensitively. Caller is responsible for passing
+     * a non-blank pattern (e.g. {@code "%alice%"}) — when no search term is
+     * provided, use {@link #findAll(Pageable)} from JpaRepository instead.
+     *
+     * <p>Uses {@code coalesce(..., '')} so NULL columns (phone is now nullable)
+     * collapse to empty string instead of returning NULL from LIKE.
      */
     @Query("""
         select l from Lead l
-        where (:q is null or :q = '' or
-               lower(l.name)    like lower(concat('%', :q, '%')) or
-               lower(l.email)   like lower(concat('%', :q, '%')) or
-               lower(l.phone)   like lower(concat('%', :q, '%')) or
-               lower(l.subject) like lower(concat('%', :q, '%')))
+        where lower(coalesce(l.name, ''))    like :pattern
+           or lower(coalesce(l.email, ''))   like :pattern
+           or lower(coalesce(l.phone, ''))   like :pattern
+           or lower(coalesce(l.subject, '')) like :pattern
         """)
-    Page<Lead> search(@Param("q") String q, Pageable pageable);
+    Page<Lead> searchByPattern(@Param("pattern") String pattern, Pageable pageable);
 }
