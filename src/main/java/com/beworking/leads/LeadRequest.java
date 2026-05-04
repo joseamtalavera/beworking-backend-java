@@ -7,14 +7,25 @@ public class LeadRequest {
     @Size(max = 50, message = "El nombre es demasiado largo")
     private String name;
 
-    @NotBlank(message = "El teléfono es obligatorio")
-    @Pattern(regexp = "^[0-9 +()\\-]{7,15}$", message = "El teléfono es inválido")
+    // Phone is now optional. The OV-interest forms still send it; the
+    // generic /contact form does not. Empty string is allowed; if present,
+    // must match the legacy phone format.
+    @Pattern(regexp = "^$|^[0-9 +()\\-]{7,15}$", message = "El teléfono es inválido")
     private String phone;
 
     @NotBlank(message = "El email es obligatorio")
     @Email(message = "Formato de email inválido")
     @Size(max = 100, message = "El email es demasiado largo")
     private String email;
+
+    @Size(max = 120, message = "El asunto es demasiado largo")
+    private String subject;
+
+    @Size(max = 5000, message = "El mensaje es demasiado largo")
+    private String message;
+
+    @Size(max = 40)
+    private String source;
 
     // TURNSTILE/HONEYPOT: optional fields for anti-spam
     private String company; // honeypot
@@ -27,6 +38,13 @@ public class LeadRequest {
     public void setPhone(String phone) { this.phone = phone; }
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
+
+    public String getSubject() { return subject; }
+    public void setSubject(String subject) { this.subject = subject; }
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
 
     // TURNSTILE/HONEYPOT: getters/setters
     public String getCompany() { return company; }

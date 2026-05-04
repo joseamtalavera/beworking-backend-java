@@ -1,6 +1,161 @@
 package com.beworking.leads;
 
 public class LeadEmailService {
+
+  // --- Contact-form templates -------------------------------------------------
+  // Used when a lead arrives from the generic /contact form. The user reply is
+  // generic with a subject-specific opening paragraph. The admin email surfaces
+  // the subject + message verbatim so the team can triage.
+
+  public static String getContactFormUserHtml(String name, String subject) {
+    String intro = contactSubjectIntro(subject);
+    String safeName = name == null ? "" : name;
+    return String.format("""
+    <!doctype html>
+    <html lang=\"es\">
+    <head>
+      <meta charset=\"utf-8\">
+      <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">
+      <title>BeWorking</title>
+    </head>
+    <body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;\">
+      <table role=\"presentation\" width=\"100%%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background:#f7f7f8;\">
+        <tr>
+          <td align=\"center\" style=\"padding:0;margin:0;\">
+            <table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:600px;max-width:600px;margin:24px auto;\">
+              <tr>
+                <td style=\"background:#0e0e0c;padding:28px 28px 20px 28px;color:#fff;border-radius:14px 14px 0 0;\">
+                  <div style=\"font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:13px;letter-spacing:.4px;text-transform:uppercase;opacity:.75;\">BeWorking</div>
+                  <div style=\"font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:26px;font-weight:700;line-height:1.2;margin-top:6px;\">
+                    Hemos recibido tu mensaje
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style=\"background:#ffffff;padding:24px 28px 28px 28px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1d1d1f;\">
+                  <p style=\"margin:0 0 14px;\">Hola <strong>%s</strong>,</p>
+                  <p style=\"margin:0 0 14px;\">%s</p>
+                  <p style=\"margin:0 0 14px;\">Te respondemos en menos de un día hábil. Si necesitas hablar con alguien antes, llámanos al
+                    <a href=\"tel:+34951905967\" style=\"color:#009624;text-decoration:none;font-weight:600;\">+34 951 905 967</a>
+                    o escríbenos por WhatsApp:
+                    <a href=\"https://wa.me/34640369759\" style=\"color:#009624;text-decoration:none;font-weight:600;\">+34 640 369 759</a>.
+                  </p>
+                  <p style=\"margin:18px 0 0;color:#6b7280;font-size:13px;\">— Equipo BeWorking</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """, safeName, intro);
+  }
+
+  // Intro paragraph chosen by subject. Values match the keys in
+  // common.json -> contact.form.subjects (booking app i18n).
+  private static String contactSubjectIntro(String subject) {
+    if (subject == null) {
+      return "Gracias por escribirnos. Hemos recibido tu mensaje y un miembro del equipo te responderá en breve.";
+    }
+    switch (subject.trim()) {
+      case "Oficina Digital":
+        return "Gracias por tu interés en Oficina Digital. Un asesor revisará tu mensaje y te contactará para guiarte en el siguiente paso.";
+      case "Espacios y reservas":
+        return "Gracias por tu interés en nuestros espacios. Te contactaremos para coordinar una visita o resolver tus dudas sobre disponibilidad.";
+      case "Plataforma y cuenta":
+        return "Hemos recibido tu consulta sobre la plataforma. Nuestro equipo de soporte te responderá lo antes posible.";
+      case "Facturación":
+        return "Hemos recibido tu consulta de facturación. El equipo de administración te responderá en horas laborables.";
+      case "Consulta general":
+      case "Otro":
+      default:
+        return "Hemos recibido tu mensaje y un miembro del equipo te responderá en breve.";
+    }
+  }
+
+  public static String getContactFormAdminHtml(
+      String name, String email, String phone, String subject, String message, String source,
+      String gmailThreadLink, String mailtoLink, String waLink, String waWebLink) {
+    String safePhone = (phone == null || phone.isBlank()) ? "—" : phone;
+    String safeSubject = (subject == null || subject.isBlank()) ? "—" : subject;
+    String safeMessage = (message == null || message.isBlank())
+        ? "(sin mensaje)"
+        : message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>");
+    String safeSource = (source == null || source.isBlank()) ? "—" : source;
+    return String.format("""
+    <!doctype html>
+    <html lang=\"es\">
+    <head>
+      <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">
+      <title>Nuevo contacto</title>
+    </head>
+    <body style=\"margin:0;padding:0;background:#f7f7f8;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;\">
+      <table role=\"presentation\" width=\"100%%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\">
+        <tr>
+          <td align=\"center\">
+            <table role=\"presentation\" width=\"620\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:620px;max-width:620px;margin:24px auto;\">
+              <tr>
+                <td style=\"background:#0e0e0c;padding:20px 24px;color:#fff;border-radius:14px 14px 0 0;\">
+                  <div style=\"font-size:12px;letter-spacing:.3px;text-transform:uppercase;opacity:.7;\">BeWorking · contact-form</div>
+                  <div style=\"font-size:20px;font-weight:700;margin-top:6px;\">Nuevo mensaje recibido</div>
+                  <div style=\"opacity:.75;font-size:13px;margin-top:2px;\">Asunto: %s · Origen: %s</div>
+                </td>
+              </tr>
+              <tr>
+                <td style=\"background:#fff;padding:18px 24px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">
+                  <div style=\"padding:8px 0;border-bottom:1px dashed #eee;\">
+                    <div style=\"color:#667085;font-size:11px;letter-spacing:.3px;text-transform:uppercase;\">Nombre</div>
+                    <div style=\"font-size:15px;font-weight:600;color:#111;\">%s</div>
+                  </div>
+                  <div style=\"padding:8px 0;border-bottom:1px dashed #eee;\">
+                    <div style=\"color:#667085;font-size:11px;letter-spacing:.3px;text-transform:uppercase;\">Email</div>
+                    <div style=\"font-size:15px;font-weight:600;color:#111;\"><a href=\"mailto:%s\" style=\"color:#111;text-decoration:none;\">%s</a></div>
+                  </div>
+                  <div style=\"padding:8px 0;border-bottom:1px dashed #eee;\">
+                    <div style=\"color:#667085;font-size:11px;letter-spacing:.3px;text-transform:uppercase;\">Teléfono</div>
+                    <div style=\"font-size:15px;font-weight:600;color:#111;\">%s</div>
+                  </div>
+                  <div style=\"padding:12px 0 8px;\">
+                    <div style=\"color:#667085;font-size:11px;letter-spacing:.3px;text-transform:uppercase;\">Mensaje</div>
+                    <div style=\"font-size:14px;color:#1d1d1f;line-height:1.6;margin-top:4px;white-space:pre-wrap;\">%s</div>
+                  </div>
+                  <div style=\"padding:14px 0 4px;text-align:center;\">
+                    <a href=\"%s\" style=\"background:#009624;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;display:inline-block;font-weight:700;margin:0 4px;\">Responder en Gmail</a>
+                    <a href=\"%s\" style=\"background:#1d1d1f;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;display:inline-block;font-weight:700;margin:0 4px;\">Responder por email</a>
+                  </div>
+                  %s
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """,
+    safeSubject, safeSource,
+    name == null ? "—" : name,
+    email == null ? "" : email, email == null ? "—" : email,
+    safePhone,
+    safeMessage,
+    gmailThreadLink == null ? "#" : gmailThreadLink,
+    mailtoLink == null ? "#" : mailtoLink,
+    buildPhoneAndWhatsappBlock(safePhone, waLink, waWebLink));
+  }
+
+  private static String buildPhoneAndWhatsappBlock(String phone, String waLink, String waWebLink) {
+    if (phone == null || "—".equals(phone)) return "";
+    return String.format(
+      "<div style=\"padding:6px 0;text-align:center;font-size:13px;color:#555;\">" +
+      "<a href=\"tel:%s\" style=\"color:#009624;text-decoration:none;font-weight:600;margin:0 8px;\">Llamar</a>" +
+      "<a href=\"%s\" style=\"color:#009624;text-decoration:none;font-weight:600;margin:0 8px;\">WhatsApp</a>" +
+      "<a href=\"%s\" style=\"color:#009624;text-decoration:none;font-weight:600;margin:0 8px;\">WhatsApp Web</a>" +
+      "</div>",
+      phone, waLink == null ? "#" : waLink, waWebLink == null ? "#" : waWebLink);
+  }
+
+  // --- Legacy OV-interest template (kept for backwards compatibility) -------
   public static String getUserHtml(String name) {
         return String.format("""
         <!doctype html>

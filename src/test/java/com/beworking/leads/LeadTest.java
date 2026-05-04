@@ -79,16 +79,17 @@ public class LeadTest {
     }
 
     /**
-     * Verify that an empty phone value violates the {@code @NotBlank}
-     * constraint and results in validation errors.
+     * Phone is optional now (V50). The contact form does not collect
+     * phone, so empty/null must validate cleanly. The legacy
+     * {@code @NotBlank} was dropped.
      */
-    @Test 
-    void emptyPhoneShouldFailValidation() {
+    @Test
+    void emptyPhoneShouldPassValidation() {
         Lead lead = new Lead();
         lead.setName("John Doe");
         lead.setEmail("john@example.com");
-        lead.setPhone(""); // Empty phone
-        assertFalse(validator.validate(lead).isEmpty());
+        lead.setPhone("");
+        assertTrue(validator.validate(lead).isEmpty());
     }
     
     /**

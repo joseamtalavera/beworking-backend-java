@@ -22,8 +22,19 @@ public class Lead {
     @Email
     private String email;
 
-    @NotBlank
+    // Phone is optional now (OV-interest forms still send it; the generic
+    // contact form does not). Validation for format is enforced on the
+    // request DTO when present.
     private String phone;
+
+    @Column(length = 120)
+    private String subject;
+
+    @Column(columnDefinition = "TEXT")
+    private String message;
+
+    @Column(length = 40)
+    private String source;
 
     private Instant createdAt = Instant.now();
 
@@ -62,6 +73,15 @@ public class Lead {
 
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
+
+    public String getSubject() { return subject; }
+    public void setSubject(String subject) { this.subject = subject; }
+
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
+
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

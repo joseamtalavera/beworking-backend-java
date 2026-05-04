@@ -86,10 +86,20 @@ public class LeadController {
         }
 
         Lead lead = new Lead();
-        logger.info("Received lead request: name={}, email={}, phone={}", req.getName(), req.getEmail(), req.getPhone());
+        logger.info("Received lead request: name={}, email={}, phone={}, subject={}, source={}",
+            req.getName(), req.getEmail(), req.getPhone(), req.getSubject(), req.getSource());
         lead.setName(SanitizationUtils.sanitizeText(req.getName()));
         lead.setEmail(req.getEmail().trim());
         lead.setPhone(SanitizationUtils.sanitizePhone(req.getPhone()));
+        if (req.getSubject() != null && !req.getSubject().isBlank()) {
+            lead.setSubject(SanitizationUtils.sanitizeText(req.getSubject()));
+        }
+        if (req.getMessage() != null && !req.getMessage().isBlank()) {
+            lead.setMessage(SanitizationUtils.sanitizeText(req.getMessage()));
+        }
+        if (req.getSource() != null && !req.getSource().isBlank()) {
+            lead.setSource(req.getSource().trim());
+        }
         leadRepository.save(lead);
         
         // Publish event after saving lead. From it goes to LeadEmailListener where the email is sent

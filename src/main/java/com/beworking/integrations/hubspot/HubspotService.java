@@ -48,12 +48,16 @@ public class HubspotService {
             RestTemplate restTemplate = new RestTemplate();
             String url = hubspotBaseUrl + "/crm/v3/objects/contacts";
 
+            // Build properties map without null values (Map.of throws NPE on null);
+            // phone is now optional on contact-form leads.
+            Map<String, Object> properties = new HashMap<>();
+            properties.put("email", lead.getEmail());
+            properties.put("firstname", lead.getName());
+            if (lead.getPhone() != null && !lead.getPhone().isBlank()) {
+                properties.put("phone", lead.getPhone());
+            }
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("properties", Map.of(
-                "email", lead.getEmail(),
-                "firstname", lead.getName(),
-                "phone", lead.getPhone()
-            ));
+            requestBody.put("properties", properties);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(hubspotToken);
@@ -114,12 +118,13 @@ public class HubspotService {
             RestTemplate restTemplate = new RestTemplate();
             String url = hubspotBaseUrl + "/crm/v3/objects/contacts/" + hubspotId;
 
-            Map<String, Object> requestBody = Map.of(
-                "properties", Map.of(
-                    "firstname", lead.getName(),
-                    "phone", lead.getPhone()
-                )
-            );
+            Map<String, Object> properties = new HashMap<>();
+            properties.put("firstname", lead.getName());
+            if (lead.getPhone() != null && !lead.getPhone().isBlank()) {
+                properties.put("phone", lead.getPhone());
+            }
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("properties", properties);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);

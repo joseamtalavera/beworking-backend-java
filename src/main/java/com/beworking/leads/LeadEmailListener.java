@@ -21,17 +21,47 @@ public class LeadEmailListener {
        @TransactionalEventListener(phase = org.springframework.transaction.event.TransactionPhase.AFTER_COMMIT)
        public void handleLeadCreated(LeadCreatedEvent event) {
             logger.info("Checkpoint 1: LeadEmailListener triggered for event: {}", event);
-            Lead lead = event.getLead(); // Get the lead from the event
-            // User email
+            Lead lead = event.getLead();
+
+            boolean isContactForm = "contact-page".equalsIgnoreCase(lead.getSource())
+                || (lead.getSubject() != null && !lead.getSubject().isBlank());
+
+            String waLink = buildWhatsappLink(lead.getPhone());
+            String waWebLink = buildWhatsappWebLink(waLink);
+            String mailtoReplyLink = buildMailtoReplyLink(lead.getEmail());
+
+            if (isContactForm) {
+                // Contact-form path: subject-branched user reply, admin email
+                // includes subject + message verbatim.
+                String userSubject = "Hemos recibido tu mensaje — BeWorking";
+                String userHtml = LeadEmailService.getContactFormUserHtml(lead.getName(), lead.getSubject());
+                String userMessageId = emailService.sendHtmlAndReturnMessageId(lead.getEmail(), userSubject, userHtml);
+                String gmailThreadLink = buildGmailThreadLink(userMessageId);
+
+                String teamSubject = "📩 Nuevo contacto — " +
+                    (lead.getSubject() == null || lead.getSubject().isBlank() ? "BeWorking" : lead.getSubject());
+                String teamHtml = LeadEmailService.getContactFormAdminHtml(
+                    lead.getName(),
+                    lead.getEmail(),
+                    lead.getPhone(),
+                    lead.getSubject(),
+                    lead.getMessage(),
+                    lead.getSource(),
+                    gmailThreadLink,
+                    mailtoReplyLink,
+                    waLink,
+                    waWebLink
+                );
+                emailService.sendHtml("info@be-working.com", teamSubject, teamHtml, lead.getEmail());
+                return;
+            }
+
+            // Legacy OV-interest path: phone-driven follow-up flow.
             String userSubject = "¡Gracias! Tu Oficina Virtual ya está en marcha 🚀";
             String userHtml = LeadEmailService.getUserHtml(lead.getName());
             String userMessageId = emailService.sendHtmlAndReturnMessageId(lead.getEmail(), userSubject, userHtml);
-            // Admin notification email
             String teamSubject = "🟧 Nuevo lead — BeWorking";
-            String waLink = buildWhatsappLink(lead.getPhone());
-            String waWebLink = buildWhatsappWebLink(waLink);
             String gmailThreadLink = buildGmailThreadLink(userMessageId);
-            String mailtoReplyLink = buildMailtoReplyLink(lead.getEmail());
             String teamHtml = LeadEmailService.getAdminHtml(
                 lead.getName(),
                 lead.getEmail(),
