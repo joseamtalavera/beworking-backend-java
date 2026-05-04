@@ -202,8 +202,10 @@ public class SubscriptionController {
                 stripeRequest.put("description", request.getDescription() != null ? request.getDescription() : "Oficina Virtual");
                 stripeRequest.put("tenant", "GT".equalsIgnoreCase(request.getCuenta()) ? "gt" : "bw");
 
-                // Reuse existing Stripe customer for this contact if available
-                subscriptionService.findByContactIdAndActiveTrue(request.getContactId()).stream()
+                // Reuse existing Stripe customer for this contact — any prior sub
+                // (active OR cancelled) keeps the same Stripe customer; otherwise
+                // we'd duplicate the customer in Stripe on every re-subscription.
+                subscriptionService.findByContactId(request.getContactId()).stream()
                     .filter(s -> s.getStripeCustomerId() != null && !s.getStripeCustomerId().isBlank())
                     .findFirst()
                     .ifPresent(s -> stripeRequest.put("customer_id", s.getStripeCustomerId()));
