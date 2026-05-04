@@ -59,16 +59,24 @@ public class LeadEmailService {
       return "Gracias por escribirnos. Hemos recibido tu mensaje y un miembro del equipo te responderá en breve.";
     }
     switch (subject.trim()) {
+      case "Visita":
+      case "Tour":
+        return "Gracias por solicitar una visita. Te contactaremos en breve para confirmar día y hora, y te enseñaremos el espacio en persona.";
       case "Oficina Digital":
         return "Gracias por tu interés en Oficina Digital. Un asesor revisará tu mensaje y te contactará para guiarte en el siguiente paso.";
       case "Espacios y reservas":
+      case "Spaces & booking":
         return "Gracias por tu interés en nuestros espacios. Te contactaremos para coordinar una visita o resolver tus dudas sobre disponibilidad.";
       case "Plataforma y cuenta":
+      case "Platform & account":
         return "Hemos recibido tu consulta sobre la plataforma. Nuestro equipo de soporte te responderá lo antes posible.";
       case "Facturación":
+      case "Billing":
         return "Hemos recibido tu consulta de facturación. El equipo de administración te responderá en horas laborables.";
       case "Consulta general":
+      case "General enquiry":
       case "Otro":
+      case "Other":
       default:
         return "Hemos recibido tu mensaje y un miembro del equipo te responderá en breve.";
     }
