@@ -36,12 +36,14 @@ class RegisterServiceTest {
     private com.beworking.contacts.ViesVatService viesVatService;
     @Mock
     private com.beworking.subscriptions.SubscriptionService subscriptionService;
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     private RegisterService registerService;
 
     @BeforeEach
     void setUp() {
-        registerService = new RegisterService(userRepository, passwordEncoder, emailService, contactProfileRepository, subscriptionRepository, planRepository, viesVatService, subscriptionService);
+        registerService = new RegisterService(userRepository, passwordEncoder, emailService, contactProfileRepository, subscriptionRepository, planRepository, viesVatService, subscriptionService, eventPublisher);
     }
 
     private RegisterRequest makeRequest(String name, String email, String password) {

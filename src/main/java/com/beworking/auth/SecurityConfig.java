@@ -105,7 +105,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
                 .requestMatchers("/").permitAll()
-                .requestMatchers("/api/health","/api/auth/login", "/api/auth/admin/login", "/api/auth/register", "/api/auth/register-pending", "/api/auth/register-with-trial", "/api/auth/check-email", "/api/auth/setup-intent", "/api/auth/confirm", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/refresh", "/api/auth/select-account", "/api/leads", "/api/mailroom/**", "/api/invoices/*/pdf", "/api/webhooks/**").permitAll()
+                .requestMatchers("/api/health","/api/auth/login", "/api/auth/admin/login", "/api/auth/register", "/api/auth/register-pending", "/api/auth/register-with-trial", "/api/auth/check-email", "/api/auth/setup-intent", "/api/auth/confirm", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/refresh", "/api/auth/select-account", "/api/mailroom/**", "/api/invoices/*/pdf", "/api/webhooks/**").permitAll()
+                // /api/leads — public POST (contact form, OV interest); GET/DELETE require admin auth (handled at controller level)
+                .requestMatchers(HttpMethod.POST, "/api/leads").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/uploads").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/contact-profiles/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/contact-profiles").permitAll()

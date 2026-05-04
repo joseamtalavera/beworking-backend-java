@@ -1,8 +1,10 @@
 package com.beworking.auth;
 
 import com.beworking.contacts.ContactProfile;
+import com.beworking.contacts.ContactProfileCreatedEvent;
 import com.beworking.contacts.ContactProfileRepository;
 import com.beworking.contacts.ViesVatService;
+import org.springframework.context.ApplicationEventPublisher;
 import com.beworking.plans.PlanRepository;
 import com.beworking.subscriptions.Subscription;
 import com.beworking.subscriptions.SubscriptionRepository;
@@ -39,11 +41,13 @@ public class RegisterService {
     private final PlanRepository planRepository;
     private final ViesVatService viesVatService;
     private final SubscriptionService subscriptionService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public RegisterService(UserRepository userRepository, PasswordEncoder passwordEncoder,
                            EmailService emailService, ContactProfileRepository contactProfileRepository,
                            SubscriptionRepository subscriptionRepository, PlanRepository planRepository,
-                           ViesVatService viesVatService, SubscriptionService subscriptionService) {
+                           ViesVatService viesVatService, SubscriptionService subscriptionService,
+                           ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
@@ -52,6 +56,7 @@ public class RegisterService {
         this.planRepository = planRepository;
         this.viesVatService = viesVatService;
         this.subscriptionService = subscriptionService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -96,8 +101,12 @@ public class RegisterService {
         // Auto-link or create ContactProfile in pending state
         ContactProfile cp = applyContactProfileFromRequest(user, request, normalizedEmail, "Pendiente Pago");
 
+        boolean isNewProfile = cp.getId() == null;
         contactProfileRepository.save(cp);
         userRepository.save(user);
+        if (isNewProfile) {
+            eventPublisher.publishEvent(new ContactProfileCreatedEvent(cp.getId(), cp.getEmailPrimary()));
+        }
 
         logger.info("Created pending user (no Stripe yet) email={} cp={}", normalizedEmail, cp.getId());
         return user;
@@ -146,8 +155,12 @@ public class RegisterService {
         }
 
         ContactProfile cp = applyContactProfileFromRequest(user, request, normalizedEmail, "Activo");
+        boolean isNewProfileTrial = cp.getId() == null;
         contactProfileRepository.save(cp);
         userRepository.save(user);
+        if (isNewProfileTrial) {
+            eventPublisher.publishEvent(new ContactProfileCreatedEvent(cp.getId(), cp.getEmailPrimary()));
+        }
 
         // Create subscription via /api/subscriptions/auto (card already on file from SetupIntent)
         if (request.getPlan() != null && !request.getPlan().isBlank()) {
@@ -313,8 +326,12 @@ public class RegisterService {
             cp.setPhonePrimary(request.getPhone().trim());
         }
 
+        boolean isNewProfileSimple = existingProfile.isEmpty();
         contactProfileRepository.save(cp);
         userRepository.save(user);
+        if (isNewProfileSimple) {
+            eventPublisher.publishEvent(new ContactProfileCreatedEvent(cp.getId(), cp.getEmailPrimary()));
+        }
 
         // Send confirmation email
         emailService.sendConfirmationEmail(normalizedEmail, rawToken);

@@ -64,6 +64,7 @@ class BookingService {
     private final RegisterService registerService;
     private final com.beworking.contacts.ContactProfileService contactProfileService;
     private final com.beworking.tax.TaxResolver taxResolver;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     BookingService(ReservaRepository reservaRepository,
                    BloqueoRepository bloqueoRepository,
@@ -75,7 +76,8 @@ class BookingService {
                    CuentaService cuentaService,
                    RegisterService registerService,
                    @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
-                   com.beworking.tax.TaxResolver taxResolver) {
+                   com.beworking.tax.TaxResolver taxResolver,
+                   org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
@@ -87,6 +89,7 @@ class BookingService {
         this.registerService = registerService;
         this.contactProfileService = contactProfileService;
         this.taxResolver = taxResolver;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -166,7 +169,12 @@ class BookingService {
                 newContact.setActive(true);
                 newContact.setChannel("Web");
                 newContact.setCreatedAt(java.time.LocalDateTime.now());
-                return contactRepository.save(newContact);
+                ContactProfile saved = contactRepository.save(newContact);
+                // New booking-driven contact → drop any matching lead from the
+                // pipeline (handled by LeadCleanupListener after commit).
+                eventPublisher.publishEvent(new com.beworking.contacts.ContactProfileCreatedEvent(
+                    saved.getId(), saved.getEmailPrimary()));
+                return saved;
             });
 
         CreateReservaRequest reservaRequest = new CreateReservaRequest();

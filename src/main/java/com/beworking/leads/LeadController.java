@@ -121,6 +121,81 @@ public class LeadController {
         }
         return request.getRemoteAddr();
     }
-    
-    
+
+    // --- Admin endpoints (dashboard "Leads" tab) ------------------------------
+
+    /**
+     * Paged + searchable list. Match by name / email / phone / subject.
+     * Sort defaults to newest first.
+     */
+    @GetMapping
+    public ResponseEntity<?> listLeads(
+            org.springframework.security.core.Authentication authentication,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
+        var pageable = org.springframework.data.domain.PageRequest.of(
+            Math.max(page, 0),
+            Math.min(Math.max(size, 1), 200),
+            org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
+        var pageResult = leadRepository.search(q, pageable);
+        Map<String, Object> response = new HashMap<>();
+        response.put("content", pageResult.getContent().stream().map(this::toResponseMap).toList());
+        response.put("page", pageResult.getNumber());
+        response.put("size", pageResult.getSize());
+        response.put("totalElements", pageResult.getTotalElements());
+        response.put("totalPages", pageResult.getTotalPages());
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getLead(
+            org.springframework.security.core.Authentication authentication,
+            @PathVariable java.util.UUID id) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
+        return leadRepository.findById(id)
+            .<ResponseEntity<?>>map(lead -> ResponseEntity.ok(toResponseMap(lead)))
+            .orElseGet(() -> ResponseEntity.status(org.springframework.http.HttpStatus.NOT_FOUND).build());
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteLead(
+            org.springframework.security.core.Authentication authentication,
+            @PathVariable java.util.UUID id) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
+        if (!leadRepository.existsById(id)) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.NOT_FOUND).build();
+        }
+        leadRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    private Map<String, Object> toResponseMap(Lead lead) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", lead.getId());
+        map.put("name", lead.getName());
+        map.put("email", lead.getEmail());
+        map.put("phone", lead.getPhone());
+        map.put("subject", lead.getSubject());
+        map.put("message", lead.getMessage());
+        map.put("source", lead.getSource());
+        map.put("createdAt", lead.getCreatedAt());
+        map.put("hubspotSyncStatus", lead.getHubspotSyncStatus());
+        map.put("hubspotId", lead.getHubspotId());
+        map.put("hubspotSyncedAt", lead.getHubspotSyncedAt());
+        return map;
+    }
+
+    private boolean isAdmin(org.springframework.security.core.Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) return false;
+        return authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+    }
 }

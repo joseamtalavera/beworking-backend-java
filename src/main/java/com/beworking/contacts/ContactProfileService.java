@@ -46,15 +46,18 @@ public class ContactProfileService {
     private final ViesVatService viesVatService;
     private final CentroRepository centroRepository;
     private final RegisterService registerService;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     public ContactProfileService(ContactProfileRepository repository, UserRepository userRepository,
                                   ViesVatService viesVatService, CentroRepository centroRepository,
-                                  RegisterService registerService) {
+                                  RegisterService registerService,
+                                  org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.repository = repository;
         this.userRepository = userRepository;
         this.viesVatService = viesVatService;
         this.centroRepository = centroRepository;
         this.registerService = registerService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -507,7 +510,12 @@ public class ContactProfileService {
 
         // Save the profile
         ContactProfile savedProfile = repository.save(profile);
-        
+
+        // Lead → customer conversion: any matching lead is removed after the
+        // transaction commits (handled by LeadCleanupListener).
+        eventPublisher.publishEvent(new ContactProfileCreatedEvent(
+            savedProfile.getId(), savedProfile.getEmailPrimary()));
+
         // Auto-create or link user account for this contact
         if (savedProfile.getEmailPrimary() != null && !savedProfile.getEmailPrimary().isBlank()) {
             String contactName = savedProfile.getContactName() != null && !savedProfile.getContactName().isBlank()
