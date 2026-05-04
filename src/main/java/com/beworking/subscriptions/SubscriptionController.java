@@ -203,10 +203,14 @@ public class SubscriptionController {
                 stripeRequest.put("tenant", "GT".equalsIgnoreCase(request.getCuenta()) ? "gt" : "bw");
 
                 // Reuse existing Stripe customer for this contact — any prior sub
-                // (active OR cancelled) keeps the same Stripe customer; otherwise
-                // we'd duplicate the customer in Stripe on every re-subscription.
+                // (active OR cancelled) in the SAME cuenta keeps the same Stripe
+                // customer. We must filter by cuenta because PT and GT live in
+                // separate Stripe accounts; passing a PT customer ID to the GT
+                // tenant fails with "No such customer".
+                String reqCuenta = request.getCuenta() != null ? request.getCuenta().toUpperCase() : "PT";
                 subscriptionService.findByContactId(request.getContactId()).stream()
                     .filter(s -> s.getStripeCustomerId() != null && !s.getStripeCustomerId().isBlank())
+                    .filter(s -> reqCuenta.equalsIgnoreCase(s.getCuenta()))
                     .findFirst()
                     .ifPresent(s -> stripeRequest.put("customer_id", s.getStripeCustomerId()));
 
