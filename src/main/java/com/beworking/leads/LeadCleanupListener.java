@@ -4,6 +4,7 @@ import com.beworking.contacts.ContactProfileCreatedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -31,7 +32,7 @@ public class LeadCleanupListener {
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onContactProfileCreated(ContactProfileCreatedEvent event) {
         String email = event.email();
         if (email == null || email.isBlank()) return;
