@@ -21,24 +21,30 @@ public class ContactProfileController {
 
     private static final Logger logger = LoggerFactory.getLogger(ContactProfileController.class);
     private final ContactProfileService contactProfileService;
+    private final ContactProfileRepository contactProfileRepository;
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
     private final ViesVatService viesVatService;
     private final RegisterService registerService;
     private final com.beworking.subscriptions.SubscriptionService subscriptionService;
+    private final com.beworking.auth.EmailService emailService;
 
     public ContactProfileController(ContactProfileService contactProfileService,
+                                     ContactProfileRepository contactProfileRepository,
                                      UserRepository userRepository,
                                      JdbcTemplate jdbcTemplate,
                                      ViesVatService viesVatService,
                                      RegisterService registerService,
-                                     com.beworking.subscriptions.SubscriptionService subscriptionService) {
+                                     com.beworking.subscriptions.SubscriptionService subscriptionService,
+                                     com.beworking.auth.EmailService emailService) {
         this.contactProfileService = contactProfileService;
+        this.contactProfileRepository = contactProfileRepository;
         this.userRepository = userRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.viesVatService = viesVatService;
         this.registerService = registerService;
         this.subscriptionService = subscriptionService;
+        this.emailService = emailService;
     }
 
     @GetMapping
@@ -404,5 +410,52 @@ public class ContactProfileController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    /**
+     * Send the abandonment-recovery email to every contact whose status is
+     * 'Pendiente Pago' and who hasn't been emailed yet
+     * (abandonment_email_sent_at IS NULL). Marks each row as sent before
+     * dispatching so a retry never double-sends. info@be-working.com is BCC'd
+     * by the EmailService so the team can track replies.
+     */
+    @PostMapping("/abandonment/send-batch")
+    public ResponseEntity<Map<String, Object>> sendAbandonmentBatch(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        List<ContactProfile> targets = contactProfileRepository
+            .findByStatusAndAbandonmentEmailSentAtIsNull("Pendiente Pago");
+
+        int sent = 0;
+        int skipped = 0;
+        for (ContactProfile cp : targets) {
+            String email = cp.getEmailPrimary();
+            if (email == null || email.isBlank()) {
+                skipped++;
+                continue;
+            }
+            // Stamp first so a retry can't double-send. EmailService is async;
+            // a delivery failure is logged but doesn't reset the flag (admin
+            // can re-stamp manually if a real outage occurs).
+            cp.setAbandonmentEmailSentAt(java.time.LocalDateTime.now());
+            contactProfileRepository.save(cp);
+
+            emailService.sendAbandonmentRecoveryEmail(email, cp.getName());
+            sent++;
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("targeted", targets.size());
+        result.put("sent", sent);
+        result.put("skipped", skipped);
+        result.put("status", "Pendiente Pago");
+        return ResponseEntity.ok(result);
     }
 }
