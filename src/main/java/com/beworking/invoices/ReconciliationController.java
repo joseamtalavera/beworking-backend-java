@@ -111,22 +111,9 @@ public class ReconciliationController {
             ORDER BY r.account
             """);
 
-        // Overwrite Stripe-sourced fields with live counts from stripe-service so card KPIs
-        // match live reality (card + popup always agree).
-        for (Map<String, Object> row : rows) {
-            String acct = String.valueOf(row.get("account"));
-            Map<String, Object> live = fetchStripeCounts(acct);
-            if (live == null) continue;
-            Object act = live.get("active");
-            Object pd = live.get("pastDue");
-            Object pda = live.get("pastDueAmount");
-            Object sch = live.get("scheduled");
-            if (act != null) row.put("stripe_active", act);
-            if (pd != null) row.put("stripe_past_due", pd);
-            if (pda != null) row.put("past_due_amount", pda);
-            if (sch != null) row.put("db_scheduled", sch);
-        }
-
+        // Return cached DB values only. Live Stripe counts are refreshed by the
+        // DailyReconciliationScheduler and by the manual "Run now" button — page
+        // refresh must not trigger Stripe round-trips.
         return ResponseEntity.ok(rows);
     }
 

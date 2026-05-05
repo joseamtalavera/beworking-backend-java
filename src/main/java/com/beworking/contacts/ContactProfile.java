@@ -107,6 +107,9 @@ public class ContactProfile {
     @Column(name = "vat_validated_at")
     private LocalDateTime vatValidatedAt;
 
+    @Column(name = "abandonment_email_sent_at")
+    private LocalDateTime abandonmentEmailSentAt;
+
     @Column(name = "billing_tax_id_type")
     private String billingTaxIdType;
 
@@ -392,6 +395,14 @@ public class ContactProfile {
 
     public void setVatValidatedAt(LocalDateTime vatValidatedAt) {
         this.vatValidatedAt = vatValidatedAt;
+    }
+
+    public LocalDateTime getAbandonmentEmailSentAt() {
+        return abandonmentEmailSentAt;
+    }
+
+    public void setAbandonmentEmailSentAt(LocalDateTime abandonmentEmailSentAt) {
+        this.abandonmentEmailSentAt = abandonmentEmailSentAt;
     }
 
     public String getBillingTaxIdType() {

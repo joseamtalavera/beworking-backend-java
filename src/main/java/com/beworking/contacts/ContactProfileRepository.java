@@ -47,6 +47,8 @@ public interface ContactProfileRepository extends JpaRepository<ContactProfile, 
         String representativeEmail
     );
 
+    List<ContactProfile> findByStatusAndAbandonmentEmailSentAtIsNull(String status);
+
     @org.springframework.data.jpa.repository.Query("SELECT MAX(c.id) FROM ContactProfile c")
     Optional<Long> findMaxId();
 }
