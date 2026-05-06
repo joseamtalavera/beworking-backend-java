@@ -55,6 +55,9 @@ public class LeadControllerTest {
     @MockBean
     private ApplicationEventPublisher eventPublisher;
 
+    @MockBean
+    private com.beworking.contacts.ContactProfileRepository contactProfileRepository;
+
     // Mock JwtUtil so JwtAuthenticationFilter doesn’t break the context
     @MockBean
     private JwtUtil jwtUtil;

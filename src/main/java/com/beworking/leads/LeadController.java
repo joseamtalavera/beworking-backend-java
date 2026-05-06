@@ -36,13 +36,17 @@ public class LeadController {
     private final LeadRepository leadRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final TurnstileService turnstileService;
+    private final com.beworking.contacts.ContactProfileRepository contactProfileRepository;
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LeadController.class);
-   
 
-    public LeadController(LeadRepository leadRepository, ApplicationEventPublisher eventPublisher, TurnstileService turnstileService) {
+
+    public LeadController(LeadRepository leadRepository, ApplicationEventPublisher eventPublisher,
+                          TurnstileService turnstileService,
+                          com.beworking.contacts.ContactProfileRepository contactProfileRepository) {
         this.leadRepository = leadRepository;
         this.eventPublisher = eventPublisher; // Initialize the event publisher
         this.turnstileService = turnstileService;
+        this.contactProfileRepository = contactProfileRepository;
     }
     // LeadRequest is now a separate DTO class in the same package
     /**
@@ -183,6 +187,96 @@ public class LeadController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Patch the lead's pipeline status and/or sales-team notes.
+     * Body accepts either or both of {status, notes}; missing keys preserve
+     * the existing value. Stamps status_changed_at when status actually changes.
+     */
+    @PatchMapping("/{id}")
+    public ResponseEntity<?> updateLead(
+            org.springframework.security.core.Authentication authentication,
+            @PathVariable java.util.UUID id,
+            @RequestBody Map<String, Object> body) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
+        return leadRepository.findById(id).<ResponseEntity<?>>map(lead -> {
+            if (body.containsKey("status")) {
+                String newStatus = body.get("status") == null ? null : body.get("status").toString();
+                if (newStatus != null && !newStatus.isBlank() && !newStatus.equals(lead.getStatus())) {
+                    lead.setStatus(newStatus);
+                    lead.setStatusChangedAt(java.time.Instant.now());
+                }
+            }
+            if (body.containsKey("notes")) {
+                Object n = body.get("notes");
+                lead.setNotes(n == null ? null : n.toString());
+            }
+            leadRepository.save(lead);
+            return ResponseEntity.ok(toResponseMap(lead));
+        }).orElseGet(() -> ResponseEntity.status(org.springframework.http.HttpStatus.NOT_FOUND).build());
+    }
+
+    /**
+     * Convert a lead into a Potencial contact_profile and stamp the lead as
+     * 'Convertido'. Idempotent — if the email already matches an existing
+     * contact, returns that contact's id and stamps the lead anyway.
+     * The lead row is kept for audit; admins can delete manually if desired.
+     */
+    @PostMapping("/{id}/convert")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> convertLeadToContact(
+            org.springframework.security.core.Authentication authentication,
+            @PathVariable java.util.UUID id) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
+        Lead lead = leadRepository.findById(id).orElse(null);
+        if (lead == null) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.NOT_FOUND).build();
+        }
+
+        String emailLower = lead.getEmail() == null ? null : lead.getEmail().trim().toLowerCase();
+        com.beworking.contacts.ContactProfile cp = null;
+        if (emailLower != null) {
+            cp = contactProfileRepository
+                .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                    emailLower, emailLower, emailLower, emailLower)
+                .orElse(null);
+        }
+
+        boolean created = false;
+        if (cp == null) {
+            cp = new com.beworking.contacts.ContactProfile();
+            cp.setName(lead.getName());
+            cp.setEmailPrimary(emailLower);
+            cp.setPhonePrimary(lead.getPhone());
+            cp.setStatus("Potencial");
+            cp.setStatusChangedAt(java.time.LocalDateTime.now());
+            cp.setChannel(lead.getSource() != null ? lead.getSource() : "lead");
+            cp.setActive(true);
+            cp.setCreatedAt(java.time.LocalDateTime.now());
+            // Carry the lead's free-text notes onto the contact, prefixed with subject for context.
+            String composed = (lead.getSubject() != null ? "Asunto: " + lead.getSubject() + "\n" : "")
+                + (lead.getMessage() != null ? "Mensaje original:\n" + lead.getMessage() : "")
+                + (lead.getNotes() != null ? "\n\nNotas:\n" + lead.getNotes() : "");
+            // ContactProfile doesn't have a `notes` column today; store on representative_notes if present,
+            // otherwise drop. For now: skip — composed text could go into a future notes column.
+            cp = contactProfileRepository.save(cp);
+            created = true;
+        }
+
+        lead.setStatus("Convertido");
+        lead.setStatusChangedAt(java.time.Instant.now());
+        leadRepository.save(lead);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("contactId", cp.getId());
+        result.put("created", created);
+        result.put("leadStatus", lead.getStatus());
+        return ResponseEntity.ok(result);
+    }
+
     private Map<String, Object> toResponseMap(Lead lead) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", lead.getId());
@@ -193,6 +287,9 @@ public class LeadController {
         map.put("message", lead.getMessage());
         map.put("source", lead.getSource());
         map.put("createdAt", lead.getCreatedAt());
+        map.put("status", lead.getStatus());
+        map.put("notes", lead.getNotes());
+        map.put("statusChangedAt", lead.getStatusChangedAt());
         map.put("hubspotSyncStatus", lead.getHubspotSyncStatus());
         map.put("hubspotId", lead.getHubspotId());
         map.put("hubspotSyncedAt", lead.getHubspotSyncedAt());

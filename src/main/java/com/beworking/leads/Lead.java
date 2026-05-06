@@ -38,6 +38,16 @@ public class Lead {
 
     private Instant createdAt = Instant.now();
 
+    // Pipeline state — see V56. Sales team uses these to track lead progress.
+    @Column(length = 40, nullable = false)
+    private String status = "Nuevo";
+
+    @Column(columnDefinition = "TEXT")
+    private String notes;
+
+    @Column(name = "status_changed_at")
+    private Instant statusChangedAt;
+
     // HubSpot specific fields
 
    @Enumerated(EnumType.STRING)
@@ -85,6 +95,19 @@ public class Lead {
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) {
+        this.status = (status == null || status.isBlank()) ? "Nuevo" : status;
+    }
+
+    public String getNotes() { return notes; }
+    public void setNotes(String notes) { this.notes = notes; }
+
+    public Instant getStatusChangedAt() { return statusChangedAt; }
+    public void setStatusChangedAt(Instant statusChangedAt) {
+        this.statusChangedAt = statusChangedAt;
+    }
 
     // HubSpot specific getters and setters
 
