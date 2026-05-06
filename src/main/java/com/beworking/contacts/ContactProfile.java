@@ -122,6 +122,18 @@ public class ContactProfile {
     @Column(name = "last_reengagement_email_at")
     private LocalDateTime lastReengagementEmailAt;
 
+    // Supplier-only portal credentials (see V55). Only populated when
+    // user_type='Proveedor'. Plaintext today; an AES-GCM upgrade would
+    // wrap getter/setter in a CryptoService and the column shape stays.
+    @Column(name = "supplier_portal_username")
+    private String supplierPortalUsername;
+
+    @Column(name = "supplier_portal_password")
+    private String supplierPortalPassword;
+
+    @Column(name = "supplier_portal_url")
+    private String supplierPortalUrl;
+
     @Column(name = "billing_tax_id_type")
     private String billingTaxIdType;
 
@@ -447,6 +459,24 @@ public class ContactProfile {
 
     public void setLastReengagementEmailAt(LocalDateTime lastReengagementEmailAt) {
         this.lastReengagementEmailAt = lastReengagementEmailAt;
+    }
+
+    public String getSupplierPortalUsername() { return supplierPortalUsername; }
+
+    public void setSupplierPortalUsername(String supplierPortalUsername) {
+        this.supplierPortalUsername = supplierPortalUsername;
+    }
+
+    public String getSupplierPortalPassword() { return supplierPortalPassword; }
+
+    public void setSupplierPortalPassword(String supplierPortalPassword) {
+        this.supplierPortalPassword = supplierPortalPassword;
+    }
+
+    public String getSupplierPortalUrl() { return supplierPortalUrl; }
+
+    public void setSupplierPortalUrl(String supplierPortalUrl) {
+        this.supplierPortalUrl = supplierPortalUrl;
     }
 
     public String getBillingTaxIdType() {

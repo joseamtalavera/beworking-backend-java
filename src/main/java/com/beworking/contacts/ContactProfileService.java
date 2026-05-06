@@ -335,6 +335,17 @@ public class ContactProfileService {
             ? profile.getLastRecoveryEmailAt().toString()
             : null;
 
+        // Supplier portal credentials — only emit the block for Proveedor
+        // contacts. Avoids leaking nulls into every response.
+        ContactProfileResponse.SupplierPortal supplierPortal = null;
+        if ("Proveedor".equalsIgnoreCase(userType)) {
+            supplierPortal = new ContactProfileResponse.SupplierPortal(
+                profile.getSupplierPortalUsername(),
+                profile.getSupplierPortalPassword(),
+                profile.getSupplierPortalUrl()
+            );
+        }
+
         return new ContactProfileResponse(
             profile.getId(),
             profile.getName(),
@@ -352,7 +363,8 @@ public class ContactProfileService {
             profile.getAvatar(),
             billing,
             recoveryCount,
-            lastRecovery
+            lastRecovery,
+            supplierPortal
         );
     }
 
@@ -492,6 +504,10 @@ public class ContactProfileService {
         profile.setBillingCity(request.getBillingCity());
         profile.setBillingProvince(request.getBillingCounty());
         profile.setBillingCountry(request.getBillingCountry());
+
+        profile.setSupplierPortalUsername(blankToNull(request.getSupplierPortalUsername()));
+        profile.setSupplierPortalPassword(blankToNull(request.getSupplierPortalPassword()));
+        profile.setSupplierPortalUrl(blankToNull(request.getSupplierPortalUrl()));
 
         runVatValidation(profile);
 
@@ -652,6 +668,15 @@ public class ContactProfileService {
         if (request.getBillingCountry() != null) {
             profile.setBillingCountry(blankToNull(request.getBillingCountry()));
             countryChanged = true;
+        }
+        if (request.getSupplierPortalUsername() != null) {
+            profile.setSupplierPortalUsername(blankToNull(request.getSupplierPortalUsername()));
+        }
+        if (request.getSupplierPortalPassword() != null) {
+            profile.setSupplierPortalPassword(blankToNull(request.getSupplierPortalPassword()));
+        }
+        if (request.getSupplierPortalUrl() != null) {
+            profile.setSupplierPortalUrl(blankToNull(request.getSupplierPortalUrl()));
         }
 
         if (taxIdChanged || countryChanged) {

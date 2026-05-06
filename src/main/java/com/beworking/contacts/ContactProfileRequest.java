@@ -23,7 +23,12 @@ public class ContactProfileRequest {
     private String billingCity;
     private String billingCounty;
     private String billingCountry;
-    
+
+    // Supplier portal credentials — only meaningful when userType=Proveedor.
+    private String supplierPortalUsername;
+    private String supplierPortalPassword;
+    private String supplierPortalUrl;
+
     // Constructors
     public ContactProfileRequest() {}
     
@@ -172,8 +177,26 @@ public class ContactProfileRequest {
     public String getBillingCountry() {
         return billingCountry;
     }
-    
+
     public void setBillingCountry(String billingCountry) {
         this.billingCountry = billingCountry;
+    }
+
+    public String getSupplierPortalUsername() { return supplierPortalUsername; }
+
+    public void setSupplierPortalUsername(String supplierPortalUsername) {
+        this.supplierPortalUsername = supplierPortalUsername;
+    }
+
+    public String getSupplierPortalPassword() { return supplierPortalPassword; }
+
+    public void setSupplierPortalPassword(String supplierPortalPassword) {
+        this.supplierPortalPassword = supplierPortalPassword;
+    }
+
+    public String getSupplierPortalUrl() { return supplierPortalUrl; }
+
+    public void setSupplierPortalUrl(String supplierPortalUrl) {
+        this.supplierPortalUrl = supplierPortalUrl;
     }
 }

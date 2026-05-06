@@ -19,7 +19,8 @@ public record ContactProfileResponse(
     String avatar,
     Billing billing,
     @JsonProperty("recovery_email_count") Integer recoveryEmailCount,
-    @JsonProperty("last_recovery_email_at") String lastRecoveryEmailAt
+    @JsonProperty("last_recovery_email_at") String lastRecoveryEmailAt,
+    @JsonProperty("supplier_portal") SupplierPortal supplierPortal
 ) {
     public record Contact(String name, String email) {}
 
@@ -34,5 +35,12 @@ public record ContactProfileResponse(
         @JsonProperty("tax_id") String taxId,
         @JsonProperty("tax_id_type") String taxIdType,
         @JsonProperty("vat_valid") Boolean vatValid
+    ) {}
+
+    /** Supplier-only portal credentials. Only set when user_type=Proveedor. */
+    public static record SupplierPortal(
+        String username,
+        String password,
+        String url
     ) {}
 }
