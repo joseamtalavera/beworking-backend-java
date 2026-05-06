@@ -149,6 +149,76 @@ public class SubscriptionWebhookController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Stripe customer.subscription.deleted relay. Marks the local Subscription
+     * row inactive and — if the contact has no other active subs — flips the
+     * contact's funnel status to 'Inactivo'. Aula-only contacts never trigger
+     * this path because they have no Stripe subscriptions to cancel.
+     */
+    @PostMapping("/subscription-cancelled")
+    public ResponseEntity<Map<String, Object>> subscriptionCancelled(
+        @RequestBody Map<String, String> payload,
+        @RequestHeader(value = "X-Callback-Secret", required = false) String secret
+    ) {
+        if (callbackSecret != null && !callbackSecret.isBlank()) {
+            if (secret == null || !secret.equals(callbackSecret)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+        }
+
+        String subscriptionId = payload.get("subscriptionId");
+        String customerId = payload.get("customerId");
+
+        if (subscriptionId == null || subscriptionId.isBlank()) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "subscriptionId is required");
+            return ResponseEntity.badRequest().body(error);
+        }
+
+        Optional<Subscription> subOpt = subscriptionService.findByStripeSubscriptionId(subscriptionId);
+        if (subOpt.isEmpty() && customerId != null && !customerId.isBlank()) {
+            subOpt = subscriptionService.findByStripeCustomerId(customerId);
+        }
+
+        if (subOpt.isEmpty()) {
+            logger.warn("subscription-cancelled: no local subscription found for subscriptionId={} customerId={}",
+                subscriptionId, customerId);
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "no-op");
+            response.put("reason", "no local subscription matched");
+            return ResponseEntity.ok(response);
+        }
+
+        Subscription subscription = subOpt.get();
+        subscription.setActive(false);
+        subscription.setEndDate(java.time.LocalDate.now());
+        subscriptionService.save(subscription);
+
+        Long contactId = subscription.getContactId();
+        boolean stillHasActiveSub = subscriptionService.findByContactIdAndActiveTrue(contactId).stream()
+            .anyMatch(s -> !s.getId().equals(subscription.getId()));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("contactId", contactId);
+        response.put("subscriptionId", subscription.getId());
+        response.put("stripeSubscriptionId", subscriptionId);
+
+        if (stillHasActiveSub) {
+            logger.info("Subscription {} cancelled but contact {} retains other active subs — leaving status",
+                subscriptionId, contactId);
+            response.put("statusChanged", false);
+            response.put("reason", "contact has other active subscriptions");
+        } else {
+            int updated = subscriptionService.updateContactStatus(contactId, "Inactivo");
+            logger.info("Subscription {} cancelled — flipped contact {} → Inactivo (rows={})",
+                subscriptionId, contactId, updated);
+            response.put("statusChanged", true);
+            response.put("newStatus", "Inactivo");
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/subscription-trial-converted")
     public ResponseEntity<Map<String, Object>> trialConverted(
         @RequestBody Map<String, String> payload,

@@ -56,6 +56,17 @@ public class SubscriptionService {
             newStatus, contactId);
     }
 
+    /**
+     * Unconditional status flip used by the subscription-cancelled webhook.
+     * Caller is expected to have already checked there are no other active
+     * subs on this contact. Stamps status_changed_at for audit.
+     */
+    public int updateContactStatus(Long contactId, String newStatus) {
+        return jdbcTemplate.update(
+            "UPDATE beworking.contact_profiles SET status = ?, status_changed_at = NOW() WHERE id = ?",
+            newStatus, contactId);
+    }
+
     public List<Subscription> findByContactId(Long contactId) {
         return subscriptionRepository.findByContactId(contactId);
     }
