@@ -116,6 +116,12 @@ public class ContactProfile {
     @Column(name = "last_recovery_email_at")
     private LocalDateTime lastRecoveryEmailAt;
 
+    @Column(name = "reengagement_email_count", nullable = false)
+    private Integer reengagementEmailCount = 0;
+
+    @Column(name = "last_reengagement_email_at")
+    private LocalDateTime lastReengagementEmailAt;
+
     @Column(name = "billing_tax_id_type")
     private String billingTaxIdType;
 
@@ -425,6 +431,22 @@ public class ContactProfile {
 
     public void setLastRecoveryEmailAt(LocalDateTime lastRecoveryEmailAt) {
         this.lastRecoveryEmailAt = lastRecoveryEmailAt;
+    }
+
+    public Integer getReengagementEmailCount() {
+        return reengagementEmailCount == null ? 0 : reengagementEmailCount;
+    }
+
+    public void setReengagementEmailCount(Integer reengagementEmailCount) {
+        this.reengagementEmailCount = reengagementEmailCount == null ? 0 : reengagementEmailCount;
+    }
+
+    public LocalDateTime getLastReengagementEmailAt() {
+        return lastReengagementEmailAt;
+    }
+
+    public void setLastReengagementEmailAt(LocalDateTime lastReengagementEmailAt) {
+        this.lastReengagementEmailAt = lastReengagementEmailAt;
     }
 
     public String getBillingTaxIdType() {

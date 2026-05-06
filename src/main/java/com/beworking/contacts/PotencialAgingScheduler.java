@@ -35,12 +35,16 @@ public class PotencialAgingScheduler {
     // 03:00 UTC every day, after the recovery cron has had its last window.
     @Scheduled(cron = "0 0 3 * * *")
     public void ageOutPotenciales() {
+        runOnce();
+    }
+
+    public RunResult runOnce() {
         LocalDateTime cutoff = LocalDateTime.now().minusDays(AGING_DAYS);
         List<ContactProfile> stale = contactProfileRepository
             .findByStatusAndCreatedAtLessThan(FROM_STATUS, cutoff);
 
         if (stale.isEmpty()) {
-            return;
+            return new RunResult(0);
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -53,5 +57,8 @@ public class PotencialAgingScheduler {
         }
         logger.info("Aging cron: flipped {} contacts from {} to {} (older than {} days)",
             flipped, FROM_STATUS, TO_STATUS, AGING_DAYS);
+        return new RunResult(flipped);
     }
+
+    public record RunResult(int flipped) {}
 }

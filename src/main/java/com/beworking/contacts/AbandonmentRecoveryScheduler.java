@@ -60,6 +60,10 @@ public class AbandonmentRecoveryScheduler {
 
     @Scheduled(cron = "0 0 * * * *")
     public void sendRecoveryEmails() {
+        runOnce();
+    }
+
+    public RunResult runOnce() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime windowStart = now.minus(RECOVERY_WINDOW);
 
@@ -106,5 +110,8 @@ public class AbandonmentRecoveryScheduler {
             logger.info("Recovery cron: sent={} skipped={} candidates={}",
                 sent, skipped, candidates.size());
         }
+        return new RunResult(sent, skipped, candidates.size());
     }
+
+    public record RunResult(int sent, int skipped, int totalCandidates) {}
 }

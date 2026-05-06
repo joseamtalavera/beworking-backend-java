@@ -567,6 +567,44 @@ public class EmailService {
         }
     }
 
+    /**
+     * Soft re-engagement email for contacts at status='Inactivo'. Sent on a
+     * 6-month cadence by InactivoReengagementScheduler, max 3 times. Tone is
+     * "long time no see" — no urgency, no discount, just a reminder we're
+     * still here. info@be-working.com is BCC'd so a reply opens a thread.
+     */
+    @Async
+    public void sendReengagementEmail(String to, String name) {
+        String safeName = (name != null && !name.isBlank()) ? name : "";
+        String greeting = safeName.isEmpty() ? "Hola," : "Hola " + safeName + ",";
+        String waLink = "https://wa.me/34640369759?text=Hola,%20me%20gustaria%20saber%20que%20espacios%20teneis";
+        String waButton = "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto 16px;\"><tr>"
+            + "<td style=\"background:#009624;border-radius:999px;\">"
+            + "<a href=\"" + waLink + "\" style=\"display:inline-block;padding:12px 28px;color:#fff;text-decoration:none;font-weight:600;font-size:15px;\">Hablar por WhatsApp</a>"
+            + "</td></tr></table>";
+        String body = "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
+            + "<p style=\"margin:0 0 16px;\">Hace tiempo que no nos vemos. ¿Cómo va todo?</p>"
+            + "<p style=\"margin:0 0 16px;\">En BeWorking seguimos aquí — oficinas virtuales, salas de reunión, espacios de trabajo. Si tu negocio necesita una dirección fiscal, una sala para reunirte con un cliente o un puesto en coworking, lo tenemos preparado.</p>"
+            + "<p style=\"margin:0 0 24px;\">Sin compromiso. Si te interesa lo que ofrecemos hoy, escríbenos y te lo contamos.</p>"
+            + waButton
+            + "<p style=\"margin:0;color:#666;font-size:13px;text-align:center;\">o responde a este correo y te contestamos.</p>";
+        String html = recoveryEmailShell("¿Cuánto tiempo!", body);
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
+            helper.setTo(to);
+            helper.setBcc("info@be-working.com");
+            helper.setReplyTo("info@be-working.com");
+            helper.setSubject("¿Cuánto tiempo! ¿Volvemos a vernos? — BeWorking");
+            helper.setText(html, true);
+            mailSender.send(message);
+            logger.info("Reengagement email sent to {}", to);
+        } catch (Exception e) {
+            logger.error("Failed to send reengagement email to {}: {}", to, e.getMessage(), e);
+        }
+    }
+
     private record RecoveryTemplate(String subject, String headline, String body) {}
 
     private RecoveryTemplate recoveryTemplate(int n, String greeting) {

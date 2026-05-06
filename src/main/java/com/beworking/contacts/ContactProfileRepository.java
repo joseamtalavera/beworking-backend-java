@@ -62,6 +62,9 @@ public interface ContactProfileRepository extends JpaRepository<ContactProfile, 
         int maxCount
     );
 
+    /** All contacts at the given status (used by reengagement cron). */
+    List<ContactProfile> findByStatus(String status);
+
     /**
      * Aging scheduler target: contacts still sitting at Potencial after the
      * 7-day window. Daily job flips these to Inactivo. Same reasoning as

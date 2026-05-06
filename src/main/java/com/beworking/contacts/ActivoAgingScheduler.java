@@ -45,6 +45,10 @@ public class ActivoAgingScheduler {
     // 04:00 UTC every day, after PotencialAgingScheduler at 03:00.
     @Scheduled(cron = "0 0 4 * * *")
     public void ageOutDormantActivos() {
+        runOnce();
+    }
+
+    public RunResult runOnce() {
         int flipped = jdbcTemplate.update("""
             UPDATE beworking.contact_profiles cp
                SET status = 'Inactivo',
@@ -68,5 +72,8 @@ public class ActivoAgingScheduler {
             logger.info("Activo aging cron: flipped {} dormant contacts to Inactivo (no invoice in {} months)",
                 flipped, DORMANCY_MONTHS);
         }
+        return new RunResult(flipped);
     }
+
+    public record RunResult(int flipped) {}
 }
