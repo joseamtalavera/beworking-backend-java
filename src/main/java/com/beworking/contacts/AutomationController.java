@@ -30,17 +30,20 @@ public class AutomationController {
     private final PotencialAgingScheduler potencialAging;
     private final ActivoAgingScheduler activoAging;
     private final InactivoReengagementScheduler reengagement;
+    private final com.beworking.leads.LeadAgingScheduler leadAging;
     private final JdbcTemplate jdbcTemplate;
 
     public AutomationController(AbandonmentRecoveryScheduler recoveryScheduler,
                                 PotencialAgingScheduler potencialAging,
                                 ActivoAgingScheduler activoAging,
                                 InactivoReengagementScheduler reengagement,
+                                com.beworking.leads.LeadAgingScheduler leadAging,
                                 JdbcTemplate jdbcTemplate) {
         this.recoveryScheduler = recoveryScheduler;
         this.potencialAging = potencialAging;
         this.activoAging = activoAging;
         this.reengagement = reengagement;
+        this.leadAging = leadAging;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -111,6 +114,19 @@ public class AutomationController {
                        AND (last_reengagement_email_at IS NULL
                             OR last_reengagement_email_at < NOW() - INTERVAL '6 months')
                 """)
+            ),
+            jobDescriptor(
+                "leadAging",
+                "Caducidad de Leads (Contactado)",
+                "Pasa a No-go los leads en estado Contactado durante más de 23 días sin progreso manual. Calificado / Convertido no se tocan.",
+                "0 30 2 * * *",
+                "Diario, 02:30 UTC",
+                countQuery("""
+                    SELECT COUNT(*) FROM beworking.leads
+                     WHERE status = 'Contactado'
+                       AND status_changed_at IS NOT NULL
+                       AND status_changed_at < NOW() - INTERVAL '23 days'
+                """)
             )
         );
         return ResponseEntity.ok(jobs);
@@ -147,6 +163,10 @@ public class AutomationController {
                 result.put("skipped", r.skipped());
                 result.put("notDue", r.notDue());
                 result.put("totalCandidates", r.totalCandidates());
+            }
+            case "leadAging" -> {
+                com.beworking.leads.LeadAgingScheduler.RunResult r = leadAging.runOnce();
+                result.put("flipped", r.flipped());
             }
             default -> {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(

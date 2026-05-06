@@ -12,11 +12,13 @@ import java.nio.charset.StandardCharsets;
 public class LeadEmailListener {
         private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LeadEmailListener.class);
         private final EmailService emailService;
+        private final LeadRepository leadRepository;
 
-        public LeadEmailListener (EmailService emailService) {
+        public LeadEmailListener (EmailService emailService, LeadRepository leadRepository) {
                 this.emailService = emailService;
+                this.leadRepository = leadRepository;
         }
-        
+
         // This method listens for LeadCreatedEvent and sends emails after the transaction is committed
        @TransactionalEventListener(phase = org.springframework.transaction.event.TransactionPhase.AFTER_COMMIT)
        public void handleLeadCreated(LeadCreatedEvent event) {
@@ -53,6 +55,7 @@ public class LeadEmailListener {
                     waWebLink
                 );
                 emailService.sendHtml("info@be-working.com", teamSubject, teamHtml, lead.getEmail());
+                advanceLeadToContactado(lead);
                 return;
             }
 
@@ -72,9 +75,28 @@ public class LeadEmailListener {
                 waWebLink
             );
             emailService.sendHtml("info@be-working.com", teamSubject, teamHtml, lead.getEmail());
+            advanceLeadToContactado(lead);
        }
 
-        
+       /**
+        * After the acknowledgment email is sent, flip the lead from 'Nuevo' to
+        * 'Contactado' so the funnel reflects that the team's first touch has
+        * landed. Only flips if the lead is still at 'Nuevo' — manual moves to
+        * Calificado / Convertido / No-go are preserved.
+        */
+       private void advanceLeadToContactado(Lead lead) {
+            try {
+                Lead fresh = leadRepository.findById(lead.getId()).orElse(null);
+                if (fresh == null || !"Nuevo".equals(fresh.getStatus())) {
+                    return;
+                }
+                fresh.setStatus("Contactado");
+                fresh.setStatusChangedAt(java.time.Instant.now());
+                leadRepository.save(fresh);
+            } catch (Exception e) {
+                logger.warn("Failed to advance lead {} to Contactado: {}", lead.getId(), e.getMessage());
+            }
+       }
 
         static String buildWhatsappLink(String rawPhone) {
             final String baseUrl = "https://api.whatsapp.com/send/?phone=";
