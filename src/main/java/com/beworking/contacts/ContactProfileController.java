@@ -413,6 +413,82 @@ public class ContactProfileController {
     }
 
     /**
+     * Funnel snapshot for the chip-row at the top of the Contacts table.
+     * Returns counts for the three canonical statuses so the UI can render
+     * one-click filters without re-fetching the whole list.
+     */
+    @GetMapping("/funnel-counts")
+    public ResponseEntity<Map<String, Long>> funnelCounts(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Map<String, Long> counts = new HashMap<>();
+        for (String status : List.of("Activo", "Potencial", "Inactivo")) {
+            long n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM beworking.contact_profiles WHERE status = ?",
+                Long.class, status);
+            counts.put(status, n);
+        }
+        return ResponseEntity.ok(counts);
+    }
+
+    /**
+     * Manually advance one contact through the recovery sequence right now
+     * (rather than waiting for the hourly cron). Sends the next template in
+     * line based on abandonment_email_count, stamps the row, and returns the
+     * template number that was dispatched. Useful for warm leads admin wants
+     * to push without waiting up to 60 minutes.
+     */
+    @PostMapping("/{id}/abandonment/send-now")
+    public ResponseEntity<Map<String, Object>> sendRecoveryNow(
+        @PathVariable Long id,
+        Authentication authentication
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        ContactProfile cp = contactProfileRepository.findById(id).orElse(null);
+        if (cp == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+        String email = cp.getEmailPrimary();
+        if (email == null || email.isBlank()) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("error", "Contact has no primary email");
+            return ResponseEntity.badRequest().body(err);
+        }
+        int alreadySent = cp.getAbandonmentEmailCount();
+        if (alreadySent >= 4) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("error", "Recovery sequence already exhausted (4/4 sent)");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(err);
+        }
+
+        int templateNumber = alreadySent + 1;
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        cp.setAbandonmentEmailCount(templateNumber);
+        cp.setLastRecoveryEmailAt(now);
+        if (templateNumber == 1) {
+            cp.setAbandonmentEmailSentAt(now);
+        }
+        contactProfileRepository.save(cp);
+
+        emailService.sendRecoveryEmail(email, cp.getName(), templateNumber);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("contactId", id);
+        result.put("templateSent", templateNumber);
+        result.put("totalSent", templateNumber);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
      * Manually trigger the recovery email batch for every contact at
      * status='Potencial' who hasn't yet received email #1. Does NOT cycle
      * through #2/#3/#4 — those are owned by the hourly cron. Use this for

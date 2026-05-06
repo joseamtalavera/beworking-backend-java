@@ -17,7 +17,9 @@ public record ContactProfileResponse(
     @JsonProperty("created_at") String createdAt,
     @JsonProperty("phone_primary") String phonePrimary,
     String avatar,
-    Billing billing
+    Billing billing,
+    @JsonProperty("recovery_email_count") Integer recoveryEmailCount,
+    @JsonProperty("last_recovery_email_at") String lastRecoveryEmailAt
 ) {
     public record Contact(String name, String email) {}
 

@@ -332,6 +332,11 @@ public class ContactProfileService {
             profile.getVatValid()
         );
 
+        Integer recoveryCount = profile.getAbandonmentEmailCount();
+        String lastRecovery = profile.getLastRecoveryEmailAt() != null
+            ? profile.getLastRecoveryEmailAt().toString()
+            : null;
+
         return new ContactProfileResponse(
             profile.getId(),
             profile.getName(),
@@ -347,7 +352,9 @@ public class ContactProfileService {
             createdAt,
             phone,
             profile.getAvatar(),
-            billing
+            billing,
+            recoveryCount,
+            lastRecovery
         );
     }
 
@@ -355,10 +362,12 @@ public class ContactProfileService {
         if (profile.getStatus() != null && !profile.getStatus().isBlank()) {
             return profile.getStatus();
         }
-        if (profile.getActive() != null) {
-            return profile.getActive() ? "Active" : "Inactive";
+        // Aligned to 3-state funnel after V52. Legacy paths that didn't write
+        // status get classified by the active flag; everything else → Inactivo.
+        if (Boolean.TRUE.equals(profile.getActive())) {
+            return "Activo";
         }
-        return "Unknown";
+        return "Inactivo";
     }
 
     private String formatLastActive(ContactProfile profile) {
