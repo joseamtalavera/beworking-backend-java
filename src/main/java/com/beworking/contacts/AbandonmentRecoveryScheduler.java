@@ -1,6 +1,7 @@
 package com.beworking.contacts;
 
 import com.beworking.auth.EmailService;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.slf4j.Logger;
@@ -9,25 +10,44 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Hourly job that recovers cart-abandonment leads.
+ * Hourly recovery cron for the funnel.
  *
- * RegisterService.registerPendingUser already creates the ContactProfile with
- * status='Pendiente Pago' when a user starts the signup but hasn't completed
- * payment. When they finish payment, the status flips to 'Activo'. Anyone
- * still sitting at 'Pendiente Pago' more than {@value #GRACE_MINUTES} minutes
- * later is treated as abandoned and gets a recovery email
- * (BCC: info@be-working.com so the team can pick up the thread).
+ * RegisterService writes status='Potencial' when a user starts a paid flow
+ * (OV signup / room booking) and hasn't yet generated an invoice. When their
+ * payment lands, InvoiceService flips them to 'Activo' — which removes them
+ * from this query naturally.
  *
- * Each row is stamped via {@code abandonment_email_sent_at} before the email
- * dispatches, so a retry never double-sends. If a user later completes
- * payment, the status flip to 'Activo' takes them out of this query naturally.
+ * Anyone still at 'Potencial' gets a four-touch recovery sequence:
+ *   #1  T+30 min  — quick check-in / WhatsApp offer (existing template)
+ *   #2  T+1 day   — softer nudge with help angle
+ *   #3  T+3 days  — social proof / testimonial
+ *   #4  T+6 days  — last chance
+ *
+ * After 7 days the {@link PotencialAgingScheduler} flips them to 'Inactivo'
+ * and the recovery sequence stops.
+ *
+ * Each send increments {@code abandonment_email_count} and stamps
+ * {@code last_recovery_email_at} — guarantees no double-send and lets us
+ * pick the right next template on the next pass.
  */
 @Component
 public class AbandonmentRecoveryScheduler {
 
     private static final Logger logger = LoggerFactory.getLogger(AbandonmentRecoveryScheduler.class);
-    private static final String ABANDONED_STATUS = "Pendiente Pago";
-    private static final long GRACE_MINUTES = 30;
+    private static final String TARGET_STATUS = "Potencial";
+    private static final int MAX_EMAILS = 4;
+    private static final Duration RECOVERY_WINDOW = Duration.ofDays(7);
+
+    /**
+     * Minimum elapsed time since {@code created_at} for each email number.
+     * Index = number of emails already sent (0 → about to send #1, etc.).
+     */
+    private static final Duration[] DELAY_AFTER_CREATION = {
+        Duration.ofMinutes(30),  // #1
+        Duration.ofDays(1),       // #2
+        Duration.ofDays(3),       // #3
+        Duration.ofDays(6)        // #4
+    };
 
     private final ContactProfileRepository contactProfileRepository;
     private final EmailService emailService;
@@ -38,20 +58,30 @@ public class AbandonmentRecoveryScheduler {
         this.emailService = emailService;
     }
 
-    // Runs at minute 0 of every hour.
     @Scheduled(cron = "0 0 * * * *")
-    public void sendPendingRecoveryEmails() {
-        List<ContactProfile> targets = contactProfileRepository
-            .findByStatusAndAbandonmentEmailSentAtIsNull(ABANDONED_STATUS);
+    public void sendRecoveryEmails() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime windowStart = now.minus(RECOVERY_WINDOW);
 
-        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(GRACE_MINUTES);
+        List<ContactProfile> candidates = contactProfileRepository
+            .findByStatusAndCreatedAtGreaterThanEqualAndAbandonmentEmailCountLessThan(
+                TARGET_STATUS, windowStart, MAX_EMAILS);
+
         int sent = 0;
         int skipped = 0;
 
-        for (ContactProfile cp : targets) {
-            // Wait at least GRACE_MINUTES after creation so the user has a fair
-            // chance to finish payment before we ping them.
-            if (cp.getCreatedAt() != null && cp.getCreatedAt().isAfter(cutoff)) {
+        for (ContactProfile cp : candidates) {
+            int alreadySent = cp.getAbandonmentEmailCount();
+            if (alreadySent >= MAX_EMAILS) {
+                continue;
+            }
+            LocalDateTime createdAt = cp.getCreatedAt();
+            if (createdAt == null) {
+                skipped++;
+                continue;
+            }
+            Duration elapsedSinceCreation = Duration.between(createdAt, now);
+            if (elapsedSinceCreation.compareTo(DELAY_AFTER_CREATION[alreadySent]) < 0) {
                 continue;
             }
             String email = cp.getEmailPrimary();
@@ -59,15 +89,22 @@ public class AbandonmentRecoveryScheduler {
                 skipped++;
                 continue;
             }
-            cp.setAbandonmentEmailSentAt(LocalDateTime.now());
+
+            int templateNumber = alreadySent + 1;
+            cp.setAbandonmentEmailCount(templateNumber);
+            cp.setLastRecoveryEmailAt(now);
+            if (templateNumber == 1) {
+                cp.setAbandonmentEmailSentAt(now);
+            }
             contactProfileRepository.save(cp);
-            emailService.sendAbandonmentRecoveryEmail(email, cp.getName());
+
+            emailService.sendRecoveryEmail(email, cp.getName(), templateNumber);
             sent++;
         }
 
         if (sent > 0 || skipped > 0) {
-            logger.info("Abandonment recovery cron: sent={} skipped={} candidates={}",
-                sent, skipped, targets.size());
+            logger.info("Recovery cron: sent={} skipped={} candidates={}",
+                sent, skipped, candidates.size());
         }
     }
 }

@@ -413,11 +413,11 @@ public class ContactProfileController {
     }
 
     /**
-     * Send the abandonment-recovery email to every contact whose status is
-     * 'Pendiente Pago' and who hasn't been emailed yet
-     * (abandonment_email_sent_at IS NULL). Marks each row as sent before
-     * dispatching so a retry never double-sends. info@be-working.com is BCC'd
-     * by the EmailService so the team can track replies.
+     * Manually trigger the recovery email batch for every contact at
+     * status='Potencial' who hasn't yet received email #1. Does NOT cycle
+     * through #2/#3/#4 — those are owned by the hourly cron. Use this for
+     * one-off backfills (e.g. immediately after a status migration).
+     * info@be-working.com is BCC'd so the team can pick up replies.
      */
     @PostMapping("/abandonment/send-batch")
     public ResponseEntity<Map<String, Object>> sendAbandonmentBatch(Authentication authentication) {
@@ -430,8 +430,11 @@ public class ContactProfileController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.LocalDateTime windowStart = now.minusDays(7);
         List<ContactProfile> targets = contactProfileRepository
-            .findByStatusAndAbandonmentEmailSentAtIsNull("Pendiente Pago");
+            .findByStatusAndCreatedAtGreaterThanEqualAndAbandonmentEmailCountLessThan(
+                "Potencial", windowStart, 1);
 
         int sent = 0;
         int skipped = 0;
@@ -441,13 +444,12 @@ public class ContactProfileController {
                 skipped++;
                 continue;
             }
-            // Stamp first so a retry can't double-send. EmailService is async;
-            // a delivery failure is logged but doesn't reset the flag (admin
-            // can re-stamp manually if a real outage occurs).
-            cp.setAbandonmentEmailSentAt(java.time.LocalDateTime.now());
+            cp.setAbandonmentEmailCount(1);
+            cp.setLastRecoveryEmailAt(now);
+            cp.setAbandonmentEmailSentAt(now);
             contactProfileRepository.save(cp);
 
-            emailService.sendAbandonmentRecoveryEmail(email, cp.getName());
+            emailService.sendRecoveryEmail(email, cp.getName(), 1);
             sent++;
         }
 
@@ -455,7 +457,7 @@ public class ContactProfileController {
         result.put("targeted", targets.size());
         result.put("sent", sent);
         result.put("skipped", skipped);
-        result.put("status", "Pendiente Pago");
+        result.put("status", "Potencial");
         return ResponseEntity.ok(result);
     }
 }

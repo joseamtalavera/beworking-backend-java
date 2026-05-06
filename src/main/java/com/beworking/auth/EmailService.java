@@ -539,12 +539,85 @@ public class EmailService {
      * Send abandonment-recovery email. BCCs info@be-working.com so the team
      * can track who's been contacted. Best-effort; logs failures.
      */
+    /**
+     * Send recovery email N to a contact who's still at status='Potencial'.
+     * The 4-touch sequence is owned by AbandonmentRecoveryScheduler; this
+     * method just dispatches the matching template. info@be-working.com is
+     * BCC'd so the team can pick up replies.
+     */
     @Async
-    public void sendAbandonmentRecoveryEmail(String to, String name) {
+    public void sendRecoveryEmail(String to, String name, int templateNumber) {
         String safeName = (name != null && !name.isBlank()) ? name : "";
         String greeting = safeName.isEmpty() ? "Hola," : "Hola " + safeName + ",";
-        String subject = "¿Necesitas ayuda para terminar tu registro? — BeWorking";
-        String htmlContent = "<!doctype html>"
+        RecoveryTemplate tpl = recoveryTemplate(templateNumber, greeting);
+        String html = recoveryEmailShell(tpl.headline(), tpl.body());
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
+            helper.setTo(to);
+            helper.setBcc("info@be-working.com");
+            helper.setReplyTo("info@be-working.com");
+            helper.setSubject(tpl.subject());
+            helper.setText(html, true);
+            mailSender.send(message);
+            logger.info("Recovery email #{} sent to {}", templateNumber, to);
+        } catch (Exception e) {
+            logger.error("Failed to send recovery email #{} to {}: {}", templateNumber, to, e.getMessage(), e);
+        }
+    }
+
+    private record RecoveryTemplate(String subject, String headline, String body) {}
+
+    private RecoveryTemplate recoveryTemplate(int n, String greeting) {
+        String waLink = "https://wa.me/34640369759?text=Hola,%20necesito%20ayuda%20para%20completar%20mi%20registro";
+        String waButton = "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto 16px;\"><tr>"
+            + "<td style=\"background:#009624;border-radius:999px;\">"
+            + "<a href=\"" + waLink + "\" style=\"display:inline-block;padding:12px 28px;color:#fff;text-decoration:none;font-weight:600;font-size:15px;\">Hablar por WhatsApp</a>"
+            + "</td></tr></table>";
+        return switch (n) {
+            case 2 -> new RecoveryTemplate(
+                "Te ayudamos a terminar tu reserva — BeWorking",
+                "Estamos aquí para ayudarte",
+                "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
+                + "<p style=\"margin:0 0 16px;\">Hace un día empezaste el proceso pero no llegamos a completarlo juntos. ¿Necesitas que te ayudemos en algún paso?</p>"
+                + "<p style=\"margin:0 0 24px;\">Si prefieres hablar antes de pagar, escríbenos por WhatsApp y un compañero del equipo te resuelve dudas en directo. Es lo más rápido.</p>"
+                + waButton
+                + "<p style=\"margin:0;color:#666;font-size:13px;text-align:center;\">o responde a este correo si lo prefieres.</p>"
+            );
+            case 3 -> new RecoveryTemplate(
+                "Otros eligen BeWorking porque… — BeWorking",
+                "¿Qué dicen quienes ya están dentro?",
+                "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
+                + "<p style=\"margin:0 0 16px;\">Han pasado unos días y queríamos volver a contactarte. La mayoría de las personas que dan el paso con nosotros nos cuentan lo mismo:</p>"
+                + "<p style=\"margin:0 0 8px;color:#1a1a1a;\"><em>«Lo que más valoro es responder rápido a clientes y proveedores con una dirección fiscal y atención telefónica reales.»</em></p>"
+                + "<p style=\"margin:0 0 24px;color:#666;font-size:13px;\">— María, autónoma desde 2024</p>"
+                + "<p style=\"margin:0 0 24px;\">Si estás dudando, cuéntanos qué te frena y vemos cómo encajarlo. Sin compromiso.</p>"
+                + waButton
+            );
+            case 4 -> new RecoveryTemplate(
+                "Última oportunidad — ¿podemos ayudarte? — BeWorking",
+                "Última llamada",
+                "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
+                + "<p style=\"margin:0 0 16px;\">Esta es la última vez que te escribimos sobre tu registro pendiente. No queremos saturarte.</p>"
+                + "<p style=\"margin:0 0 24px;\">Si en algún momento quieres retomarlo, aquí estaremos. Y si simplemente no era el momento, gracias por considerarnos.</p>"
+                + waButton
+                + "<p style=\"margin:0;color:#666;font-size:13px;text-align:center;\">Un saludo del equipo BeWorking.</p>"
+            );
+            default -> new RecoveryTemplate(
+                "¿Necesitas ayuda para terminar tu registro? — BeWorking",
+                "¿Necesitas ayuda para terminar?",
+                "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
+                + "<p style=\"margin:0 0 16px;\">Vimos que empezaste el registro en BeWorking pero no llegaste a completar el pago. Pasa muchas veces — formulario, banco, una duda — y queríamos echarte una mano.</p>"
+                + "<p style=\"margin:0 0 24px;\">¿Qué te frenó? Responde a este correo o escríbenos por WhatsApp y resolvemos cualquier duda en menos de un día hábil. Sin compromiso.</p>"
+                + waButton
+                + "<p style=\"margin:0;color:#666;font-size:13px;text-align:center;\">o responde a este correo y te contestamos.</p>"
+            );
+        };
+    }
+
+    private String recoveryEmailShell(String headline, String body) {
+        return "<!doctype html>"
             + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
             + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head>"
             + "<body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;\">"
@@ -553,37 +626,15 @@ public class EmailService {
             + "<table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:560px;max-width:560px;margin:0 auto;\">"
             + "<tr><td style=\"background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:32px;color:#fff;border-radius:14px 14px 0 0;\">"
             + "<div style=\"font-size:14px;letter-spacing:0.06em;text-transform:uppercase;opacity:.85;\">BeWorking</div>"
-            + "<div style=\"font-size:24px;font-weight:700;margin-top:8px;\">¿Necesitas ayuda para terminar?</div>"
+            + "<div style=\"font-size:24px;font-weight:700;margin-top:8px;\">" + headline + "</div>"
             + "</td></tr>"
             + "<tr><td style=\"background:#fff;padding:32px;color:#1a1a1a;line-height:1.55;\">"
-            + "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
-            + "<p style=\"margin:0 0 16px;\">Vimos que empezaste el registro en BeWorking pero no llegaste a completar el pago. Pasa muchas veces — formulario, banco, una duda — y queríamos echarte una mano.</p>"
-            + "<p style=\"margin:0 0 24px;\">¿Qué te frenó? Responde a este correo o escríbenos por WhatsApp y resolvemos cualquier duda en menos de un día hábil. Sin compromiso.</p>"
-            + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto 16px;\"><tr>"
-            + "<td style=\"background:#009624;border-radius:999px;\">"
-            + "<a href=\"https://wa.me/34640369759?text=Hola,%20necesito%20ayuda%20para%20completar%20mi%20registro\" "
-            + "style=\"display:inline-block;padding:12px 28px;color:#fff;text-decoration:none;font-weight:600;font-size:15px;\">Hablar por WhatsApp</a>"
-            + "</td></tr></table>"
-            + "<p style=\"margin:0;color:#666;font-size:13px;text-align:center;\">o responde a este correo y te contestamos.</p>"
+            + body
             + "</td></tr>"
             + "<tr><td style=\"background:#fafafa;padding:20px 32px;color:#888;font-size:12px;line-height:1.5;border-radius:0 0 14px 14px;\">"
             + "BeWorking · Calle Alejandro Dumas 17, 29004 Málaga · <a href=\"mailto:info@be-working.com\" style=\"color:#009624;text-decoration:none;\">info@be-working.com</a>"
             + "</td></tr>"
             + "</table></td></tr></table></body></html>";
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            applyFrom(helper);
-            helper.setTo(to);
-            helper.setBcc("info@be-working.com");
-            helper.setReplyTo("info@be-working.com");
-            helper.setSubject(subject);
-            helper.setText(htmlContent, true);
-            mailSender.send(message);
-            logger.info("Abandonment recovery email sent to {}", to);
-        } catch (Exception e) {
-            logger.error("Failed to send abandonment recovery email to {}: {}", to, e.getMessage(), e);
-        }
     }
 
     public String sendHtmlAndReturnMessageId(String to, String subject, String htmlContent) {

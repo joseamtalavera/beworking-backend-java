@@ -110,6 +110,12 @@ public class ContactProfile {
     @Column(name = "abandonment_email_sent_at")
     private LocalDateTime abandonmentEmailSentAt;
 
+    @Column(name = "abandonment_email_count", nullable = false)
+    private Integer abandonmentEmailCount = 0;
+
+    @Column(name = "last_recovery_email_at")
+    private LocalDateTime lastRecoveryEmailAt;
+
     @Column(name = "billing_tax_id_type")
     private String billingTaxIdType;
 
@@ -403,6 +409,22 @@ public class ContactProfile {
 
     public void setAbandonmentEmailSentAt(LocalDateTime abandonmentEmailSentAt) {
         this.abandonmentEmailSentAt = abandonmentEmailSentAt;
+    }
+
+    public Integer getAbandonmentEmailCount() {
+        return abandonmentEmailCount == null ? 0 : abandonmentEmailCount;
+    }
+
+    public void setAbandonmentEmailCount(Integer abandonmentEmailCount) {
+        this.abandonmentEmailCount = abandonmentEmailCount == null ? 0 : abandonmentEmailCount;
+    }
+
+    public LocalDateTime getLastRecoveryEmailAt() {
+        return lastRecoveryEmailAt;
+    }
+
+    public void setLastRecoveryEmailAt(LocalDateTime lastRecoveryEmailAt) {
+        this.lastRecoveryEmailAt = lastRecoveryEmailAt;
     }
 
     public String getBillingTaxIdType() {

@@ -98,8 +98,10 @@ public class RegisterService {
             user.setEmailConfirmed(false); // pending until payment completes
         }
 
-        // Auto-link or create ContactProfile in pending state
-        ContactProfile cp = applyContactProfileFromRequest(user, request, normalizedEmail, "Pendiente Pago");
+        // Auto-link or create ContactProfile in funnel-drop state. The recovery
+        // cron picks these up and sends a 4-touch email sequence; the aging
+        // scheduler flips them to Inactivo at 7d if no payment lands.
+        ContactProfile cp = applyContactProfileFromRequest(user, request, normalizedEmail, "Potencial");
 
         boolean isNewProfile = cp.getId() == null;
         contactProfileRepository.save(cp);
@@ -505,8 +507,9 @@ public class RegisterService {
 
     /**
      * Builds or updates the ContactProfile attached to {@code user} from RegisterRequest fields,
-     * setting status (e.g. "Activo" for active, "Pendiente Pago" for pending). Auto-fills
-     * billing address from the location code when known. Caller is responsible for save().
+     * setting status (e.g. "Activo" for paid users, "Potencial" for users who started a paid
+     * flow but haven't completed payment). Auto-fills billing address from the location code
+     * when known. Caller is responsible for save().
      */
     private ContactProfile applyContactProfileFromRequest(
             User user, RegisterRequest request, String normalizedEmail, String status) {

@@ -47,7 +47,30 @@ public interface ContactProfileRepository extends JpaRepository<ContactProfile, 
         String representativeEmail
     );
 
-    List<ContactProfile> findByStatusAndAbandonmentEmailSentAtIsNull(String status);
+    /**
+     * Recovery cron candidates: contacts in the funnel-drop state, bounded by
+     * created_at ≥ cutoff so we don't include contacts that already aged out
+     * (the aging scheduler flips them to Inactivo at 7d). The "no invoice"
+     * check is implicit — InvoiceService auto-promotes any invoiced contact
+     * to Activo, so anyone still at Potencial has no invoice by definition.
+     * Each row is filtered further in code by elapsed-time windows that
+     * depend on its current abandonment_email_count.
+     */
+    List<ContactProfile> findByStatusAndCreatedAtGreaterThanEqualAndAbandonmentEmailCountLessThan(
+        String status,
+        java.time.LocalDateTime createdSince,
+        int maxCount
+    );
+
+    /**
+     * Aging scheduler target: contacts still sitting at Potencial after the
+     * 7-day window. Daily job flips these to Inactivo. Same reasoning as
+     * above — if they were paying we'd see Activo.
+     */
+    List<ContactProfile> findByStatusAndCreatedAtLessThan(
+        String status,
+        java.time.LocalDateTime createdBefore
+    );
 
     @org.springframework.data.jpa.repository.Query("SELECT MAX(c.id) FROM ContactProfile c")
     Optional<Long> findMaxId();
