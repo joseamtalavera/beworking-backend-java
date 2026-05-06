@@ -77,7 +77,7 @@ public class InactivoReengagementScheduler {
             cp.setReengagementEmailCount(alreadySent + 1);
             cp.setLastReengagementEmailAt(now);
             contactProfileRepository.save(cp);
-            emailService.sendReengagementEmail(email, cp.getName());
+            emailService.sendReengagementEmail(email, cp.getName(), cp.getId(), alreadySent + 1);
             sent++;
         }
 

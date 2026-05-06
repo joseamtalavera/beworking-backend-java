@@ -115,6 +115,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.DELETE, "/api/contact-profiles/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/public/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/public/**").permitAll()
+                // Email open-tracking pixel — recipients are not logged in.
+                .requestMatchers(HttpMethod.GET, "/api/track/**").permitAll()
                 .requestMatchers("/dashboard/admin/**").hasRole("ADMIN")
                 .requestMatchers("/dashboard/user/**").hasRole("USER")
                 .anyRequest().authenticated()

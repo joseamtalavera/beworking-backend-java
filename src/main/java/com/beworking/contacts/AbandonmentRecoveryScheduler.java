@@ -102,7 +102,7 @@ public class AbandonmentRecoveryScheduler {
             }
             contactProfileRepository.save(cp);
 
-            emailService.sendRecoveryEmail(email, cp.getName(), templateNumber);
+            emailService.sendRecoveryEmail(email, cp.getName(), templateNumber, cp.getId());
             sent++;
         }
 

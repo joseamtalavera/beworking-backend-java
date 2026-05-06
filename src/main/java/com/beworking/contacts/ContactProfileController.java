@@ -413,6 +413,186 @@ public class ContactProfileController {
     }
 
     /**
+     * Bulk-trigger the recovery email send-now action for a list of contacts.
+     * Each row is processed independently — invalid IDs / non-Potencial
+     * states / exhausted sequences are reported back in {@code skipped}.
+     * Used by the Contacts table bulk-action toolbar.
+     */
+    @PostMapping("/bulk-send-recovery")
+    public ResponseEntity<Map<String, Object>> bulkSendRecovery(
+        @RequestBody Map<String, Object> body,
+        Authentication authentication
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        @SuppressWarnings("unchecked")
+        List<Object> rawIds = body.get("ids") instanceof List ? (List<Object>) body.get("ids") : List.of();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        int sent = 0;
+        int skipped = 0;
+        for (Object raw : rawIds) {
+            Long id;
+            try { id = Long.valueOf(raw.toString()); }
+            catch (Exception e) { skipped++; continue; }
+
+            ContactProfile cp = contactProfileRepository.findById(id).orElse(null);
+            if (cp == null || !"Potencial".equals(cp.getStatus())) { skipped++; continue; }
+            int already = cp.getAbandonmentEmailCount();
+            if (already >= 4) { skipped++; continue; }
+            String email = cp.getEmailPrimary();
+            if (email == null || email.isBlank()) { skipped++; continue; }
+
+            int templateNumber = already + 1;
+            cp.setAbandonmentEmailCount(templateNumber);
+            cp.setLastRecoveryEmailAt(now);
+            if (templateNumber == 1) cp.setAbandonmentEmailSentAt(now);
+            contactProfileRepository.save(cp);
+            emailService.sendRecoveryEmail(email, cp.getName(), templateNumber, cp.getId());
+            sent++;
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("requested", rawIds.size());
+        result.put("sent", sent);
+        result.put("skipped", skipped);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Bulk-trigger the reengagement email for Inactivo contacts. Same shape
+     * as bulk-send-recovery but advances reengagement_email_count instead.
+     * Honours the 3-attempt cap and 6-month minimum interval.
+     */
+    @PostMapping("/bulk-send-reengagement")
+    public ResponseEntity<Map<String, Object>> bulkSendReengagement(
+        @RequestBody Map<String, Object> body,
+        Authentication authentication
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        @SuppressWarnings("unchecked")
+        List<Object> rawIds = body.get("ids") instanceof List ? (List<Object>) body.get("ids") : List.of();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.Duration sixMonths = java.time.Duration.ofDays(180);
+        int sent = 0;
+        int skipped = 0;
+        for (Object raw : rawIds) {
+            Long id;
+            try { id = Long.valueOf(raw.toString()); }
+            catch (Exception e) { skipped++; continue; }
+
+            ContactProfile cp = contactProfileRepository.findById(id).orElse(null);
+            if (cp == null || !"Inactivo".equals(cp.getStatus())) { skipped++; continue; }
+            int already = cp.getReengagementEmailCount();
+            if (already >= 3) { skipped++; continue; }
+            java.time.LocalDateTime last = cp.getLastReengagementEmailAt();
+            if (last != null && java.time.Duration.between(last, now).compareTo(sixMonths) < 0) {
+                skipped++; continue;
+            }
+            String email = cp.getEmailPrimary();
+            if (email == null || email.isBlank()) { skipped++; continue; }
+
+            cp.setReengagementEmailCount(already + 1);
+            cp.setLastReengagementEmailAt(now);
+            contactProfileRepository.save(cp);
+            emailService.sendReengagementEmail(email, cp.getName(), cp.getId(), already + 1);
+            sent++;
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("requested", rawIds.size());
+        result.put("sent", sent);
+        result.put("skipped", skipped);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * CSV export of contacts matching the current filters. Streams
+     * {@code text/csv} to the browser. Same status/search/userType filters
+     * as the list endpoint; "all" or omitted means every contact.
+     */
+    @GetMapping(value = "/export.csv", produces = "text/csv")
+    public ResponseEntity<String> exportCsv(
+        @org.springframework.web.bind.annotation.RequestParam(value = "status", required = false) String status,
+        @org.springframework.web.bind.annotation.RequestParam(value = "search", required = false) String search,
+        @org.springframework.web.bind.annotation.RequestParam(value = "userType", required = false) String userType,
+        Authentication authentication
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        StringBuilder sql = new StringBuilder("""
+            SELECT id, name, email_primary, status, user_type, phone_primary,
+                   created_at, status_changed_at, abandonment_email_count,
+                   reengagement_email_count
+              FROM beworking.contact_profiles
+             WHERE 1=1
+            """);
+        List<Object> args = new java.util.ArrayList<>();
+        if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)) {
+            sql.append(" AND status = ?");
+            args.add(status);
+        }
+        if (userType != null && !userType.isBlank() && !"all".equalsIgnoreCase(userType)) {
+            sql.append(" AND user_type = ?");
+            args.add(userType);
+        }
+        if (search != null && !search.isBlank()) {
+            sql.append(" AND (LOWER(name) LIKE ? OR LOWER(email_primary) LIKE ?)");
+            String like = "%" + search.toLowerCase() + "%";
+            args.add(like);
+            args.add(like);
+        }
+        sql.append(" ORDER BY created_at DESC");
+
+        StringBuilder csv = new StringBuilder();
+        csv.append("id,name,email,status,user_type,phone,created_at,status_changed_at,recovery_emails_sent,reengagement_emails_sent\n");
+        jdbcTemplate.query(sql.toString(), rs -> {
+            csv.append(csvCell(rs.getObject("id")));
+            csv.append(',').append(csvCell(rs.getString("name")));
+            csv.append(',').append(csvCell(rs.getString("email_primary")));
+            csv.append(',').append(csvCell(rs.getString("status")));
+            csv.append(',').append(csvCell(rs.getString("user_type")));
+            csv.append(',').append(csvCell(rs.getString("phone_primary")));
+            csv.append(',').append(csvCell(rs.getObject("created_at")));
+            csv.append(',').append(csvCell(rs.getObject("status_changed_at")));
+            csv.append(',').append(csvCell(rs.getObject("abandonment_email_count")));
+            csv.append(',').append(csvCell(rs.getObject("reengagement_email_count")));
+            csv.append('\n');
+        }, args.toArray());
+
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.add("Content-Disposition",
+            "attachment; filename=contacts-" + java.time.LocalDate.now() + ".csv");
+        return new ResponseEntity<>(csv.toString(), headers, HttpStatus.OK);
+    }
+
+    private static String csvCell(Object value) {
+        if (value == null) return "";
+        String s = value.toString();
+        if (s.contains(",") || s.contains("\"") || s.contains("\n")) {
+            return "\"" + s.replace("\"", "\"\"") + "\"";
+        }
+        return s;
+    }
+
+    /**
      * Funnel snapshot for the chip-row at the top of the Contacts table.
      * Returns counts for the three canonical statuses so the UI can render
      * one-click filters without re-fetching the whole list.
@@ -525,7 +705,7 @@ public class ContactProfileController {
             cp.setAbandonmentEmailSentAt(now);
             contactProfileRepository.save(cp);
 
-            emailService.sendRecoveryEmail(email, cp.getName(), 1);
+            emailService.sendRecoveryEmail(email, cp.getName(), 1, cp.getId());
             sent++;
         }
 

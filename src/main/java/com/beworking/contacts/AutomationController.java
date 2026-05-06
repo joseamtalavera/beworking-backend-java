@@ -199,11 +199,35 @@ public class AutomationController {
             recoveryByTemplate.put(String.valueOf(row.get("n")), ((Number) row.get("c")).longValue());
         }
 
+        // Open tracking: distinct contact-opens per (type, template_number)
+        // in the last 30 days. Multiple opens by same recipient count as 1 —
+        // matches industry "open rate" convention.
+        Map<String, Long> recoveryOpensByTemplate = new LinkedHashMap<>();
+        List<Map<String, Object>> opensRows = jdbcTemplate.queryForList("""
+            SELECT template_number AS n, COUNT(DISTINCT contact_id) AS c
+              FROM beworking.email_opens
+             WHERE template_type = 'recovery'
+               AND opened_at >= NOW() - INTERVAL '30 days'
+             GROUP BY template_number
+             ORDER BY template_number
+            """);
+        for (Map<String, Object> row : opensRows) {
+            recoveryOpensByTemplate.put(String.valueOf(row.get("n")), ((Number) row.get("c")).longValue());
+        }
+
+        long reengagementOpens30d = jdbcTemplate.queryForObject("""
+            SELECT COUNT(DISTINCT contact_id) FROM beworking.email_opens
+             WHERE template_type = 'reengagement'
+               AND opened_at >= NOW() - INTERVAL '30 days'
+            """, Long.class);
+
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("counts", counts);
         response.put("potencialesConverted30d", potencialesConverted30d);
         response.put("potencialesAgedOut30d", potencialesAgedOut30d);
         response.put("recoveryEmailsByTemplate30d", recoveryByTemplate);
+        response.put("recoveryOpensByTemplate30d", recoveryOpensByTemplate);
+        response.put("reengagementOpens30d", reengagementOpens30d);
         return ResponseEntity.ok(response);
     }
 

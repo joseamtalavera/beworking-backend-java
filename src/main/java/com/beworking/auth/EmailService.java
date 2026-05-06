@@ -547,10 +547,24 @@ public class EmailService {
      */
     @Async
     public void sendRecoveryEmail(String to, String name, int templateNumber) {
+        sendRecoveryEmail(to, name, templateNumber, null);
+    }
+
+    /**
+     * Same as the 3-arg variant plus a contactId used to inject an
+     * open-tracking pixel and tag links with UTM params. Skip the contactId
+     * (or pass null) for ad-hoc sends without tracking.
+     */
+    @Async
+    public void sendRecoveryEmail(String to, String name, int templateNumber, Long contactId) {
         String safeName = (name != null && !name.isBlank()) ? name : "";
         String greeting = safeName.isEmpty() ? "Hola," : "Hola " + safeName + ",";
         RecoveryTemplate tpl = recoveryTemplate(templateNumber, greeting);
-        String html = recoveryEmailShell(tpl.headline(), tpl.body());
+        String body = tpl.body();
+        if (contactId != null) {
+            body = injectTracking(body, "recovery", templateNumber, contactId);
+        }
+        String html = recoveryEmailShell(tpl.headline(), body);
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -575,6 +589,16 @@ public class EmailService {
      */
     @Async
     public void sendReengagementEmail(String to, String name) {
+        sendReengagementEmail(to, name, null, 1);
+    }
+
+    /**
+     * Same as the 2-arg variant plus a contactId + the email number
+     * (1, 2, or 3) used to inject an open-tracking pixel. Pass null for
+     * the contactId for sends without tracking.
+     */
+    @Async
+    public void sendReengagementEmail(String to, String name, Long contactId, int emailNumber) {
         String safeName = (name != null && !name.isBlank()) ? name : "";
         String greeting = safeName.isEmpty() ? "Hola," : "Hola " + safeName + ",";
         String waLink = "https://wa.me/34640369759?text=Hola,%20me%20gustaria%20saber%20que%20espacios%20teneis";
@@ -588,6 +612,9 @@ public class EmailService {
             + "<p style=\"margin:0 0 24px;\">Sin compromiso. Si te interesa lo que ofrecemos hoy, escríbenos y te lo contamos.</p>"
             + waButton
             + "<p style=\"margin:0;color:#666;font-size:13px;text-align:center;\">o responde a este correo y te contestamos.</p>";
+        if (contactId != null) {
+            body = injectTracking(body, "reengagement", emailNumber, contactId);
+        }
         String html = recoveryEmailShell("¿Cuánto tiempo!", body);
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -673,6 +700,24 @@ public class EmailService {
             + "BeWorking · Calle Alejandro Dumas 17, 29004 Málaga · <a href=\"mailto:info@be-working.com\" style=\"color:#009624;text-decoration:none;\">info@be-working.com</a>"
             + "</td></tr>"
             + "</table></td></tr></table></body></html>";
+    }
+
+    /**
+     * Append a 1×1 transparent tracking pixel that hits
+     * {@code /api/track/open?c=…&t=…&type=…} when the recipient opens the
+     * email. Inline images get auto-loaded by most clients (with caching),
+     * which is why the controller sets no-cache headers — Gmail proxies
+     * still cache, but we get a single signal which is enough for first-open
+     * rate.
+     */
+    private String injectTracking(String body, String type, int templateNumber, Long contactId) {
+        String pixelUrl = (baseUrl != null ? baseUrl.replaceAll("/+$", "") : "")
+            + "/api/track/open?c=" + contactId
+            + "&t=" + templateNumber
+            + "&type=" + type;
+        return body
+            + "<img src=\"" + pixelUrl + "\" alt=\"\" width=\"1\" height=\"1\""
+            + " style=\"display:block;width:1px;height:1px;border:0;outline:none;text-decoration:none\" />";
     }
 
     public String sendHtmlAndReturnMessageId(String to, String subject, String htmlContent) {
