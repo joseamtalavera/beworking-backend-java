@@ -1,6 +1,5 @@
 package com.beworking.contacts;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -39,7 +38,6 @@ public class ContactProfileService {
 
     @PersistenceContext
     private EntityManager entityManager;
-    private static final DateTimeFormatter LAST_ACTIVE_DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM dd yyyy");
 
     private final ContactProfileRepository repository;
     private final UserRepository userRepository;
@@ -370,30 +368,15 @@ public class ContactProfileService {
         return "Inactivo";
     }
 
+    /**
+     * Returns ISO-8601 timestamp ({@code 2026-05-06T13:42:09}) so the
+     * frontend can format relatively in the user's locale via
+     * Intl.RelativeTimeFormat. Avoids baking English strings like "15h ago"
+     * into a Spanish UI.
+     */
     private String formatLastActive(ContactProfile profile) {
         LocalDateTime reference = firstNonNull(profile.getStatusChangedAt(), profile.getOnboardedAt(), profile.getCreatedAt());
-        if (reference == null) {
-            return null;
-        }
-
-        Duration duration = Duration.between(reference, LocalDateTime.now());
-        if (!duration.isNegative()) {
-            long minutes = duration.toMinutes();
-            if (minutes < 1) {
-                return "Just now";
-            } else if (minutes < 60) {
-                return minutes + "m ago";
-            }
-            long hours = duration.toHours();
-            if (hours < 24) {
-                return hours + "h ago";
-            }
-            long days = duration.toDays();
-            if (days < 7) {
-                return days + "d ago";
-            }
-        }
-        return LAST_ACTIVE_DATE_FORMATTER.format(reference);
+        return reference != null ? reference.toString() : null;
     }
 
     @SafeVarargs
