@@ -22,7 +22,9 @@ import org.springframework.stereotype.Component;
  *
  * What this does NOT catch:
  *   - Active OV subscribers — their monthly recurring invoices keep
- *     creacionfecha fresh, so they stay above the threshold.
+ *     creacionfecha fresh AND we additionally guard against demoting any
+ *     contact with an active subscription row, even if their last invoice
+ *     somehow predates the window (Stripe pause, billing drift, etc.).
  *   - Recently-cancelled OV subs — already handled by the
  *     subscription-cancelled webhook.
  *
@@ -53,6 +55,12 @@ public class ActivoAgingScheduler {
                        FROM beworking.facturas f
                       WHERE f.idcliente = cp.id
                         AND f.creacionfecha >= NOW() - (? * INTERVAL '1 month')
+                   )
+               AND NOT EXISTS (
+                     SELECT 1
+                       FROM beworking.subscriptions s
+                      WHERE s.contact_id = cp.id
+                        AND s.active = TRUE
                    )
             """, DORMANCY_MONTHS);
 
