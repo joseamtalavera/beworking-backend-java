@@ -107,14 +107,14 @@ public class DailyReconciliationScheduler {
         result.dbActive = result.dbStripe + result.dbBankTransfer;
 
         // 1b. Pendiente invoices for current year (mirrors dashboard pendingByAccount).
-        //     Real columns: creacionfecha (date), id_cuenta (FK to cuentas.codigo).
+        //     Buckets by f.holdedcuenta with NULL → 'PT' default, matching the
+        //     dashboard expression `(invoice.cuenta || 'PT').toUpperCase()`.
         //     Status keywords kept in sync with Overview.jsx pendingByAccount.
         Map<String, Object> pendiente = jdbcTemplate.queryForMap(
             "SELECT COUNT(*) AS cnt, COALESCE(SUM(f.total), 0) AS amt " +
             "  FROM beworking.facturas f " +
-            "  JOIN beworking.cuentas c ON c.id = f.id_cuenta " +
             " WHERE EXTRACT(YEAR FROM f.creacionfecha) = EXTRACT(YEAR FROM CURRENT_DATE) " +
-            "   AND UPPER(c.codigo) = ? " +
+            "   AND UPPER(COALESCE(NULLIF(f.holdedcuenta, ''), 'PT')) = ? " +
             "   AND (LOWER(COALESCE(f.estado,'')) LIKE '%pend%' " +
             "     OR LOWER(COALESCE(f.estado,'')) LIKE '%confir%' " +
             "     OR LOWER(COALESCE(f.estado,'')) LIKE '%fact%' " +
@@ -306,86 +306,98 @@ public class DailyReconciliationScheduler {
     }
 
     private void sendReport(List<AccountResult> results) {
-        String subject = "⚠ BeWorking — Reconciliation Report " + LocalDate.now();
+        String subject = "BeWorking — Subscription Reconciliation " + LocalDate.now();
+        String fontStack = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
         StringBuilder html = new StringBuilder();
-        html.append("<div style='font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08)'>");
-        html.append("<div style='background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:32px;color:#fff'>");
-        html.append("<p style='margin:0 0 4px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85'>BEWORKING</p>");
-        html.append("<h1 style='margin:0;font-size:22px;font-weight:700'>Daily Reconciliation — ").append(LocalDate.now()).append("</h1>");
+        html.append("<div style=\"font-family:").append(fontStack).append(";max-width:720px;margin:24px auto;color:#1a1a1a;background:#fafafa;padding:24px\">");
+
+        // Outer card matching dashboard surface
+        html.append("<div style='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px 32px'>");
+
+        // Header: title + last run date (mirrors dashboard ReconciliationCard header)
+        html.append("<div style='display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f0f0f0;padding-bottom:16px;margin-bottom:24px'>");
+        html.append("<h1 style='margin:0;font-size:18px;font-weight:600;letter-spacing:-0.015em;color:#111'>Subscription Reconciliation</h1>");
+        html.append("<span style='font-size:12px;color:#6b7280'>Last run: ").append(LocalDate.now()).append("</span>");
         html.append("</div>");
-        html.append("<div style='padding:24px 32px'>");
 
         for (AccountResult r : results) {
             boolean ok = !r.hasIssues();
-            String color = ok ? "#009624" : (r.missingInvoices.size() > 0 ? "#d32f2f" : "#f57c00");
-            String bg = ok ? "#f5faf6" : (r.missingInvoices.size() > 0 ? "#fef5f5" : "#fff8f0");
+            String accent = ok ? "#16a34a" : (r.missingInvoices.size() > 0 ? "#dc2626" : "#ea580c");
+            String accentBg = ok ? "#f0fdf4" : (r.missingInvoices.size() > 0 ? "#fef2f2" : "#fff7ed");
             String statusLabel = r.error != null ? "Error" : (ok ? "OK" : (r.missingInvoices.size() > 0 ? "Alert" : "Warning"));
+            String displayName = r.account.equals("GT") ? "GT" : "PT";
+            String fullName = r.account.equals("GT") ? "GLOBALTECHNO OÜ" : "BeWorking Partners";
 
-            html.append("<div style='margin-bottom:24px;background:").append(bg)
-                .append(";border-radius:10px;padding:20px 24px;border-left:4px solid ").append(color).append("'>");
+            html.append("<div style='border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:20px'>");
 
-            // Header row: name · total · status chip (mirrors dashboard card header)
-            html.append("<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:16px'>");
-            html.append("<div>")
-                .append("<span style='font-size:16px;font-weight:700;color:").append(color).append("'>")
-                .append(r.account.equals("GT") ? "GLOBALTECHNO OÜ (GT)" : "BeWorking Partners (PT)")
-                .append("</span> ")
-                .append("<span style='font-size:13px;color:#888;margin-left:8px'>").append(r.total()).append(" total</span>")
-                .append("</div>");
-            html.append("<span style='font-size:11px;font-weight:600;background:").append(color)
-                .append("22;color:").append(color).append(";padding:4px 10px;border-radius:12px'>")
-                .append(statusLabel).append("</span>");
-            html.append("</div>");
+            // Sub-card header (matches dashboard card head with colored dot + total + status chip)
+            html.append("<table style='width:100%;border-collapse:collapse;background:").append(accentBg).append(";border-bottom:1px solid #e5e7eb'>");
+            html.append("<tr>");
+            html.append("<td style='padding:12px 16px;vertical-align:middle'>");
+            html.append("<span style='display:inline-block;width:8px;height:8px;border-radius:50%;background:").append(accent).append(";margin-right:8px;vertical-align:middle'></span>");
+            html.append("<span style='font-size:14px;font-weight:700;color:#111;vertical-align:middle'>").append(displayName).append("</span>");
+            html.append("<span style='font-size:13px;color:#6b7280;margin-left:4px;vertical-align:middle'> · ").append(fullName).append("</span>");
+            html.append("<span style='font-size:12px;color:#6b7280;margin-left:8px;vertical-align:middle'>").append(r.total()).append(" total</span>");
+            html.append("</td>");
+            html.append("<td style='padding:12px 16px;vertical-align:middle;text-align:right'>");
+            html.append("<span style='font-size:11px;font-weight:600;background:#fff;border:1px solid ").append(accent).append(";color:").append(accent).append(";padding:3px 10px;border-radius:12px'>").append(statusLabel).append("</span>");
+            html.append("</td>");
+            html.append("</tr>");
+            html.append("</table>");
+
+            // Body
+            html.append("<div style='padding:18px 16px;background:#fff'>");
 
             if (r.error != null) {
-                html.append("<p style='color:#d32f2f;font-size:13px;margin:0'>Error: ").append(r.error).append("</p>");
+                html.append("<p style='color:#dc2626;font-size:13px;margin:0'>Error: ").append(r.error).append("</p>");
             } else {
-                // 6-metric grid mirroring the dashboard ReconciliationCard
+                // 6-metric grid (mirrors dashboard layout exactly)
                 html.append("<table style='border-collapse:collapse;width:100%;table-layout:fixed'>");
                 html.append("<tr>");
                 addMetric(html, "Stripe", String.valueOf(r.stripeLive()), null, null);
                 addMetric(html, "Scheduled", String.valueOf(r.dbScheduled), null, null);
                 addMetric(html, "Bank Transfer", String.valueOf(r.dbBankTransfer), null, null);
                 addMetric(html, "Stripe Deviation", String.valueOf(r.deviation()), null,
-                    r.deviation() > 0 ? "#d32f2f" : null);
+                    r.deviation() > 0 ? "#dc2626" : null);
                 addMetric(html, "Overdue", String.valueOf(r.stripePastDue),
                     r.stripePastDue > 0 ? formatEur(r.pastDueAmount) : null,
-                    r.stripePastDue > 0 ? "#d32f2f" : null);
+                    r.stripePastDue > 0 ? "#dc2626" : null);
                 addMetric(html, "Pendiente", String.valueOf(r.pendienteCount),
                     r.pendienteCount > 0 ? formatEur(r.pendienteAmount) : null,
-                    r.pendienteCount > 0 ? "#d32f2f" : null);
+                    r.pendienteCount > 0 ? "#dc2626" : null);
                 html.append("</tr></table>");
 
                 if (!r.missingInvoices.isEmpty()) {
-                    html.append("<p style='margin:14px 0 0;font-size:13px;color:#d32f2f;font-weight:600'>")
-                        .append("✗ ").append(r.missingInvoices.size()).append(" missing invoice(s)")
+                    html.append("<p style='margin:18px 0 0;font-size:13px;color:#dc2626;font-weight:600'>")
+                        .append(r.missingInvoices.size()).append(" missing invoice(s)")
                         .append("</p>");
                 }
             }
 
             // Past due detail
             if (!r.pastDueSubs.isEmpty()) {
-                html.append("<p style='margin:18px 0 6px;font-size:13px;font-weight:700;color:#f57c00'>Past due subscriptions</p>");
-                html.append("<table style='border-collapse:collapse;width:100%;font-size:12px;border:1px solid #eee'>");
-                html.append("<tr style='background:#f5f5f5'>")
-                    .append("<th style='text-align:left;padding:6px 8px'>Customer</th>")
-                    .append("<th style='text-align:left;padding:6px 8px'>Stripe Sub</th>")
-                    .append("<th style='text-align:right;padding:6px 8px'>Amount Due</th></tr>");
+                html.append(sectionTitle("Past-due subscriptions", "#ea580c"));
+                html.append("<table style='border-collapse:collapse;width:100%;font-size:13px;border:1px solid #f0f0f0;border-radius:6px'>");
+                html.append("<tr style='background:#fafafa;border-bottom:1px solid #f0f0f0'>")
+                    .append("<th style='text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em'>Customer</th>")
+                    .append("<th style='text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em'>Stripe Sub</th>")
+                    .append("<th style='text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em'>Amount</th></tr>");
                 for (Map<String, Object> sub : r.pastDueSubs) {
                     String name = (String) sub.get("customerName");
                     String email = (String) sub.get("customerEmail");
                     String customer = name != null
-                        ? name + (email != null ? "<br><span style='color:#888;font-size:11px'>" + email + "</span>" : "")
-                        : "<span style='color:#aaa'>—</span>";
+                        ? "<span style='color:#111;font-weight:500'>" + name + "</span>"
+                          + (email != null ? "<br><span style='color:#6b7280;font-size:12px'>" + email + "</span>" : "")
+                        : "<span style='color:#9ca3af'>—</span>";
                     String subId = String.valueOf(sub.get("subscriptionId"));
-                    html.append("<tr>")
-                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee'>").append(customer).append("</td>")
-                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee'>")
+                    html.append("<tr style='border-bottom:1px solid #f5f5f5'>")
+                        .append("<td style='padding:10px 12px;vertical-align:top'>").append(customer).append("</td>")
+                        .append("<td style='padding:10px 12px;vertical-align:top'>")
                         .append("<a href='https://dashboard.stripe.com/subscriptions/").append(subId)
-                        .append("' style='color:#0a8cff;font-family:monospace;font-size:11px;text-decoration:none'>")
+                        .append("' style='color:#2563eb;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;text-decoration:none'>")
                         .append(subId).append("</a></td>")
-                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap'>")
+                        .append("<td style='padding:10px 12px;vertical-align:top;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600;color:#111'>")
                         .append(formatEur(sub.get("amountDue"))).append("</td></tr>");
                 }
                 html.append("</table>");
@@ -393,19 +405,20 @@ public class DailyReconciliationScheduler {
 
             // Missing invoice detail
             if (!r.missingInvoices.isEmpty()) {
-                html.append("<p style='margin:18px 0 6px;font-size:13px;font-weight:700;color:#d32f2f'>Missing invoices <span style='font-weight:400;color:#888'>(paid in Stripe, not in DB)</span></p>");
-                html.append("<table style='border-collapse:collapse;width:100%;font-size:12px;border:1px solid #eee'>");
-                html.append("<tr style='background:#f5f5f5'>")
-                    .append("<th style='text-align:left;padding:6px 8px'>Stripe Invoice</th>")
-                    .append("<th style='text-align:left;padding:6px 8px'>Action</th></tr>");
+                html.append(sectionTitle("Missing invoices in DB", "#dc2626"));
+                html.append("<p style='margin:0 0 8px;font-size:12px;color:#6b7280'>Paid in Stripe but no row in <code style='font-family:ui-monospace,monospace'>beworking.facturas</code>.</p>");
+                html.append("<table style='border-collapse:collapse;width:100%;font-size:13px;border:1px solid #f0f0f0;border-radius:6px'>");
+                html.append("<tr style='background:#fafafa;border-bottom:1px solid #f0f0f0'>")
+                    .append("<th style='text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em'>Stripe Invoice</th>")
+                    .append("<th style='text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em'>Action</th></tr>");
                 for (Map<String, Object> inv : r.missingInvoices) {
                     String invId = (String) inv.get("stripeInvoiceId");
                     String url = (String) inv.get("stripeUrl");
-                    html.append("<tr>")
-                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee;font-family:monospace;font-size:11px'>")
+                    html.append("<tr style='border-bottom:1px solid #f5f5f5'>")
+                        .append("<td style='padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#111'>")
                         .append(invId).append("</td>")
-                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee'>")
-                        .append("<a href='").append(url).append("' style='color:#0a8cff;text-decoration:none'>")
+                        .append("<td style='padding:10px 12px;text-align:right'>")
+                        .append("<a href='").append(url).append("' style='color:#2563eb;text-decoration:none;font-size:12px'>")
                         .append("Open in Stripe →</a></td></tr>");
                 }
                 html.append("</table>");
@@ -413,27 +426,29 @@ public class DailyReconciliationScheduler {
 
             // DB-only sub IDs (cancelled in Stripe but DB still has them active)
             if (!r.dbOnlySubIds.isEmpty()) {
-                html.append("<p style='margin:18px 0 6px;font-size:13px;font-weight:700;color:#f57c00'>DB-only subs <span style='font-weight:400;color:#888'>(cancelled in Stripe, still active in DB)</span></p>");
-                html.append("<div style='font-family:monospace;font-size:11px;color:#444;line-height:1.7'>");
+                html.append(sectionTitle("DB-only subs", "#ea580c"));
+                html.append("<p style='margin:0 0 8px;font-size:12px;color:#6b7280'>Cancelled in Stripe, still active in DB.</p>");
+                html.append("<div style='font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#374151;line-height:1.8;background:#fafafa;border:1px solid #f0f0f0;border-radius:6px;padding:10px 12px'>");
                 for (String id : r.dbOnlySubIds) html.append(id).append("<br>");
                 html.append("</div>");
             }
 
             // Stripe-only sub IDs (in Stripe but no DB record at all)
             if (!r.stripeOnlySubIds.isEmpty()) {
-                html.append("<p style='margin:18px 0 6px;font-size:13px;font-weight:700;color:#f57c00'>Stripe-only subs <span style='font-weight:400;color:#888'>(active in Stripe, no DB record)</span></p>");
-                html.append("<div style='font-family:monospace;font-size:11px;color:#444;line-height:1.7'>");
+                html.append(sectionTitle("Stripe-only subs", "#ea580c"));
+                html.append("<p style='margin:0 0 8px;font-size:12px;color:#6b7280'>Active in Stripe, no record in DB.</p>");
+                html.append("<div style='font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#374151;line-height:1.8;background:#fafafa;border:1px solid #f0f0f0;border-radius:6px;padding:10px 12px'>");
                 for (String id : r.stripeOnlySubIds) html.append(id).append("<br>");
                 html.append("</div>");
             }
 
-            html.append("</div>");
+            html.append("</div>"); // body
+            html.append("</div>"); // sub-card
         }
 
+        html.append("</div>"); // outer card
+        html.append("<p style='margin:16px 0 0;font-size:11px;color:#9ca3af;text-align:center'>BeWorking · Daily Reconciliation</p>");
         html.append("</div>");
-        html.append("<div style='background:#f9f9f9;padding:12px 32px;text-align:center;border-top:1px solid #eee'>");
-        html.append("<p style='margin:0;font-size:12px;color:#aaa'>© BeWorking · Daily Reconciliation System</p>");
-        html.append("</div></div>");
 
         try {
             emailService.sendHtml(ADMIN_EMAIL, subject, html.toString());
@@ -441,6 +456,11 @@ public class DailyReconciliationScheduler {
         } catch (Exception e) {
             logger.error("Failed to send reconciliation report: {}", e.getMessage(), e);
         }
+    }
+
+    private static String sectionTitle(String text, String color) {
+        return "<h3 style='margin:24px 0 8px;font-size:13px;font-weight:600;color:" + color
+            + ";letter-spacing:-0.005em'>" + text + "</h3>";
     }
 
     private void addRow(StringBuilder html, String label, String value) {
@@ -455,14 +475,18 @@ public class DailyReconciliationScheduler {
     }
 
     private void addMetric(StringBuilder html, String label, String value, String sub, String valueColor) {
-        String color = valueColor != null ? valueColor : "#222";
-        html.append("<td style='text-align:center;padding:8px 4px;vertical-align:top'>");
-        html.append("<div style='font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#888;font-weight:600;margin-bottom:4px'>")
+        String valueCol = valueColor != null ? valueColor : "#111";
+        String labelCol = valueColor != null ? valueColor : "#6b7280";
+        html.append("<td style='text-align:left;padding:8px 4px;vertical-align:top'>");
+        html.append("<div style='font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:").append(labelCol)
+            .append(";font-weight:600;margin-bottom:6px'>")
             .append(label).append("</div>");
-        html.append("<div style='font-size:20px;font-weight:700;color:").append(color).append(";line-height:1.1'>")
+        html.append("<div style='font-size:22px;font-weight:700;color:").append(valueCol)
+            .append(";line-height:1;font-variant-numeric:tabular-nums'>")
             .append(value).append("</div>");
         if (sub != null) {
-            html.append("<div style='font-size:11px;color:").append(color).append(";opacity:0.8;margin-top:2px'>")
+            html.append("<div style='font-size:11px;color:").append(valueCol)
+                .append(";opacity:0.85;margin-top:4px;font-variant-numeric:tabular-nums'>")
                 .append(sub).append("</div>");
         }
         html.append("</td>");

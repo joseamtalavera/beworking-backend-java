@@ -183,6 +183,7 @@ public class InvoiceService {
                 f.creacionfecha,
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf,
+                f.holdedcuenta,
                 MAX(COALESCE(c.name, c.contact_name, c.billing_name)) AS client_name,
                 MAX(
                     COALESCE(
@@ -219,8 +220,9 @@ public class InvoiceService {
                 f.estado,
                 f.creacionfecha,
                 f.holdedinvoicenum,
-                f.holdedinvoicepdf
-            ORDER BY f.creacionfecha """ + (asc ? " ASC NULLS FIRST" : " DESC NULLS LAST") + ", f.id" + (asc ? " ASC" : " DESC") + """
+                f.holdedinvoicepdf,
+                f.holdedcuenta
+            ORDER BY f.creacionfecha""" + (asc ? " ASC NULLS FIRST" : " DESC NULLS LAST") + ", f.id" + (asc ? " ASC" : " DESC") + """
 
             OFFSET ? LIMIT ?
             """;
@@ -256,7 +258,8 @@ public class InvoiceService {
                     rs.getString("client_email"),
                     rs.getString("client_tax_id"),
                     rs.getString("tenant_type"),
-                    rs.getString("products")
+                    rs.getString("products"),
+                    rs.getString("holdedcuenta")
                 );
             }
         );
