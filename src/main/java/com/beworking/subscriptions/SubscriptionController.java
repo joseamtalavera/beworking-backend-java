@@ -566,6 +566,23 @@ public class SubscriptionController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/desk-occupancy/summary")
+    public ResponseEntity<?> deskOccupancySummary(Authentication authentication) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        long totalDesks = productoRepository.countByNombrePrefix("MA1O1-");
+        long occupiedDesks = subscriptionService.findActiveDeskSubscriptions().stream()
+            .filter(s -> s.getProductoId() != null)
+            .count();
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("totalDesks", totalDesks);
+        body.put("occupiedDesks", occupiedDesks);
+        return ResponseEntity.ok(body);
+    }
+
     @GetMapping("/desk-occupancy")
     public ResponseEntity<?> deskOccupancy(Authentication authentication) {
         if (!isAdmin(authentication)) {

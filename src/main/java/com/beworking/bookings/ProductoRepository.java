@@ -16,4 +16,7 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Producto p WHERE p.id = :id")
     Optional<Producto> findByIdForUpdate(@Param("id") Long id);
+
+    @Query("SELECT COUNT(p) FROM Producto p WHERE LOWER(p.nombre) LIKE LOWER(CONCAT(:prefix, '%'))")
+    long countByNombrePrefix(@Param("prefix") String prefix);
 }
