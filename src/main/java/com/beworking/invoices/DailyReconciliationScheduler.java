@@ -5,8 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -92,9 +96,32 @@ public class DailyReconciliationScheduler {
         Integer dbBankTransfer = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM beworking.subscriptions WHERE active = true AND cuenta = ? AND billing_method = 'bank_transfer'",
             Integer.class, account);
+        Integer dbScheduled = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM beworking.subscriptions " +
+            "WHERE active = true AND cuenta = ? AND billing_method = 'stripe' " +
+            "  AND stripe_subscription_id LIKE 'sub_sched_%'",
+            Integer.class, account);
         result.dbStripe = dbStripe != null ? dbStripe : 0;
         result.dbBankTransfer = dbBankTransfer != null ? dbBankTransfer : 0;
+        result.dbScheduled = dbScheduled != null ? dbScheduled : 0;
         result.dbActive = result.dbStripe + result.dbBankTransfer;
+
+        // 1b. Pendiente invoices for current year (mirrors dashboard pendingByAccount).
+        //     Status keywords kept in sync with Overview.jsx pendingByAccount.
+        Map<String, Object> pendiente = jdbcTemplate.queryForMap(
+            "SELECT COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS amt " +
+            "  FROM beworking.facturas " +
+            " WHERE EXTRACT(YEAR FROM COALESCE(fechafactura, createdat)) = EXTRACT(YEAR FROM CURRENT_DATE) " +
+            "   AND UPPER(COALESCE(cuenta, 'PT')) = ? " +
+            "   AND (LOWER(COALESCE(estado,'')) LIKE '%pend%' " +
+            "     OR LOWER(COALESCE(estado,'')) LIKE '%confir%' " +
+            "     OR LOWER(COALESCE(estado,'')) LIKE '%fact%' " +
+            "     OR LOWER(COALESCE(estado,'')) LIKE '%invoice%' " +
+            "     OR LOWER(COALESCE(estado,'')) LIKE '%created%')",
+            account);
+        result.pendienteCount = ((Number) pendiente.get("cnt")).intValue();
+        Object amt = pendiente.get("amt");
+        result.pendienteAmount = amt != null ? new BigDecimal(amt.toString()) : BigDecimal.ZERO;
 
         // 2. Stripe data
         Map<String, Object> stripeData = http.get()
@@ -126,6 +153,9 @@ public class DailyReconciliationScheduler {
         if (paidInvoiceIds != null && !paidInvoiceIds.isEmpty()) {
             result.missingInvoices = findMissingInvoices(paidInvoiceIds, account);
         }
+
+        // 3b. Enrich past-due subs with customer name + email from DB lookup
+        result.pastDueSubs = enrichWithCustomer(result.pastDueSubs);
 
         // 4. Cross-check subscription IDs: DB vs Stripe
         @SuppressWarnings("unchecked")
@@ -159,22 +189,79 @@ public class DailyReconciliationScheduler {
 
     private List<Map<String, Object>> findMissingInvoices(List<String> stripeInvoiceIds, String account) {
         List<Map<String, Object>> missing = new ArrayList<>();
+        Set<String> ignored = loadIgnoredInvoiceIds();
 
         for (String invoiceId : stripeInvoiceIds) {
+            if (ignored.contains(invoiceId)) continue;
             try {
                 Integer count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM beworking.facturas WHERE stripeinvoiceid = ?",
                     Integer.class, invoiceId);
                 if (count == null || count == 0) {
-                    // Try to get client info from subscription
-                    missing.add(Map.of("stripeInvoiceId", invoiceId));
+                    missing.add(buildMissingInvoiceEntry(invoiceId));
                 }
-            } catch (EmptyResultDataAccessException ignored) {
-                missing.add(Map.of("stripeInvoiceId", invoiceId));
+            } catch (EmptyResultDataAccessException ignored2) {
+                missing.add(buildMissingInvoiceEntry(invoiceId));
             }
         }
 
         return missing;
+    }
+
+    private Set<String> loadIgnoredInvoiceIds() {
+        try {
+            return new HashSet<>(jdbcTemplate.queryForList(
+                "SELECT stripe_invoice_id FROM beworking.reconciliation_ignored_invoices",
+                String.class));
+        } catch (Exception e) {
+            logger.warn("Could not read reconciliation_ignored_invoices: {}", e.getMessage());
+            return new HashSet<>();
+        }
+    }
+
+    private Map<String, Object> buildMissingInvoiceEntry(String invoiceId) {
+        Map<String, Object> entry = new HashMap<>();
+        entry.put("stripeInvoiceId", invoiceId);
+        entry.put("stripeUrl", "https://dashboard.stripe.com/invoices/" + invoiceId);
+        return entry;
+    }
+
+    private List<Map<String, Object>> enrichWithCustomer(List<Map<String, Object>> subs) {
+        if (subs == null || subs.isEmpty()) return subs;
+        List<Map<String, Object>> enriched = new ArrayList<>(subs.size());
+        for (Map<String, Object> sub : subs) {
+            Map<String, Object> mutable = new HashMap<>(sub);
+            String subId = (String) sub.get("subscriptionId");
+            if (subId != null) {
+                try {
+                    Map<String, Object> contact = jdbcTemplate.queryForMap(
+                        "SELECT cp.name, cp.email " +
+                        "FROM beworking.subscriptions s " +
+                        "JOIN beworking.contact_profiles cp ON cp.id = s.contact_id " +
+                        "WHERE s.stripe_subscription_id = ? LIMIT 1",
+                        subId);
+                    mutable.put("customerName", contact.get("name"));
+                    mutable.put("customerEmail", contact.get("email"));
+                } catch (EmptyResultDataAccessException ignored) {
+                    // No DB match — sub exists in Stripe but not locally. Already
+                    // surfaced as stripeOnlySubIds; no customer to show here.
+                }
+            }
+            enriched.add(mutable);
+        }
+        return enriched;
+    }
+
+    private static String formatEur(Object amount) {
+        if (amount == null) return "€0.00";
+        try {
+            BigDecimal n = (amount instanceof BigDecimal)
+                ? (BigDecimal) amount
+                : new BigDecimal(amount.toString());
+            return String.format(Locale.ROOT, "€%,.2f", n);
+        } catch (Exception e) {
+            return "€" + amount;
+        }
     }
 
     private void persist(AccountResult result) {
@@ -231,56 +318,111 @@ public class DailyReconciliationScheduler {
             boolean ok = !r.hasIssues();
             String color = ok ? "#009624" : (r.missingInvoices.size() > 0 ? "#d32f2f" : "#f57c00");
             String bg = ok ? "#f5faf6" : (r.missingInvoices.size() > 0 ? "#fef5f5" : "#fff8f0");
+            String statusLabel = r.error != null ? "Error" : (ok ? "OK" : (r.missingInvoices.size() > 0 ? "Alert" : "Warning"));
 
             html.append("<div style='margin-bottom:24px;background:").append(bg)
                 .append(";border-radius:10px;padding:20px 24px;border-left:4px solid ").append(color).append("'>");
-            html.append("<h2 style='margin:0 0 12px;font-size:16px;color:").append(color).append("'>")
-                .append(r.account.equals("GT") ? "GLOBALTECHNO OÜ (GT)" : "BeWorking Partners (PT)").append("</h2>");
-            html.append("<table style='border-collapse:collapse;width:100%'>");
+
+            // Header row: name · total · status chip (mirrors dashboard card header)
+            html.append("<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:16px'>");
+            html.append("<div>")
+                .append("<span style='font-size:16px;font-weight:700;color:").append(color).append("'>")
+                .append(r.account.equals("GT") ? "GLOBALTECHNO OÜ (GT)" : "BeWorking Partners (PT)")
+                .append("</span> ")
+                .append("<span style='font-size:13px;color:#888;margin-left:8px'>").append(r.total()).append(" total</span>")
+                .append("</div>");
+            html.append("<span style='font-size:11px;font-weight:600;background:").append(color)
+                .append("22;color:").append(color).append(";padding:4px 10px;border-radius:12px'>")
+                .append(statusLabel).append("</span>");
+            html.append("</div>");
 
             if (r.error != null) {
-                html.append("<tr><td colspan='2' style='color:#d32f2f;font-size:13px'>Error: ").append(r.error).append("</td></tr>");
+                html.append("<p style='color:#d32f2f;font-size:13px;margin:0'>Error: ").append(r.error).append("</p>");
             } else {
-                addRow(html, "DB active subscriptions", String.valueOf(r.dbActive));
-                addRow(html, "Stripe active", String.valueOf(r.stripeActive));
-                int diff = r.dbActive - r.stripeActive - r.stripePastDue;
-                if (diff != 0) {
-                    addRow(html, "⚠ Sync gap (DB vs Stripe live)", String.valueOf(diff), "#f57c00");
-                }
-                if (r.stripePastDue > 0) {
-                    addRow(html, "⚠ Past due (payment failing)", r.stripePastDue + " subs — €" + r.pastDueAmount, "#f57c00");
-                }
+                // 6-metric grid mirroring the dashboard ReconciliationCard
+                html.append("<table style='border-collapse:collapse;width:100%;table-layout:fixed'>");
+                html.append("<tr>");
+                addMetric(html, "Stripe", String.valueOf(r.stripeLive()), null, null);
+                addMetric(html, "Scheduled", String.valueOf(r.dbScheduled), null, null);
+                addMetric(html, "Bank Transfer", String.valueOf(r.dbBankTransfer), null, null);
+                addMetric(html, "Stripe Deviation", String.valueOf(r.deviation()), null,
+                    r.deviation() > 0 ? "#d32f2f" : null);
+                addMetric(html, "Overdue", String.valueOf(r.stripePastDue),
+                    r.stripePastDue > 0 ? formatEur(r.pastDueAmount) : null,
+                    r.stripePastDue > 0 ? "#d32f2f" : null);
+                addMetric(html, "Pendiente", String.valueOf(r.pendienteCount),
+                    r.pendienteCount > 0 ? formatEur(r.pendienteAmount) : null,
+                    r.pendienteCount > 0 ? "#d32f2f" : null);
+                html.append("</tr></table>");
+
                 if (!r.missingInvoices.isEmpty()) {
-                    addRow(html, "✗ Missing invoices in DB", String.valueOf(r.missingInvoices.size()), "#d32f2f");
-                }
-                if (!r.hasIssues()) {
-                    addRow(html, "Status", "All good ✓", "#009624");
+                    html.append("<p style='margin:14px 0 0;font-size:13px;color:#d32f2f;font-weight:600'>")
+                        .append("✗ ").append(r.missingInvoices.size()).append(" missing invoice(s)")
+                        .append("</p>");
                 }
             }
 
-            html.append("</table>");
-
             // Past due detail
             if (!r.pastDueSubs.isEmpty()) {
-                html.append("<p style='margin:16px 0 6px;font-size:13px;font-weight:700;color:#f57c00'>Past due subscriptions:</p>");
-                html.append("<table style='border-collapse:collapse;width:100%;font-size:12px'>");
-                html.append("<tr style='background:#f5f5f5'><th style='text-align:left;padding:6px 8px'>Stripe Sub ID</th><th style='text-align:right;padding:6px 8px'>Amount Due</th></tr>");
+                html.append("<p style='margin:18px 0 6px;font-size:13px;font-weight:700;color:#f57c00'>Past due subscriptions</p>");
+                html.append("<table style='border-collapse:collapse;width:100%;font-size:12px;border:1px solid #eee'>");
+                html.append("<tr style='background:#f5f5f5'>")
+                    .append("<th style='text-align:left;padding:6px 8px'>Customer</th>")
+                    .append("<th style='text-align:left;padding:6px 8px'>Stripe Sub</th>")
+                    .append("<th style='text-align:right;padding:6px 8px'>Amount Due</th></tr>");
                 for (Map<String, Object> sub : r.pastDueSubs) {
-                    html.append("<tr><td style='padding:5px 8px;border-bottom:1px solid #eee'>").append(sub.get("subscriptionId")).append("</td>");
-                    html.append("<td style='padding:5px 8px;border-bottom:1px solid #eee;text-align:right'>€").append(sub.get("amountDue")).append("</td></tr>");
+                    String name = (String) sub.get("customerName");
+                    String email = (String) sub.get("customerEmail");
+                    String customer = name != null
+                        ? name + (email != null ? "<br><span style='color:#888;font-size:11px'>" + email + "</span>" : "")
+                        : "<span style='color:#aaa'>—</span>";
+                    String subId = String.valueOf(sub.get("subscriptionId"));
+                    html.append("<tr>")
+                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee'>").append(customer).append("</td>")
+                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee'>")
+                        .append("<a href='https://dashboard.stripe.com/subscriptions/").append(subId)
+                        .append("' style='color:#0a8cff;font-family:monospace;font-size:11px;text-decoration:none'>")
+                        .append(subId).append("</a></td>")
+                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap'>")
+                        .append(formatEur(sub.get("amountDue"))).append("</td></tr>");
                 }
                 html.append("</table>");
             }
 
             // Missing invoice detail
             if (!r.missingInvoices.isEmpty()) {
-                html.append("<p style='margin:16px 0 6px;font-size:13px;font-weight:700;color:#d32f2f'>Missing invoices (paid in Stripe, not in DB):</p>");
-                html.append("<table style='border-collapse:collapse;width:100%;font-size:12px'>");
-                html.append("<tr style='background:#f5f5f5'><th style='text-align:left;padding:6px 8px'>Stripe Invoice ID</th></tr>");
+                html.append("<p style='margin:18px 0 6px;font-size:13px;font-weight:700;color:#d32f2f'>Missing invoices <span style='font-weight:400;color:#888'>(paid in Stripe, not in DB)</span></p>");
+                html.append("<table style='border-collapse:collapse;width:100%;font-size:12px;border:1px solid #eee'>");
+                html.append("<tr style='background:#f5f5f5'>")
+                    .append("<th style='text-align:left;padding:6px 8px'>Stripe Invoice</th>")
+                    .append("<th style='text-align:left;padding:6px 8px'>Action</th></tr>");
                 for (Map<String, Object> inv : r.missingInvoices) {
-                    html.append("<tr><td style='padding:5px 8px;border-bottom:1px solid #eee'>").append(inv.get("stripeInvoiceId")).append("</td></tr>");
+                    String invId = (String) inv.get("stripeInvoiceId");
+                    String url = (String) inv.get("stripeUrl");
+                    html.append("<tr>")
+                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee;font-family:monospace;font-size:11px'>")
+                        .append(invId).append("</td>")
+                        .append("<td style='padding:6px 8px;border-bottom:1px solid #eee'>")
+                        .append("<a href='").append(url).append("' style='color:#0a8cff;text-decoration:none'>")
+                        .append("Open in Stripe →</a></td></tr>");
                 }
                 html.append("</table>");
+            }
+
+            // DB-only sub IDs (cancelled in Stripe but DB still has them active)
+            if (!r.dbOnlySubIds.isEmpty()) {
+                html.append("<p style='margin:18px 0 6px;font-size:13px;font-weight:700;color:#f57c00'>DB-only subs <span style='font-weight:400;color:#888'>(cancelled in Stripe, still active in DB)</span></p>");
+                html.append("<div style='font-family:monospace;font-size:11px;color:#444;line-height:1.7'>");
+                for (String id : r.dbOnlySubIds) html.append(id).append("<br>");
+                html.append("</div>");
+            }
+
+            // Stripe-only sub IDs (in Stripe but no DB record at all)
+            if (!r.stripeOnlySubIds.isEmpty()) {
+                html.append("<p style='margin:18px 0 6px;font-size:13px;font-weight:700;color:#f57c00'>Stripe-only subs <span style='font-weight:400;color:#888'>(active in Stripe, no DB record)</span></p>");
+                html.append("<div style='font-family:monospace;font-size:11px;color:#444;line-height:1.7'>");
+                for (String id : r.stripeOnlySubIds) html.append(id).append("<br>");
+                html.append("</div>");
             }
 
             html.append("</div>");
@@ -310,14 +452,31 @@ public class DailyReconciliationScheduler {
             .append("</tr>");
     }
 
+    private void addMetric(StringBuilder html, String label, String value, String sub, String valueColor) {
+        String color = valueColor != null ? valueColor : "#222";
+        html.append("<td style='text-align:center;padding:8px 4px;vertical-align:top'>");
+        html.append("<div style='font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#888;font-weight:600;margin-bottom:4px'>")
+            .append(label).append("</div>");
+        html.append("<div style='font-size:20px;font-weight:700;color:").append(color).append(";line-height:1.1'>")
+            .append(value).append("</div>");
+        if (sub != null) {
+            html.append("<div style='font-size:11px;color:").append(color).append(";opacity:0.8;margin-top:2px'>")
+                .append(sub).append("</div>");
+        }
+        html.append("</td>");
+    }
+
     static class AccountResult {
         String account;
         int dbActive;
         int dbStripe;
         int dbBankTransfer;
+        int dbScheduled;
         int stripeActive;
         int stripePastDue;
         BigDecimal pastDueAmount = BigDecimal.ZERO;
+        int pendienteCount;
+        BigDecimal pendienteAmount = BigDecimal.ZERO;
         List<Map<String, Object>> pastDueSubs = new ArrayList<>();
         List<Map<String, Object>> missingInvoices = new ArrayList<>();
         List<String> dbOnlySubIds = new ArrayList<>();
@@ -328,11 +487,22 @@ public class DailyReconciliationScheduler {
             this.account = account;
         }
 
+        // Mirror of dashboard ReconciliationCard.metrics():
+        //   stripe   = stripeActive + stripePastDue (live in Stripe)
+        //   scheduled = dbScheduled (sub_sched_*)
+        //   bank     = dbBankTransfer
+        //   deviation = max(0, dbActive - stripe - scheduled - bank) — ghost subs
+        //   total    = stripe + scheduled + deviation + bank
+        int stripeLive() { return stripeActive + stripePastDue; }
+        int deviation() { return Math.max(0, dbActive - stripeLive() - dbScheduled - dbBankTransfer); }
+        int total() { return stripeLive() + dbScheduled + deviation() + dbBankTransfer; }
+
         boolean hasIssues() {
             return error != null
                 || !missingInvoices.isEmpty()
                 || stripePastDue > 0
-                || !dbOnlySubIds.isEmpty()
+                || deviation() > 0
+                || pendienteCount > 0
                 || !stripeOnlySubIds.isEmpty();
         }
     }
