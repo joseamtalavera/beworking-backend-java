@@ -107,17 +107,19 @@ public class DailyReconciliationScheduler {
         result.dbActive = result.dbStripe + result.dbBankTransfer;
 
         // 1b. Pendiente invoices for current year (mirrors dashboard pendingByAccount).
+        //     Real columns: creacionfecha (date), id_cuenta (FK to cuentas.codigo).
         //     Status keywords kept in sync with Overview.jsx pendingByAccount.
         Map<String, Object> pendiente = jdbcTemplate.queryForMap(
-            "SELECT COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS amt " +
-            "  FROM beworking.facturas " +
-            " WHERE EXTRACT(YEAR FROM COALESCE(fechafactura, createdat)) = EXTRACT(YEAR FROM CURRENT_DATE) " +
-            "   AND UPPER(COALESCE(cuenta, 'PT')) = ? " +
-            "   AND (LOWER(COALESCE(estado,'')) LIKE '%pend%' " +
-            "     OR LOWER(COALESCE(estado,'')) LIKE '%confir%' " +
-            "     OR LOWER(COALESCE(estado,'')) LIKE '%fact%' " +
-            "     OR LOWER(COALESCE(estado,'')) LIKE '%invoice%' " +
-            "     OR LOWER(COALESCE(estado,'')) LIKE '%created%')",
+            "SELECT COUNT(*) AS cnt, COALESCE(SUM(f.total), 0) AS amt " +
+            "  FROM beworking.facturas f " +
+            "  JOIN beworking.cuentas c ON c.id = f.id_cuenta " +
+            " WHERE EXTRACT(YEAR FROM f.creacionfecha) = EXTRACT(YEAR FROM CURRENT_DATE) " +
+            "   AND UPPER(c.codigo) = ? " +
+            "   AND (LOWER(COALESCE(f.estado,'')) LIKE '%pend%' " +
+            "     OR LOWER(COALESCE(f.estado,'')) LIKE '%confir%' " +
+            "     OR LOWER(COALESCE(f.estado,'')) LIKE '%fact%' " +
+            "     OR LOWER(COALESCE(f.estado,'')) LIKE '%invoice%' " +
+            "     OR LOWER(COALESCE(f.estado,'')) LIKE '%created%')",
             account);
         result.pendienteCount = ((Number) pendiente.get("cnt")).intValue();
         Object amt = pendiente.get("amt");
