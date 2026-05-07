@@ -237,7 +237,7 @@ public class DailyReconciliationScheduler {
             if (subId != null) {
                 try {
                     Map<String, Object> contact = jdbcTemplate.queryForMap(
-                        "SELECT cp.name, cp.email " +
+                        "SELECT cp.name, cp.email_primary AS email " +
                         "FROM beworking.subscriptions s " +
                         "JOIN beworking.contact_profiles cp ON cp.id = s.contact_id " +
                         "WHERE s.stripe_subscription_id = ? LIMIT 1",
