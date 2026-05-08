@@ -55,6 +55,7 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
         WHERE r.cliente.id = :contactId
           AND r.creacionFecha >= :monthStart
           AND r.creacionFecha < :monthEnd
+          AND r.bloqueos IS NOT EMPTY
     """)
     long countByContactInMonth(@Param("contactId") Long contactId,
                                @Param("monthStart") LocalDateTime monthStart,
@@ -65,6 +66,7 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
         FROM Reserva r
         WHERE r.cliente.id = :contactId
           AND r.creacionFecha >= :yearStart
+          AND r.bloqueos IS NOT EMPTY
     """)
     long countByContactSinceDate(@Param("contactId") Long contactId,
                                   @Param("yearStart") LocalDateTime yearStart);
