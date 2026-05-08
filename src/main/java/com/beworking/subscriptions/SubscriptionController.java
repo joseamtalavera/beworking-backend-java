@@ -643,6 +643,24 @@ public class SubscriptionController {
             cancelStripeSubscription(sub);
         }
         subscriptionService.deactivate(id);
+
+        // If this was the contact's last active sub, drop tenant_type so the
+        // free-booking allowance is removed.
+        try {
+            Long contactId = sub.getContactId();
+            if (contactId != null
+                && subscriptionService.findByContactIdAndActiveTrue(contactId).isEmpty()) {
+                contactRepository.findById(contactId).ifPresent(c -> {
+                    if ("Usuario Virtual".equalsIgnoreCase(c.getTenantType())) {
+                        c.setTenantType(null);
+                        contactRepository.save(c);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to clear tenant_type after sub {} cancel: {}", id, e.getMessage());
+        }
+
         return ResponseEntity.noContent().build();
     }
 
@@ -878,6 +896,15 @@ public class SubscriptionController {
             sub.setStripeSubscriptionId((String) stripeResult.get("subscriptionId"));
             sub.setStripeCustomerId((String) stripeResult.get("customerId"));
             subscriptionService.save(sub);
+
+            // Promote contact to "Usuario Virtual" so booking-usage grants the
+            // 5-free-bookings/month allowance.
+            try {
+                contact.setTenantType("Usuario Virtual");
+                contactRepository.save(contact);
+            } catch (Exception e) {
+                logger.warn("Failed to set tenant_type=Usuario Virtual on contact {}: {}", contact.getId(), e.getMessage());
+            }
 
             // Create local invoice
             @SuppressWarnings("unchecked")
