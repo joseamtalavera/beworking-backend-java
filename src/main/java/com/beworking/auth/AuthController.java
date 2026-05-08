@@ -29,6 +29,7 @@ public class AuthController {
     private final ContactProfileRepository contactProfileRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final TurnstileService turnstileService;
+    private final EmailService emailService;
     @Value("${app.security.cookie-secure:true}")
     private boolean cookieSecure;
     @Value("${app.security.cookie-domain:}")
@@ -44,7 +45,8 @@ public class AuthController {
     public AuthController(LoginService loginService, JwtUtil jwtUtil, RegisterService registerService,
                           UserRepository userRepository, ContactProfileRepository contactProfileRepository,
                           SubscriptionRepository subscriptionRepository,
-                          TurnstileService turnstileService) {
+                          TurnstileService turnstileService,
+                          EmailService emailService) {
         this.loginService = loginService;
         this.jwtUtil = jwtUtil;
         this.registerService = registerService;
@@ -52,6 +54,7 @@ public class AuthController {
         this.contactProfileRepository = contactProfileRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.turnstileService = turnstileService;
+        this.emailService = emailService;
     }
 
     @PostMapping("/login")
@@ -591,6 +594,20 @@ public class AuthController {
         user.setConfirmationToken(null);
         user.setConfirmationTokenExpiry(null);
         registerService.saveUser(user);
+
+        // Free users (no active sub) get a marketing welcome email nudging
+        // them toward BeWorkingVirtual. Subscribers already received a
+        // dedicated subscription welcome from the registration flow.
+        boolean hasActiveSub = user.getTenantId() != null
+            && !subscriptionRepository.findByContactIdAndActiveTrue(user.getTenantId()).isEmpty();
+        if (!hasActiveSub) {
+            try {
+                emailService.sendFreeRegistrationWelcomeEmail(user.getEmail(), user.getName());
+            } catch (Exception e) {
+                // best-effort; don't break the confirm flow
+            }
+        }
+
         String successHtml = String.format("""
             <html><body style='%s'>
             <div style='%s'>
