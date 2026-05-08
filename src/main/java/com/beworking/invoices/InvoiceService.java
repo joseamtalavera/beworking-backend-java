@@ -184,7 +184,7 @@ public class InvoiceService {
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf,
                 f.holdedcuenta,
-                MAX(COALESCE(c.name, c.contact_name, c.billing_name)) AS client_name,
+                MAX(COALESCE(NULLIF(c.billing_name, ''), NULLIF(c.name, ''), c.contact_name)) AS client_name,
                 MAX(
                     COALESCE(
                         c.email_primary,
@@ -720,7 +720,8 @@ public class InvoiceService {
                        f.total, f.iva, f.totaliva, f.estado, f.creacionfecha,
                        f.holdedinvoicenum, f.notas, f.holdedcuenta, f.id_cuenta,
                        f.fechacreacionreal, f.fechacobro1,
-                       c.name AS client_name, c.tenant_type
+                       COALESCE(NULLIF(c.billing_name, ''), NULLIF(c.name, ''), c.contact_name) AS client_name,
+                       c.tenant_type
                 FROM beworking.facturas f
                 LEFT JOIN beworking.contact_profiles c ON c.id = f.idcliente
                 WHERE f.id = ?
