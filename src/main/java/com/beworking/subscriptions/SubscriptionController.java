@@ -619,16 +619,26 @@ public class SubscriptionController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deactivate(Authentication authentication, @PathVariable Integer id) {
-        if (!isAdmin(authentication)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         Optional<Subscription> subOpt = subscriptionService.findById(id);
         if (subOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-
         Subscription sub = subOpt.get();
+
+        // Admins can cancel any sub; non-admins only their own.
+        if (!isAdmin(authentication)) {
+            String email = authentication.getName();
+            var contactOpt = contactRepository.findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                email, email, email, email);
+            if (contactOpt.isEmpty() || !contactOpt.get().getId().equals(sub.getContactId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+        }
+
         if (sub.getStripeSubscriptionId() != null && !sub.getStripeSubscriptionId().isBlank()) {
             cancelStripeSubscription(sub);
         }
