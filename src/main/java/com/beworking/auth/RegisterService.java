@@ -277,8 +277,9 @@ public class RegisterService {
         String name = request.getName();
         String email = request.getEmail();
         String password = request.getPassword();
+        String phone = request.getPhone();
 
-        if (!isNonBlank(name) || !isNonBlank(email) || !isPasswordValid(password)) {
+        if (!isNonBlank(name) || !isNonBlank(email) || !isPasswordValid(password) || !isNonBlank(phone)) {
             return null;
         }
 
