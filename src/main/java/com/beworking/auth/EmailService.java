@@ -671,6 +671,7 @@ public class EmailService {
             helper.setText(html, true);
             mailSender.send(message);
             logger.info("Recovery email #{} sent to {}", templateNumber, to);
+            notifyAdminOfCronEmail("Recovery", templateNumber, to, name, contactId, tpl.subject());
         } catch (Exception e) {
             logger.error("Failed to send recovery email #{} to {}: {}", templateNumber, to, e.getMessage(), e);
         }
@@ -722,8 +723,38 @@ public class EmailService {
             helper.setText(html, true);
             mailSender.send(message);
             logger.info("Reengagement email sent to {}", to);
+            notifyAdminOfCronEmail("Reengagement", emailNumber, to, name, contactId,
+                "¿Cuánto tiempo! ¿Volvemos a vernos? — BeWorking");
         } catch (Exception e) {
             logger.error("Failed to send reengagement email to {}: {}", to, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Sends a separate admin notification TO info@be-working.com after a cron-triggered
+     * customer email goes out. Lands in the team inbox like Lead notifications do, because
+     * Gmail Workspace silently archives BCC copies where From == BCC (self-send rule).
+     * Best-effort; logs failures but never blocks the customer send.
+     */
+    private void notifyAdminOfCronEmail(String emailType, int templateNumber, String to, String name,
+                                        Long contactId, String subjectSent) {
+        try {
+            String safeName = (name != null && !name.isBlank()) ? name : "—";
+            String safeContactId = contactId != null ? contactId.toString() : "—";
+            String adminSubject = "[Cron] " + emailType + " #" + templateNumber + " → " + to;
+            String html = "<div style=\"font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;color:#222;line-height:1.5\">"
+                + "<p style=\"margin:0 0 12px;\"><strong>" + emailType + " email #" + templateNumber + "</strong> was just sent.</p>"
+                + "<table cellpadding=\"6\" style=\"border-collapse:collapse;font-size:13px;\">"
+                + "<tr><td style=\"color:#666;\">Recipient:</td><td>" + to + "</td></tr>"
+                + "<tr><td style=\"color:#666;\">Name:</td><td>" + safeName + "</td></tr>"
+                + "<tr><td style=\"color:#666;\">Contact ID:</td><td>" + safeContactId + "</td></tr>"
+                + "<tr><td style=\"color:#666;\">Subject:</td><td>" + subjectSent + "</td></tr>"
+                + "</table>"
+                + "<p style=\"color:#888;font-size:12px;margin-top:16px;\">Automated notification from BeWorking cron.</p>"
+                + "</div>";
+            sendHtml("info@be-working.com", adminSubject, html, to);
+        } catch (Exception e) {
+            logger.warn("Failed to send admin notification for {} #{} to {}: {}", emailType, templateNumber, to, e.getMessage());
         }
     }
 
