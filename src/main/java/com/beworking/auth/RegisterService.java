@@ -359,6 +359,26 @@ public class RegisterService {
         userRepository.save(user);
     }
 
+    /**
+     * Generates a password-setup token for an admin-created user and stamps it on the
+     * user row with the given expiry. Returns the raw (unhashed) token so the caller
+     * can embed it in a setup link. Returns null if the user is not found.
+     * Used by the admin subscription flow so the welcome email can include a one-click
+     * "set your password" link with a longer expiry than the regular 1-hour reset token.
+     */
+    public String generatePasswordSetupToken(Long userId, java.time.Duration expiry) {
+        var userOpt = userRepository.findById(userId);
+        if (userOpt.isEmpty()) {
+            return null;
+        }
+        User user = userOpt.get();
+        String token = UUID.randomUUID().toString();
+        user.setConfirmationToken(hashToken(token));
+        user.setConfirmationTokenExpiry(Instant.now().plus(expiry));
+        userRepository.save(user);
+        return token;
+    }
+
     public boolean sendPasswordResetEmail(String email) {
         if (email != null) {
             email = email.toLowerCase().trim();

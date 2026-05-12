@@ -37,7 +37,11 @@ public class SubscriptionController {
     private final com.beworking.plans.PlanRepository planRepository;
     private final com.beworking.contacts.ViesVatService viesVatService;
     private final com.beworking.auth.EmailService emailService;
+    private final com.beworking.auth.RegisterService registerService;
     private final RestClient http;
+
+    @Value("${app.frontend-url:}")
+    private String frontendUrl;
 
     public SubscriptionController(SubscriptionService subscriptionService,
                                   UserRepository userRepository,
@@ -46,6 +50,7 @@ public class SubscriptionController {
                                   com.beworking.plans.PlanRepository planRepository,
                                   com.beworking.contacts.ViesVatService viesVatService,
                                   com.beworking.auth.EmailService emailService,
+                                  com.beworking.auth.RegisterService registerService,
                                   @Value("${app.payments.base-url:http://beworking-stripe-service:8081}") String paymentsBaseUrl) {
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
@@ -54,6 +59,7 @@ public class SubscriptionController {
         this.planRepository = planRepository;
         this.viesVatService = viesVatService;
         this.emailService = emailService;
+        this.registerService = registerService;
         this.http = RestClient.builder().baseUrl(paymentsBaseUrl).build();
     }
 
@@ -354,9 +360,30 @@ public class SubscriptionController {
                         saved.getCuenta(), saved.getStripeSubscriptionId());
 
                 if (contactEmail != null && !contactEmail.isBlank()) {
+                    // For admin-created subs the customer doesn't know their password
+                    // (we generated a random one) and the first invoice arrives only
+                    // when Stripe issues it. Surface both in the welcome email.
+                    String firstInvoiceIso = saved.getStartDate() != null
+                            ? saved.getStartDate().toString() : null;
+                    String passwordSetupLink = null;
+                    try {
+                        var userOpt = userRepository.findByEmail(contactEmail.toLowerCase().trim());
+                        if (userOpt.isPresent() && frontendUrl != null && !frontendUrl.isBlank()) {
+                            String token = registerService.generatePasswordSetupToken(
+                                    userOpt.get().getId(), java.time.Duration.ofDays(7));
+                            if (token != null) {
+                                passwordSetupLink = frontendUrl + "/reset-password?token=" + token;
+                            }
+                        }
+                    } catch (Exception tokenEx) {
+                        logger.warn("Failed to generate password setup token for sub {}: {}",
+                                saved.getId(), tokenEx.getMessage());
+                    }
+
                     emailService.sendSubscriptionWelcomeEmail(
                             contactEmail, contactName,
-                            saved.getDescription(), saved.getCuenta());
+                            saved.getDescription(), saved.getCuenta(),
+                            firstInvoiceIso, passwordSetupLink);
                 }
             });
         } catch (Exception e) {

@@ -354,6 +354,22 @@ public class EmailService {
 
     @Async
     public void sendSubscriptionWelcomeEmail(String to, String name, String plan, String location) {
+        sendSubscriptionWelcomeEmail(to, name, plan, location, null, null);
+    }
+
+    /**
+     * Same as the 4-arg variant plus optional context for admin-created subs:
+     * <ul>
+     *   <li>{@code firstInvoiceDateIso} (e.g. "2026-06-01") — when present, the email
+     *       tells the customer the first invoice will arrive that day with a Stripe
+     *       payment link (card/SEPA). Pass null if no preview should be shown.</li>
+     *   <li>{@code passwordSetupLink} — full URL like {@code /reset-password?token=...}
+     *       embedded as a "set your password" CTA. Pass null for customers who already
+     *       have credentials.</li>
+     * </ul>
+     */
+    public void sendSubscriptionWelcomeEmail(String to, String name, String plan, String location,
+                                             String firstInvoiceDateIso, String passwordSetupLink) {
         String planLabel = plan != null ? switch (plan.toLowerCase()) {
             case "basic" -> "Basic";
             case "pro" -> "Pro";
@@ -368,6 +384,37 @@ public class EmailService {
         } : "";
 
         String loginUrl = frontendUrl + "/login";
+
+        // First invoice block — shown only when the admin sub used send_invoice
+        // collection. Formats the ISO date in Spanish (e.g. "1 de junio de 2026").
+        String firstInvoiceBlock = "";
+        if (firstInvoiceDateIso != null && !firstInvoiceDateIso.isBlank()) {
+            String firstInvoiceLabel = firstInvoiceDateIso;
+            try {
+                java.time.LocalDate d = java.time.LocalDate.parse(firstInvoiceDateIso);
+                java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter
+                    .ofPattern("d 'de' MMMM 'de' yyyy", new java.util.Locale("es"));
+                firstInvoiceLabel = d.format(fmt);
+            } catch (Exception ignore) {
+                // fall back to ISO
+            }
+            firstInvoiceBlock = "<div style=\"margin:0 0 20px;background:#fff7e6;border-radius:10px;padding:16px 20px;border-left:4px solid #f5a623;\">"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#5a3a00;font-weight:600;\">Tu primera factura</p>"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#5a3a00;line-height:1.6;\">El <strong>" + firstInvoiceLabel + "</strong> recibirás un correo de Stripe con el enlace para pagar tu primera mensualidad con tarjeta o SEPA. Tras ese primer pago, las siguientes mensualidades se cobrarán automáticamente.</p>"
+                + "</div>";
+        }
+
+        // Password setup block — shown when the user was just created by admin and
+        // hasn't set a password yet. Token expires in 7 days.
+        String passwordSetupBlock = "";
+        String accessHintHtml = "<p style=\"margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Ya puedes acceder a tu panel de control con el email y contraseña que has elegido.</p>";
+        if (passwordSetupLink != null && !passwordSetupLink.isBlank()) {
+            accessHintHtml = "<p style=\"margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Tu cuenta ya está creada. <strong>Antes de acceder, establece tu contraseña</strong> con el enlace de abajo (válido durante 7 días).</p>";
+            passwordSetupBlock = "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto 20px;\">"
+                + "<tr><td align=\"center\" style=\"border-radius:8px;background:#ffffff;border:2px solid #009624;\">"
+                + "<a href=\"" + passwordSetupLink + "\" style=\"display:inline-block;color:#009624;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:15px;padding:12px 32px;\">Establecer contraseña</a>"
+                + "</td></tr></table>";
+        }
 
         String subject = "Bienvenido a BeWorking — Tu suscripción está activa";
         String content = "<!doctype html>"
@@ -393,7 +440,9 @@ public class EmailService {
                 + (locationLabel.isEmpty() ? "" : "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Sede:</strong> " + locationLabel + "</p>")
                 + "<p style=\"margin:6px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#666;\"><strong>Estado:</strong> Activa</p>"
                 + "</div>"
-                + "<p style=\"margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Ya puedes acceder a tu panel de control con el email y contrase\u00f1a que has elegido.</p>"
+                + firstInvoiceBlock
+                + accessHintHtml
+                + passwordSetupBlock
                 + "<p style=\"margin:0 0 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Tus facturas con todos los datos fiscales (IVA, n\u00famero PT-####) est\u00e1n disponibles en la secci\u00f3n <strong>Mis Facturas</strong> de la app. Es el documento oficial; cualquier otro recibo de pago es solo confirmaci\u00f3n.</p>"
                 // CTA button
                 + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto;\">"
