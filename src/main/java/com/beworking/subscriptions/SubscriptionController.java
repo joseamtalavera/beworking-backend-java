@@ -954,6 +954,22 @@ public class SubscriptionController {
                 }
             }
 
+            // Notify admin (info@be-working.com). Self-flow customer already knows
+            // their password — skip welcome-with-password-setup (sent only from admin flow).
+            try {
+                emailService.sendSubscriptionAdminNotification(
+                        contact.getName(),
+                        email,
+                        sub.getDescription(),
+                        amount.toPlainString(),
+                        sub.getCurrency(),
+                        sub.getBillingInterval(),
+                        sub.getCuenta(),
+                        sub.getStripeSubscriptionId());
+            } catch (Exception e) {
+                logger.warn("Failed to send admin notification for self-subscribe {}: {}", sub.getId(), e.getMessage());
+            }
+
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "message", "Subscription created",
                 "subscriptionId", sub.getId(),
