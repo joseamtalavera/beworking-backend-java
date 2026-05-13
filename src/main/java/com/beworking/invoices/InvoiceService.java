@@ -626,6 +626,7 @@ public class InvoiceService {
             );
             if (updated > 0) {
                 syncBloqueosPaidByStripeInvoice(stripeInvoiceId);
+                activateContactByFacturaColumn("stripeinvoiceid", stripeInvoiceId);
                 return updated;
             }
         }
@@ -641,6 +642,7 @@ public class InvoiceService {
         );
         if (updated > 0) {
             syncBloqueosPaidByInvoiceNum(reference);
+            activateContactByFacturaColumn("holdedinvoicenum", reference);
             return updated;
         }
 
@@ -653,11 +655,24 @@ public class InvoiceService {
             );
             if (updated > 0) {
                 syncBloqueosPaidByIdfactura(numRef);
+                activateContactByFacturaColumn("idfactura", numRef);
             }
         } catch (NumberFormatException ignored) {
         }
 
         return updated;
+    }
+
+    // Reactivates a contact the ActivoAgingScheduler may have demoted before the
+    // Stripe webhook landed. matchColumn is callsite-controlled (never user input).
+    private void activateContactByFacturaColumn(String matchColumn, Object value) {
+        jdbcTemplate.update(
+            "UPDATE beworking.contact_profiles " +
+            "   SET status = 'Activo', status_changed_at = NOW() " +
+            " WHERE id = (SELECT idcliente FROM beworking.facturas WHERE " + matchColumn + " = ? LIMIT 1) " +
+            "   AND status <> 'Activo'",
+            value
+        );
     }
 
     private void syncBloqueosPaidByStripeInvoice(String stripeInvoiceId) {

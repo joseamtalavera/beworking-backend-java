@@ -138,6 +138,13 @@ public class SubscriptionService {
                             JOIN beworking.facturas f ON f.idfactura = fd.idfacturadesglose
                             WHERE fd.idbloqueovinculado = b.id AND f.stripeinvoiceid = ? AND b.estado <> 'Pagado'
                             """, payload.getStripeInvoiceId());
+                        // Reactivate contact (aging cron may have demoted before payment landed)
+                        jdbcTemplate.update("""
+                            UPDATE beworking.contact_profiles
+                               SET status = 'Activo', status_changed_at = NOW()
+                             WHERE id = ?
+                               AND status <> 'Activo'
+                            """, subscription.getContactId());
                     }
                     logger.info("Invoice already exists for stripeInvoiceId={}, skipping creation",
                         payload.getStripeInvoiceId());
@@ -252,6 +259,16 @@ public class SubscriptionService {
             null,
             nextInternalId
         );
+
+        // Reactivate contact on paid invoice (aging cron may have demoted before payment)
+        if ("paid".equalsIgnoreCase(payload.getStatus())) {
+            jdbcTemplate.update("""
+                UPDATE beworking.contact_profiles
+                   SET status = 'Activo', status_changed_at = NOW()
+                 WHERE id = ?
+                   AND status <> 'Activo'
+                """, subscription.getContactId());
+        }
 
         logger.info("Created subscription invoice: invoiceNumber={} contactId={} estado={} stripeInvoiceId={}",
             invoiceNumber, subscription.getContactId(), estado, payload.getStripeInvoiceId());
