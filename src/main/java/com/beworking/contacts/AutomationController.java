@@ -31,6 +31,9 @@ public class AutomationController {
     private final ActivoAgingScheduler activoAging;
     private final InactivoReengagementScheduler reengagement;
     private final com.beworking.leads.LeadAgingScheduler leadAging;
+    private final com.beworking.invoices.DailyReconciliationScheduler reconciliation;
+    private final com.beworking.invoices.MonthlyInvoiceScheduler monthlyInvoice;
+    private final com.beworking.subscriptions.LocalSubscriptionScheduler localSubscription;
     private final JdbcTemplate jdbcTemplate;
 
     public AutomationController(AbandonmentRecoveryScheduler recoveryScheduler,
@@ -38,12 +41,18 @@ public class AutomationController {
                                 ActivoAgingScheduler activoAging,
                                 InactivoReengagementScheduler reengagement,
                                 com.beworking.leads.LeadAgingScheduler leadAging,
+                                com.beworking.invoices.DailyReconciliationScheduler reconciliation,
+                                com.beworking.invoices.MonthlyInvoiceScheduler monthlyInvoice,
+                                com.beworking.subscriptions.LocalSubscriptionScheduler localSubscription,
                                 JdbcTemplate jdbcTemplate) {
         this.recoveryScheduler = recoveryScheduler;
         this.potencialAging = potencialAging;
         this.activoAging = activoAging;
         this.reengagement = reengagement;
         this.leadAging = leadAging;
+        this.reconciliation = reconciliation;
+        this.monthlyInvoice = monthlyInvoice;
+        this.localSubscription = localSubscription;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -127,6 +136,49 @@ public class AutomationController {
                        AND status_changed_at IS NOT NULL
                        AND status_changed_at < NOW() - INTERVAL '23 days'
                 """)
+            ),
+            jobDescriptor(
+                "reconciliation",
+                "Reconciliación diaria",
+                "Compara subs activas (DB vs Stripe) por cuenta GT y PT. Detecta past-due, ghost subs y facturas pagadas no registradas.",
+                "0 0 5 * * *",
+                "Diario, 05:00 UTC",
+                2L
+            ),
+            jobDescriptor(
+                "monthlyInvoice",
+                "Facturación mensual de salas",
+                "Crea facturas mensuales para todas las reservas del mes siguiente, agrupadas por contacto.",
+                "0 0 5 28 * *",
+                "Día 28, 05:00 UTC",
+                countQuery("""
+                    SELECT COUNT(*) FROM beworking.bloqueos b
+                     WHERE b.fecha_ini >= date_trunc('month', NOW() + INTERVAL '1 month')
+                       AND b.fecha_ini <  date_trunc('month', NOW() + INTERVAL '2 months')
+                       AND b.id_cliente IS NOT NULL
+                       AND (b.estado IS NULL OR (
+                            LOWER(b.estado) NOT LIKE '%invoice%'
+                        AND LOWER(b.estado) NOT LIKE '%factura%'
+                        AND LOWER(b.estado) NOT LIKE '%pend%'
+                        AND LOWER(b.estado) NOT LIKE '%pag%'
+                        AND LOWER(b.estado) NOT LIKE '%grat%'
+                        AND LOWER(b.estado) NOT LIKE '%free%'
+                       ))
+                """)
+            ),
+            jobDescriptor(
+                "localSubscription",
+                "Suscripciones por transferencia",
+                "Crea facturas Pendiente para suscripciones bank_transfer activas que no se hayan facturado este mes.",
+                "0 0 1 1 * *",
+                "Día 1, 01:00 UTC",
+                countQuery("""
+                    SELECT COUNT(*) FROM beworking.subscriptions
+                     WHERE active = TRUE
+                       AND billing_method = 'bank_transfer'
+                       AND (last_invoiced_month IS NULL
+                            OR last_invoiced_month <> to_char(NOW(), 'YYYY-MM'))
+                """)
             )
         );
         return ResponseEntity.ok(jobs);
@@ -167,6 +219,26 @@ public class AutomationController {
             case "leadAging" -> {
                 com.beworking.leads.LeadAgingScheduler.RunResult r = leadAging.runOnce();
                 result.put("flipped", r.flipped());
+            }
+            case "reconciliation" -> {
+                com.beworking.invoices.DailyReconciliationScheduler.RunResult r = reconciliation.runOnce();
+                result.put("accountsRun", r.accountsRun());
+                result.put("missingInvoices", r.missingInvoices());
+                result.put("pastDue", r.pastDue());
+                result.put("deviation", r.deviation());
+                result.put("issuesFound", r.issuesFound());
+            }
+            case "monthlyInvoice" -> {
+                com.beworking.invoices.MonthlyInvoiceScheduler.RunResult r = monthlyInvoice.runOnce();
+                result.put("success", r.success());
+                result.put("failed", r.failed());
+            }
+            case "localSubscription" -> {
+                com.beworking.subscriptions.LocalSubscriptionScheduler.RunResult r = localSubscription.runOnce();
+                result.put("success", r.success());
+                result.put("failed", r.failed());
+                result.put("skipped", r.skipped());
+                result.put("total", r.total());
             }
             default -> {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
@@ -255,6 +327,7 @@ public class AutomationController {
                                               String cron, String cadence, long candidates) {
         Map<String, Object> job = new LinkedHashMap<>();
         job.put("name", name);
+        job.put("domain", domainFor(name));
         job.put("label", label);
         job.put("description", description);
         job.put("cron", cron);
@@ -266,5 +339,13 @@ public class AutomationController {
     private long countQuery(String sql) {
         Long n = jdbcTemplate.queryForObject(sql, Long.class);
         return n == null ? 0L : n;
+    }
+
+    private static String domainFor(String name) {
+        return switch (name) {
+            case "recovery", "potencialAging", "activoAging", "reengagement", "leadAging" -> "contacts";
+            case "reconciliation", "monthlyInvoice", "localSubscription" -> "billing";
+            default -> "other";
+        };
     }
 }

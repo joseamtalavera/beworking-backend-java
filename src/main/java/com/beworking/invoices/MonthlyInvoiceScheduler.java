@@ -66,27 +66,32 @@ public class MonthlyInvoiceScheduler {
      * Invoices all uninvoiced bloqueos for the NEXT month, grouped by contact.
      * Sends a status email to admin on completion or failure.
      */
-    @Scheduled(cron = "0 0 5 28 * *")
-    public void invoiceCurrentMonth() {
-        YearMonth currentMonth = YearMonth.now().plusMonths(1);
-        logger.info("Monthly auto-invoicing started for {}", currentMonth);
+     @Scheduled(cron = "0 0 5 28 * *")
+      public void invoiceCurrentMonth() {
+          runOnce();
+      }
+  
+      public RunResult runOnce() {
+          YearMonth currentMonth = YearMonth.now().plusMonths(1);
+          logger.info("Monthly auto-invoicing started for {}", currentMonth);
+  
+          int successCount = 0;
+          int failCount = 0;
+          List<String> errors = new ArrayList<>();
+  
+          try {
+              int[] result = processMonth(currentMonth);
+              successCount = result[0];
+              failCount = result[1];
+          } catch (Exception e) {
+              logger.error("Monthly auto-invoicing failed for {}: {}", currentMonth, e.getMessage(), e);
+              errors.add(e.getMessage());
+              failCount = -1;
+          }
 
-        int successCount = 0;
-        int failCount = 0;
-        List<String> errors = new ArrayList<>();
-
-        try {
-            int[] result = processMonth(currentMonth);
-            successCount = result[0];
-            failCount = result[1];
-        } catch (Exception e) {
-            logger.error("Monthly auto-invoicing failed for {}: {}", currentMonth, e.getMessage(), e);
-            errors.add(e.getMessage());
-            failCount = -1;
-        }
-
-        sendStatusEmail(currentMonth, successCount, failCount, errors);
-    }
+          sendStatusEmail(currentMonth, successCount, failCount, errors);
+          return new RunResult(successCount, Math.max(failCount, 0));
+      }
 
     public int[] processMonth(YearMonth month) {
         LocalDateTime monthStart = month.atDay(1).atStartOfDay();
@@ -360,4 +365,5 @@ public class MonthlyInvoiceScheduler {
             logger.error("Failed to send status email for {}: {}", month, e.getMessage(), e);
         }
     }
+    public record RunResult(int success, int failed) {}
 }

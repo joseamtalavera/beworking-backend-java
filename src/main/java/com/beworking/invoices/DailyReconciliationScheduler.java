@@ -43,48 +43,53 @@ public class DailyReconciliationScheduler {
         this.http = RestClient.create();
     }
 
-    @Scheduled(cron = "0 0 5 * * *")
-    public void runDailyReconciliation() {
-        logger.info("Daily reconciliation started");
-
-        if (paymentsBaseUrl == null || paymentsBaseUrl.isBlank()) {
-            logger.warn("Stripe payments base URL not configured — skipping reconciliation");
-            return;
-        }
-
-        List<AccountResult> results = new ArrayList<>();
-        boolean hasIssues = false;
-
-        RuntimeException firstError = null;
-        for (String account : ACCOUNTS) {
-            try {
-                AccountResult result = reconcileAccount(account);
-                results.add(result);
-                if (result.hasIssues()) {
-                    hasIssues = true;
-                }
-                persist(result);
-            } catch (Exception e) {
-                logger.error("Reconciliation failed for account {}: {}", account, e.getMessage(), e);
-                AccountResult errResult = new AccountResult(account);
-                errResult.error = e.getMessage();
-                results.add(errResult);
-                hasIssues = true;
-                if (firstError == null) {
-                    firstError = new RuntimeException("[" + account + "] " + e.getMessage(), e);
-                }
-            }
-        }
-        if (firstError != null) {
-            throw firstError;
-        }
-
-        if (hasIssues) {
-            sendReport(results);
-        } else {
-            logger.info("Daily reconciliation completed — no issues found");
-        }
-    }
+     @Scheduled(cron = "0 0 5 * * *")
+      public void runDailyReconciliation() {
+          runOnce();
+      }
+  
+      public RunResult runOnce() {
+          logger.info("Daily reconciliation started");
+  
+          if (paymentsBaseUrl == null || paymentsBaseUrl.isBlank()) {
+              logger.warn("Stripe payments base URL not configured — skipping reconciliation");
+              return new RunResult(0, 0, 0, 0, false);
+          }
+  
+          List<AccountResult> results = new ArrayList<>();
+          boolean hasIssues = false;
+          RuntimeException firstError = null;
+  
+          for (String account : ACCOUNTS) {
+              try {
+                  AccountResult result = reconcileAccount(account);
+                  results.add(result);
+                  if (result.hasIssues()) hasIssues = true;
+                  persist(result);
+              } catch (Exception e) {
+                  logger.error("Reconciliation failed for account {}: {}", account, e.getMessage(), e);
+                  AccountResult errResult = new AccountResult(account);
+                  errResult.error = e.getMessage();
+                  results.add(errResult);
+                  hasIssues = true;
+                  if (firstError == null) {
+                      firstError = new RuntimeException("[" + account + "] " + e.getMessage(), e);
+                  }
+              }
+          } 
+          if (firstError != null) throw firstError;
+  
+          if (hasIssues) {
+              sendReport(results);
+          } else {
+              logger.info("Daily reconciliation completed — no issues found");
+          }
+  
+          int totalMissing = results.stream().mapToInt(r -> r.missingInvoices.size()).sum();
+          int totalPastDue = results.stream().mapToInt(r -> r.stripePastDue).sum();
+          int totalDeviation = results.stream().mapToInt(AccountResult::deviation).sum();
+          return new RunResult(results.size(), totalMissing, totalPastDue, totalDeviation, hasIssues);
+      }
 
     private AccountResult reconcileAccount(String account) {
         AccountResult result = new AccountResult(account);
@@ -237,13 +242,14 @@ public class DailyReconciliationScheduler {
             if (subId != null) {
                 try {
                     Map<String, Object> contact = jdbcTemplate.queryForMap(
-                        "SELECT cp.name, cp.email_primary AS email " +
+                        "SELECT cp.name, cp.email_primary AS email, cp.phone_primary AS phone " +
                         "FROM beworking.subscriptions s " +
                         "JOIN beworking.contact_profiles cp ON cp.id = s.contact_id " +
                         "WHERE s.stripe_subscription_id = ? LIMIT 1",
                         subId);
                     mutable.put("customerName", contact.get("name"));
                     mutable.put("customerEmail", contact.get("email"));
+                    mutable.put("customerPhone", contact.get("phone"));
                 } catch (EmptyResultDataAccessException ignored) {
                     // No DB match — sub exists in Stripe but not locally. Already
                     // surfaced as stripeOnlySubIds; no customer to show here.
@@ -381,18 +387,31 @@ public class DailyReconciliationScheduler {
                 html.append("<table style='border-collapse:collapse;width:100%;font-size:13px;border:1px solid #f0f0f0;border-radius:6px'>");
                 html.append("<tr style='background:#fafafa;border-bottom:1px solid #f0f0f0'>")
                     .append("<th style='text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em'>Customer</th>")
+                    .append("<th style='text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em'>WhatsApp</th>")
                     .append("<th style='text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em'>Stripe Sub</th>")
                     .append("<th style='text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em'>Amount</th></tr>");
                 for (Map<String, Object> sub : r.pastDueSubs) {
                     String name = (String) sub.get("customerName");
                     String email = (String) sub.get("customerEmail");
+                    String phone = (String) sub.get("customerPhone");
                     String customer = name != null
                         ? "<span style='color:#111;font-weight:500'>" + name + "</span>"
                           + (email != null ? "<br><span style='color:#6b7280;font-size:12px'>" + email + "</span>" : "")
                         : "<span style='color:#9ca3af'>—</span>";
+                    String waCell;
+                    if (phone != null && !phone.isBlank()) {
+                        String waNumber = phone.replaceAll("[^0-9]", "");
+                        waCell = "<a href='https://wa.me/" + waNumber + "' "
+                            + "style='display:inline-block;background:#25D366;color:#fff;text-decoration:none;"
+                            + "padding:6px 12px;border-radius:14px;font-size:12px;font-weight:600;white-space:nowrap'>"
+                            + "WhatsApp</a>";
+                    } else {
+                        waCell = "<span style='color:#9ca3af;font-size:12px'>—</span>";
+                    }
                     String subId = String.valueOf(sub.get("subscriptionId"));
                     html.append("<tr style='border-bottom:1px solid #f5f5f5'>")
                         .append("<td style='padding:10px 12px;vertical-align:top'>").append(customer).append("</td>")
+                        .append("<td style='padding:10px 12px;vertical-align:top'>").append(waCell).append("</td>")
                         .append("<td style='padding:10px 12px;vertical-align:top'>")
                         .append("<a href='https://dashboard.stripe.com/subscriptions/").append(subId)
                         .append("' style='color:#2563eb;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;text-decoration:none'>")
@@ -532,4 +551,5 @@ public class DailyReconciliationScheduler {
                 || !stripeOnlySubIds.isEmpty();
         }
     }
+          public record RunResult(int accountsRun, int missingInvoices, int pastDue, int deviation, boolean issuesFound) {}
 }

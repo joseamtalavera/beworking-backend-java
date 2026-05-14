@@ -128,6 +128,32 @@ public class ReconciliationController {
         List<Map<String, Object>> stripeScheduled = (List<Map<String, Object>>) stripeDetail.getOrDefault("scheduled", List.of());
         List<Map<String, Object>> pastDueSubs = (List<Map<String, Object>>) stripeDetail.getOrDefault("pastDue", List.of());
 
+        // Enrich past-due subs with DB customer + phone for the WhatsApp button
+        if (!pastDueSubs.isEmpty()) {
+            List<Map<String, Object>> enriched = new ArrayList<>(pastDueSubs.size());
+            for (Map<String, Object> sub : pastDueSubs) {
+                Map<String, Object> mutable = new HashMap<>(sub);
+                String subId = (String) sub.get("subscriptionId");
+                if (subId != null) {
+                    try {
+                        Map<String, Object> contact = jdbcTemplate.queryForMap(
+                            "SELECT cp.name, cp.email_primary AS email, cp.phone_primary AS phone " +
+                            "FROM beworking.subscriptions s " +
+                            "JOIN beworking.contact_profiles cp ON cp.id = s.contact_id " +
+                            "WHERE s.stripe_subscription_id = ? LIMIT 1",
+                            subId);
+                        mutable.putIfAbsent("name", contact.get("name"));
+                        mutable.putIfAbsent("email_primary", contact.get("email"));
+                        mutable.put("phone_primary", contact.get("phone"));
+                    } catch (org.springframework.dao.EmptyResultDataAccessException ignored) {
+                        // sub exists in Stripe but not locally — leave row as-is
+                    }
+                }
+                enriched.add(mutable);
+            }
+            pastDueSubs = enriched;
+        }
+
         // Stripe KPI/popup = all live subs (active + past_due). past_due is still a live subscription.
         List<Map<String, Object>> stripeActive = new ArrayList<>(stripeActiveOnly);
         stripeActive.addAll(pastDueSubs);
