@@ -25,7 +25,7 @@ import org.springframework.web.client.RestClient;
 public class DailyReconciliationScheduler {
 
     private static final Logger logger = LoggerFactory.getLogger(DailyReconciliationScheduler.class);
-    private static final String ADMIN_EMAIL = "accounts@be-working.com";
+    private static final String ADMIN_EMAIL = "info@be-working.com";
     private static final String[] ACCOUNTS = {"GT", "PT"};
 
     private final JdbcTemplate jdbcTemplate;
@@ -357,8 +357,8 @@ public class DailyReconciliationScheduler {
                 html.append("<tr>");
                 addMetric(html, "Stripe", String.valueOf(r.stripeLive()), null, null);
                 addMetric(html, "Scheduled", String.valueOf(r.dbScheduled), null, null);
-                addMetric(html, "Bank Transfer", String.valueOf(r.dbBankTransfer), null, null);
-                addMetric(html, "Stripe Deviation", String.valueOf(r.deviation()), null,
+                addMetric(html, "Transfer", String.valueOf(r.dbBankTransfer), null, null);
+                addMetric(html, "Deviation", String.valueOf(r.deviation()), null,
                     r.deviation() > 0 ? "#dc2626" : null);
                 addMetric(html, "Overdue", String.valueOf(r.stripePastDue),
                     r.stripePastDue > 0 ? formatEur(r.pastDueAmount) : null,
