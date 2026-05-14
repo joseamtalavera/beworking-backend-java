@@ -37,16 +37,19 @@ public class LeadController {
     private final ApplicationEventPublisher eventPublisher;
     private final TurnstileService turnstileService;
     private final com.beworking.contacts.ContactProfileRepository contactProfileRepository;
+    private final com.beworking.auth.RegisterService registerService;
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LeadController.class);
 
 
     public LeadController(LeadRepository leadRepository, ApplicationEventPublisher eventPublisher,
                           TurnstileService turnstileService,
-                          com.beworking.contacts.ContactProfileRepository contactProfileRepository) {
+                          com.beworking.contacts.ContactProfileRepository contactProfileRepository,
+                          com.beworking.auth.RegisterService registerService) {
         this.leadRepository = leadRepository;
         this.eventPublisher = eventPublisher; // Initialize the event publisher
         this.turnstileService = turnstileService;
         this.contactProfileRepository = contactProfileRepository;
+        this.registerService = registerService;
     }
     // LeadRequest is now a separate DTO class in the same package
     /**
@@ -266,6 +269,22 @@ public class LeadController {
             created = true;
         }
 
+        // Mirror admin "Nuevo Contacto" path: ensure a users row exists for the
+        // contact and send a welcome email with a password-set link (24h). Without
+        // this, a converted lead has no auth account — login + password-reset both
+        // silently fail because findByEmail returns empty.
+        boolean userCreated = false;
+        if (emailLower != null && !emailLower.isBlank()) {
+            try {
+                com.beworking.auth.User u = registerService.createUserForContact(
+                    emailLower, lead.getName(), cp.getId());
+                userCreated = u != null;
+            } catch (Exception e) {
+                logger.warn("Lead convert: failed to create user for contact {} ({}): {}",
+                    cp.getId(), emailLower, e.getMessage());
+            }
+        }
+
         lead.setStatus("Convertido");
         lead.setStatusChangedAt(java.time.Instant.now());
         leadRepository.save(lead);
@@ -273,6 +292,7 @@ public class LeadController {
         Map<String, Object> result = new HashMap<>();
         result.put("contactId", cp.getId());
         result.put("created", created);
+        result.put("userCreated", userCreated);
         result.put("leadStatus", lead.getStatus());
         return ResponseEntity.ok(result);
     }
