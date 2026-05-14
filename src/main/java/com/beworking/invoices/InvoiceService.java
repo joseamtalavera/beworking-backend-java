@@ -627,6 +627,7 @@ public class InvoiceService {
             if (updated > 0) {
                 syncBloqueosPaidByStripeInvoice(stripeInvoiceId);
                 activateContactByFacturaColumn("stripeinvoiceid", stripeInvoiceId);
+                ensureSubscriptionAfterPayment("stripeinvoiceid", stripeInvoiceId);
                 return updated;
             }
         }
@@ -643,6 +644,7 @@ public class InvoiceService {
         if (updated > 0) {
             syncBloqueosPaidByInvoiceNum(reference);
             activateContactByFacturaColumn("holdedinvoicenum", reference);
+            ensureSubscriptionAfterPayment("holdedinvoicenum", reference);
             return updated;
         }
 
@@ -656,11 +658,67 @@ public class InvoiceService {
             if (updated > 0) {
                 syncBloqueosPaidByIdfactura(numRef);
                 activateContactByFacturaColumn("idfactura", numRef);
+                ensureSubscriptionAfterPayment("idfactura", numRef);
             }
         } catch (NumberFormatException ignored) {
         }
 
         return updated;
+    }
+
+    // When a past-due invoice gets paid and the customer has no active
+    // subscription (because theirs was previously cancelled), revive the
+    // most recent cancelled PT sub: clone its plan into a brand-new active
+    // row dated today. PT only — per product decision in Phase 3.
+    // Caller provides the column to find the just-paid factura by.
+    private void ensureSubscriptionAfterPayment(String matchColumn, Object value) {
+        try {
+            Long contactId = jdbcTemplate.queryForObject(
+                "SELECT idcliente FROM beworking.facturas WHERE " + matchColumn + " = ? LIMIT 1",
+                Long.class, value);
+            if (contactId == null) return;
+
+            Integer activeCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM beworking.subscriptions WHERE contact_id = ? AND active = TRUE",
+                Integer.class, contactId);
+            if (activeCount != null && activeCount > 0) return;
+
+            // No active sub — find the most recent cancelled one to clone.
+            Map<String, Object> prior;
+            try {
+                prior = jdbcTemplate.queryForMap("""
+                    SELECT monthly_amount, currency, description, vat_percent,
+                           billing_interval, billing_method, producto_id
+                      FROM beworking.subscriptions
+                     WHERE contact_id = ? AND active = FALSE
+                     ORDER BY COALESCE(end_date, start_date) DESC, id DESC
+                     LIMIT 1
+                    """, contactId);
+            } catch (EmptyResultDataAccessException ignored) {
+                logger.info("ensureSubscriptionAfterPayment: contact {} has no prior sub to revive — skipping", contactId);
+                return;
+            }
+
+            jdbcTemplate.update("""
+                INSERT INTO beworking.subscriptions
+                    (contact_id, monthly_amount, currency, cuenta, description, vat_percent,
+                     start_date, active, created_at, billing_method, billing_interval, producto_id)
+                VALUES (?, ?, ?, 'PT', ?, ?, CURRENT_DATE, TRUE, NOW(), ?, ?, ?)
+                """,
+                contactId,
+                prior.get("monthly_amount"),
+                prior.get("currency") != null ? prior.get("currency") : "EUR",
+                prior.get("description"),
+                prior.get("vat_percent"),
+                prior.get("billing_method") != null ? prior.get("billing_method") : "bank_transfer",
+                prior.get("billing_interval") != null ? prior.get("billing_interval") : "month",
+                prior.get("producto_id"));
+
+            logger.info("ensureSubscriptionAfterPayment: revived sub on PT for contact {} (cloned from latest cancelled sub)", contactId);
+        } catch (Exception e) {
+            // Don't ever block the payment flow — log and move on.
+            logger.warn("ensureSubscriptionAfterPayment failed for {}={}: {}", matchColumn, value, e.getMessage(), e);
+        }
     }
 
     // Reactivates a contact the ActivoAgingScheduler may have demoted before the

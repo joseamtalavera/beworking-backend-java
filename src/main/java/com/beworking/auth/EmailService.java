@@ -680,6 +680,29 @@ public class EmailService {
     }
 
     /**
+     * Cron-style email to a customer that BCCs info@be-working.com and sets
+     * Reply-To info@ so replies land in the team inbox. Used by dunning /
+     * past-due reminders where a human follow-up is expected.
+     */
+    @Async
+    public void sendBccInfo(String to, String subject, String htmlContent) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
+            helper.setTo(to);
+            helper.setBcc("info@be-working.com");
+            helper.setReplyTo("info@be-working.com");
+            helper.setSubject(subject);
+            helper.setText(htmlContent, true);
+            mailSender.send(message);
+            logger.info("Customer email (BCC info@) sent to {}", to);
+        } catch (Exception e) {
+            logger.error("Failed to send BCC-info email to {}: {}", to, e.getMessage(), e);
+        }
+    }
+
+    /**
      * Send abandonment-recovery email. BCCs info@be-working.com so the team
      * can track who's been contacted. Best-effort; logs failures.
      */
