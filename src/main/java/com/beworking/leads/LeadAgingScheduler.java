@@ -10,9 +10,10 @@ import org.springframework.stereotype.Component;
  * Daily job that ages out leads stuck in the 'Contactado' state.
  *
  * Funnel rule: once a lead reaches 'Contactado' (set automatically by
- * LeadEmailListener after the acknowledgment email lands), the sales team
- * has {@value #AGING_DAYS} days to manually advance it to 'Calificado'.
- * If they don't, it auto-flips to 'No-go' and leaves the active pipeline.
+ * LeadEmailListener after the acknowledgment email lands), the lifecycle is:
+ *   - Days 0–7  → LeadNurtureScheduler sends 4 follow-up emails
+ *   - Days 7–30 → grace period, no automated touches
+ *   - Day 30+   → this cron auto-flips to 'No-go'
  *
  * Calificado / Convertido / No-go / Nuevo are NOT touched — only Contactado.
  * Anything past Contactado has had a human decision and stays where the
@@ -24,7 +25,7 @@ import org.springframework.stereotype.Component;
 public class LeadAgingScheduler {
 
     private static final Logger logger = LoggerFactory.getLogger(LeadAgingScheduler.class);
-    private static final int AGING_DAYS = 23;
+    private static final int AGING_DAYS = 30;
 
     private final JdbcTemplate jdbcTemplate;
 

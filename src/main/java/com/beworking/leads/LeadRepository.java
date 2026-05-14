@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,4 +43,11 @@ public interface LeadRepository extends JpaRepository<Lead, UUID> {
            or lower(coalesce(l.subject, '')) like :pattern
         """)
     Page<Lead> searchByPattern(@Param("pattern") String pattern, Pageable pageable);
+
+    /**
+     * Nurture cron candidates: leads still in 'Contactado' that became so
+     * within the email window and haven't yet hit the 4-email cap.
+     */
+    List<Lead> findByStatusAndStatusChangedAtGreaterThanEqualAndNurtureEmailCountLessThan(
+        String status, Instant since, int maxEmails);
 }

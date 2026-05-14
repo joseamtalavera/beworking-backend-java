@@ -48,6 +48,15 @@ public class Lead {
     @Column(name = "status_changed_at")
     private Instant statusChangedAt;
 
+    // Lead nurture cron: tracks the 4-touch email sequence sent to leads
+    // in 'Contactado'. Mirrors the abandonment_email_count pattern on
+    // contact_profiles. See LeadNurtureScheduler.
+    @Column(name = "nurture_email_count", nullable = false)
+    private int nurtureEmailCount = 0;
+
+    @Column(name = "last_nurture_email_at")
+    private Instant lastNurtureEmailAt;
+
     // HubSpot specific fields
 
    @Enumerated(EnumType.STRING)
@@ -108,6 +117,12 @@ public class Lead {
     public void setStatusChangedAt(Instant statusChangedAt) {
         this.statusChangedAt = statusChangedAt;
     }
+
+    public int getNurtureEmailCount() { return nurtureEmailCount; }
+    public void setNurtureEmailCount(int nurtureEmailCount) { this.nurtureEmailCount = nurtureEmailCount; }
+
+    public Instant getLastNurtureEmailAt() { return lastNurtureEmailAt; }
+    public void setLastNurtureEmailAt(Instant lastNurtureEmailAt) { this.lastNurtureEmailAt = lastNurtureEmailAt; }
 
     // HubSpot specific getters and setters
 

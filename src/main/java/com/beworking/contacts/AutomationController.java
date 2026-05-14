@@ -31,10 +31,10 @@ public class AutomationController {
     private final ActivoAgingScheduler activoAging;
     private final InactivoReengagementScheduler reengagement;
     private final com.beworking.leads.LeadAgingScheduler leadAging;
+    private final com.beworking.leads.LeadNurtureScheduler leadNurture;
     private final com.beworking.invoices.DailyReconciliationScheduler reconciliation;
     private final com.beworking.invoices.MonthlyInvoiceScheduler monthlyInvoice;
     private final com.beworking.subscriptions.LocalSubscriptionScheduler localSubscription;
-    private final com.beworking.subscriptions.PastDueReminderScheduler pastDueReminder;
     private final JdbcTemplate jdbcTemplate;
 
     public AutomationController(AbandonmentRecoveryScheduler recoveryScheduler,
@@ -42,20 +42,20 @@ public class AutomationController {
                                 ActivoAgingScheduler activoAging,
                                 InactivoReengagementScheduler reengagement,
                                 com.beworking.leads.LeadAgingScheduler leadAging,
+                                com.beworking.leads.LeadNurtureScheduler leadNurture,
                                 com.beworking.invoices.DailyReconciliationScheduler reconciliation,
                                 com.beworking.invoices.MonthlyInvoiceScheduler monthlyInvoice,
                                 com.beworking.subscriptions.LocalSubscriptionScheduler localSubscription,
-                                com.beworking.subscriptions.PastDueReminderScheduler pastDueReminder,
                                 JdbcTemplate jdbcTemplate) {
         this.recoveryScheduler = recoveryScheduler;
         this.potencialAging = potencialAging;
         this.activoAging = activoAging;
         this.reengagement = reengagement;
         this.leadAging = leadAging;
+        this.leadNurture = leadNurture;
         this.reconciliation = reconciliation;
         this.monthlyInvoice = monthlyInvoice;
         this.localSubscription = localSubscription;
-        this.pastDueReminder = pastDueReminder;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -128,16 +128,29 @@ public class AutomationController {
                 """)
             ),
             jobDescriptor(
+                "leadNurture",
+                "Nurture de Leads (Contactado)",
+                "Envía hasta 4 correos a leads en Contactado (T+30min, T+1d, T+3d, T+6d). Misma cadencia que la recuperación de Potenciales.",
+                "0 0 * * * *",
+                "Cada hora",
+                countQuery("""
+                    SELECT COUNT(*) FROM beworking.leads
+                     WHERE status = 'Contactado'
+                       AND status_changed_at >= NOW() - INTERVAL '7 days'
+                       AND nurture_email_count < 4
+                """)
+            ),
+            jobDescriptor(
                 "leadAging",
                 "Caducidad de Leads (Contactado)",
-                "Pasa a No-go los leads en estado Contactado durante más de 23 días sin progreso manual. Calificado / Convertido no se tocan.",
+                "Pasa a No-go los leads en estado Contactado durante más de 30 días sin progreso manual. Calificado / Convertido no se tocan.",
                 "0 30 2 * * *",
                 "Diario, 02:30 UTC",
                 countQuery("""
                     SELECT COUNT(*) FROM beworking.leads
                      WHERE status = 'Contactado'
                        AND status_changed_at IS NOT NULL
-                       AND status_changed_at < NOW() - INTERVAL '23 days'
+                       AND status_changed_at < NOW() - INTERVAL '30 days'
                 """)
             ),
             jobDescriptor(
@@ -182,23 +195,6 @@ public class AutomationController {
                        AND (last_invoiced_month IS NULL
                             OR last_invoiced_month <> to_char(NOW(), 'YYYY-MM'))
                 """)
-            ),
-            jobDescriptor(
-                "pastDueReminder",
-                "Recordatorio past-due",
-                "Envía hasta 3 correos (día 1, 3, 7) a clientes con suscripciones past-due o facturas Pendiente +24h, y un digest interno a info@ con botón WhatsApp por cliente.",
-                "0 0 7 * * *",
-                "Diario, 07:00 UTC",
-                countQuery("""
-                    SELECT COUNT(*) FROM beworking.facturas f
-                     WHERE f.creacionfecha < NOW() - INTERVAL '1 day'
-                       AND f.idfactura < 100000
-                       AND (LOWER(COALESCE(f.estado, '')) LIKE '%pend%'
-                         OR LOWER(COALESCE(f.estado, '')) LIKE '%confir%'
-                         OR LOWER(COALESCE(f.estado, '')) LIKE '%fact%'
-                         OR LOWER(COALESCE(f.estado, '')) LIKE '%invoice%'
-                         OR LOWER(COALESCE(f.estado, '')) LIKE '%created%')
-                """)
             )
         );
         return ResponseEntity.ok(jobs);
@@ -240,6 +236,12 @@ public class AutomationController {
                 com.beworking.leads.LeadAgingScheduler.RunResult r = leadAging.runOnce();
                 result.put("flipped", r.flipped());
             }
+            case "leadNurture" -> {
+                com.beworking.leads.LeadNurtureScheduler.RunResult r = leadNurture.runOnce();
+                result.put("sent", r.sent());
+                result.put("skipped", r.skipped());
+                result.put("totalCandidates", r.totalCandidates());
+            }
             case "reconciliation" -> {
                 com.beworking.invoices.DailyReconciliationScheduler.RunResult r = reconciliation.runOnce();
                 result.put("accountsRun", r.accountsRun());
@@ -259,13 +261,6 @@ public class AutomationController {
                 result.put("failed", r.failed());
                 result.put("skipped", r.skipped());
                 result.put("total", r.total());
-            }
-            case "pastDueReminder" -> {
-                com.beworking.subscriptions.PastDueReminderScheduler.RunResult r = pastDueReminder.runOnce();
-                result.put("customerEmailsSent", r.customerEmailsSent());
-                result.put("subsPastDue", r.subsPastDue());
-                result.put("invoicesPastDue", r.invoicesPastDue());
-                result.put("digestSent", r.digestSent());
             }
             default -> {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
@@ -370,8 +365,8 @@ public class AutomationController {
 
     private static String domainFor(String name) {
         return switch (name) {
-            case "recovery", "potencialAging", "activoAging", "reengagement", "leadAging" -> "contacts";
-            case "reconciliation", "monthlyInvoice", "localSubscription", "pastDueReminder" -> "billing";
+            case "recovery", "potencialAging", "activoAging", "reengagement", "leadAging", "leadNurture" -> "contacts";
+            case "reconciliation", "monthlyInvoice", "localSubscription" -> "billing";
             default -> "other";
         };
     }

@@ -743,10 +743,85 @@ public class EmailService {
             helper.setText(html, true);
             mailSender.send(message);
             logger.info("Recovery email #{} sent to {}", templateNumber, to);
-            notifyAdminOfCronEmail("Recovery", templateNumber, to, name, contactId, tpl.subject());
         } catch (Exception e) {
             logger.error("Failed to send recovery email #{} to {}: {}", templateNumber, to, e.getMessage(), e);
         }
+    }
+
+    /**
+     * 4-touch nurture sequence for leads in 'Contactado'. Mirrors the
+     * Potencial recovery cadence (T+30min, T+1d, T+3d, T+6d) but with
+     * inquiry-style copy — leads asked a question, they didn't try to pay.
+     * Owned by LeadNurtureScheduler. info@ is BCC'd so replies thread back.
+     */
+    @Async
+    public void sendLeadNurtureEmail(String to, String name, int templateNumber) {
+        String safeName = (name != null && !name.isBlank()) ? name : "";
+        String greeting = safeName.isEmpty() ? "Hola," : "Hola " + safeName + ",";
+        RecoveryTemplate tpl = leadNurtureTemplate(templateNumber, greeting);
+        String html = recoveryEmailShell(tpl.headline(), tpl.body());
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
+            helper.setTo(to);
+            helper.setBcc("info@be-working.com");
+            helper.setReplyTo("info@be-working.com");
+            helper.setSubject(tpl.subject());
+            helper.setText(html, true);
+            mailSender.send(message);
+            logger.info("Lead nurture email #{} sent to {}", templateNumber, to);
+        } catch (Exception e) {
+            logger.error("Failed to send lead nurture email #{} to {}: {}", templateNumber, to, e.getMessage(), e);
+        }
+    }
+
+    private RecoveryTemplate leadNurtureTemplate(int n, String greeting) {
+        String waLink = "https://wa.me/34640369759?text=Hola,%20tengo%20una%20pregunta%20sobre%20BeWorking";
+        String waButton = "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto 16px;\"><tr>"
+            + "<td style=\"background:#009624;border-radius:999px;\">"
+            + "<a href=\"" + waLink + "\" style=\"display:inline-block;padding:12px 28px;color:#fff;text-decoration:none;font-weight:600;font-size:15px;\">Hablar por WhatsApp</a>"
+            + "</td></tr></table>";
+        return switch (n) {
+            case 2 -> new RecoveryTemplate(
+                "¿Has podido revisar la información? — BeWorking",
+                "¿Pudiste revisar lo que te enviamos?",
+                "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
+                + "<p style=\"margin:0 0 16px;\">Ayer te contactamos tras tu mensaje. Queríamos comprobar si has tenido tiempo de revisar la información y si te queda alguna duda.</p>"
+                + "<p style=\"margin:0 0 24px;\">Si prefieres una respuesta rápida, escríbenos por WhatsApp — el equipo te atiende en directo.</p>"
+                + waButton
+                + "<p style=\"margin:0;color:#666;font-size:13px;text-align:center;\">o responde a este correo si lo prefieres.</p>"
+            );
+            case 3 -> new RecoveryTemplate(
+                "Algunas preguntas frecuentes — BeWorking",
+                "Quizá esto te ayude",
+                "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
+                + "<p style=\"margin:0 0 16px;\">Pasados unos días, te dejamos algunas respuestas a lo que más nos preguntan:</p>"
+                + "<p style=\"margin:0 0 8px;\"><strong>¿Cuánto cuesta?</strong> Tenemos planes desde 15€/mes para oficina virtual.</p>"
+                + "<p style=\"margin:0 0 8px;\"><strong>¿Puedo darme de alta hoy?</strong> Sí, el proceso es 100% online y tarda menos de 5 minutos.</p>"
+                + "<p style=\"margin:0 0 24px;\"><strong>¿Puedo cancelar cuando quiera?</strong> Sí, sin permanencia.</p>"
+                + "<p style=\"margin:0 0 24px;\">Si tienes una pregunta distinta, cuéntanosla — estamos para resolverla.</p>"
+                + waButton
+            );
+            case 4 -> new RecoveryTemplate(
+                "Último mensaje — ¿podemos ayudarte? — BeWorking",
+                "Última llamada",
+                "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
+                + "<p style=\"margin:0 0 16px;\">Esta es la última vez que te escribimos sobre tu consulta. No queremos saturarte.</p>"
+                + "<p style=\"margin:0 0 24px;\">Si en algún momento quieres retomar la conversación, aquí estaremos. Y si la consulta se resolvió por otro lado, gracias por considerarnos.</p>"
+                + waButton
+                + "<p style=\"margin:0;color:#666;font-size:13px;text-align:center;\">Un saludo del equipo BeWorking.</p>"
+            );
+            default -> new RecoveryTemplate(
+                "¿Te puedo ayudar con algo más? — BeWorking",
+                "¿Te puedo ayudar con algo más?",
+                "<p style=\"margin:0 0 16px;\">" + greeting + "</p>"
+                + "<p style=\"margin:0 0 16px;\">Recibimos tu mensaje hace un rato. Queríamos asegurarnos de que te llegó nuestra respuesta y comprobar si tienes alguna duda adicional.</p>"
+                + "<p style=\"margin:0 0 24px;\">Si te resulta más fácil, podemos hablar por WhatsApp — un compañero del equipo te resuelve dudas en directo.</p>"
+                + waButton
+                + "<p style=\"margin:0;color:#666;font-size:13px;text-align:center;\">o responde a este correo y te contestamos.</p>"
+            );
+        };
     }
 
     /**
@@ -795,38 +870,8 @@ public class EmailService {
             helper.setText(html, true);
             mailSender.send(message);
             logger.info("Reengagement email sent to {}", to);
-            notifyAdminOfCronEmail("Reengagement", emailNumber, to, name, contactId,
-                "¿Cuánto tiempo! ¿Volvemos a vernos? — BeWorking");
         } catch (Exception e) {
             logger.error("Failed to send reengagement email to {}: {}", to, e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Sends a separate admin notification TO info@be-working.com after a cron-triggered
-     * customer email goes out. Lands in the team inbox like Lead notifications do, because
-     * Gmail Workspace silently archives BCC copies where From == BCC (self-send rule).
-     * Best-effort; logs failures but never blocks the customer send.
-     */
-    private void notifyAdminOfCronEmail(String emailType, int templateNumber, String to, String name,
-                                        Long contactId, String subjectSent) {
-        try {
-            String safeName = (name != null && !name.isBlank()) ? name : "—";
-            String safeContactId = contactId != null ? contactId.toString() : "—";
-            String adminSubject = "[Cron] " + emailType + " #" + templateNumber + " → " + to;
-            String html = "<div style=\"font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;color:#222;line-height:1.5\">"
-                + "<p style=\"margin:0 0 12px;\"><strong>" + emailType + " email #" + templateNumber + "</strong> was just sent.</p>"
-                + "<table cellpadding=\"6\" style=\"border-collapse:collapse;font-size:13px;\">"
-                + "<tr><td style=\"color:#666;\">Recipient:</td><td>" + to + "</td></tr>"
-                + "<tr><td style=\"color:#666;\">Name:</td><td>" + safeName + "</td></tr>"
-                + "<tr><td style=\"color:#666;\">Contact ID:</td><td>" + safeContactId + "</td></tr>"
-                + "<tr><td style=\"color:#666;\">Subject:</td><td>" + subjectSent + "</td></tr>"
-                + "</table>"
-                + "<p style=\"color:#888;font-size:12px;margin-top:16px;\">Automated notification from BeWorking cron.</p>"
-                + "</div>";
-            sendHtml("info@be-working.com", adminSubject, html, to);
-        } catch (Exception e) {
-            logger.warn("Failed to send admin notification for {} #{} to {}: {}", emailType, templateNumber, to, e.getMessage());
         }
     }
 
