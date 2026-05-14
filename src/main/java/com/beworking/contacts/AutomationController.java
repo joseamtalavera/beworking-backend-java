@@ -35,6 +35,8 @@ public class AutomationController {
     private final com.beworking.invoices.DailyReconciliationScheduler reconciliation;
     private final com.beworking.invoices.MonthlyInvoiceScheduler monthlyInvoice;
     private final com.beworking.subscriptions.LocalSubscriptionScheduler localSubscription;
+    private final com.beworking.invoices.MeetingRoomReconciliationScheduler meetingRoomReconciliation;
+    private final com.beworking.reports.PriceDiscrepancyAuditScheduler priceDiscrepancyAudit;
     private final JdbcTemplate jdbcTemplate;
 
     public AutomationController(AbandonmentRecoveryScheduler recoveryScheduler,
@@ -46,6 +48,8 @@ public class AutomationController {
                                 com.beworking.invoices.DailyReconciliationScheduler reconciliation,
                                 com.beworking.invoices.MonthlyInvoiceScheduler monthlyInvoice,
                                 com.beworking.subscriptions.LocalSubscriptionScheduler localSubscription,
+                                com.beworking.invoices.MeetingRoomReconciliationScheduler meetingRoomReconciliation,
+                                com.beworking.reports.PriceDiscrepancyAuditScheduler priceDiscrepancyAudit,
                                 JdbcTemplate jdbcTemplate) {
         this.recoveryScheduler = recoveryScheduler;
         this.potencialAging = potencialAging;
@@ -56,6 +60,8 @@ public class AutomationController {
         this.reconciliation = reconciliation;
         this.monthlyInvoice = monthlyInvoice;
         this.localSubscription = localSubscription;
+        this.meetingRoomReconciliation = meetingRoomReconciliation;
+        this.priceDiscrepancyAudit = priceDiscrepancyAudit;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -195,6 +201,41 @@ public class AutomationController {
                        AND (last_invoiced_month IS NULL
                             OR last_invoiced_month <> to_char(NOW(), 'YYYY-MM'))
                 """)
+            ),
+            jobDescriptor(
+                "meetingRoomReconciliation",
+                "Reconciliación salas (PT)",
+                "Lista facturas Pendiente de salas (Usuario Aulas, cuenta PT) con +24h desde la creación. Email diario a info@ con botón WhatsApp por cliente.",
+                "0 30 5 * * *",
+                "Diario, 05:30 UTC",
+                countQuery("""
+                    SELECT COUNT(*) FROM beworking.facturas f
+                      JOIN beworking.contact_profiles cp ON cp.id = f.idcliente
+                     WHERE UPPER(COALESCE(NULLIF(f.holdedcuenta, ''), 'PT')) = 'PT'
+                       AND cp.tenant_type = 'Usuario Aulas'
+                       AND f.creacionfecha < NOW() - INTERVAL '1 day'
+                       AND f.idfactura < 100000
+                       AND (LOWER(COALESCE(f.estado, '')) LIKE '%pend%'
+                         OR LOWER(COALESCE(f.estado, '')) LIKE '%confir%'
+                         OR LOWER(COALESCE(f.estado, '')) LIKE '%fact%'
+                         OR LOWER(COALESCE(f.estado, '')) LIKE '%invoice%'
+                         OR LOWER(COALESCE(f.estado, '')) LIKE '%created%')
+                """)
+            ),
+            jobDescriptor(
+                "priceDiscrepancyAudit",
+                "Auditoría de precios (DB vs Stripe)",
+                "Detecta facturas Pagado donde el total de la BBDD difiere de amount_paid de Stripe por +0,01€. Stripe es la fuente de verdad.",
+                "0 0 6 * * *",
+                "Diario, 06:00 UTC",
+                countQuery("""
+                    SELECT COUNT(*) FROM beworking.facturas f
+                     WHERE f.stripeinvoiceid IS NOT NULL
+                       AND f.stripeinvoiceid <> ''
+                       AND LOWER(COALESCE(f.estado, '')) = 'pagado'
+                       AND f.creacionfecha >= NOW() - INTERVAL '30 days'
+                       AND f.idfactura < 100000
+                """)
             )
         );
         return ResponseEntity.ok(jobs);
@@ -261,6 +302,17 @@ public class AutomationController {
                 result.put("failed", r.failed());
                 result.put("skipped", r.skipped());
                 result.put("total", r.total());
+            }
+            case "meetingRoomReconciliation" -> {
+                com.beworking.invoices.MeetingRoomReconciliationScheduler.RunResult r = meetingRoomReconciliation.runOnce();
+                result.put("facturasPastDue", r.facturasPastDue());
+                result.put("totalAmount", r.totalAmount());
+                result.put("emailSent", r.emailSent());
+            }
+            case "priceDiscrepancyAudit" -> {
+                com.beworking.reports.PriceDiscrepancyAuditScheduler.RunResult r = priceDiscrepancyAudit.runOnce();
+                result.put("discrepancies", r.discrepancies());
+                result.put("emailSent", r.emailSent());
             }
             default -> {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
@@ -366,7 +418,8 @@ public class AutomationController {
     private static String domainFor(String name) {
         return switch (name) {
             case "recovery", "potencialAging", "activoAging", "reengagement", "leadAging", "leadNurture" -> "contacts";
-            case "reconciliation", "monthlyInvoice", "localSubscription" -> "billing";
+            case "reconciliation", "monthlyInvoice", "localSubscription",
+                 "meetingRoomReconciliation", "priceDiscrepancyAudit" -> "billing";
             default -> "other";
         };
     }

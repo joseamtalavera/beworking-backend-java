@@ -19,9 +19,29 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReportsController {
 
     private final InvoiceAuditService auditService;
+    private final PriceDiscrepancyService discrepancyService;
 
-    public ReportsController(InvoiceAuditService auditService) {
+    public ReportsController(InvoiceAuditService auditService,
+                             PriceDiscrepancyService discrepancyService) {
         this.auditService = auditService;
+        this.discrepancyService = discrepancyService;
+    }
+
+    @GetMapping("/price-discrepancies")
+    public ResponseEntity<?> priceDiscrepancies(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        List<PriceDiscrepancyService.Discrepancy> rows = discrepancyService.findRecent();
+        Map<String, Object> result = new HashMap<>();
+        result.put("count", rows.size());
+        result.put("rows", rows);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/invoice-audit")

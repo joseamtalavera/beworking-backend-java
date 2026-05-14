@@ -20,15 +20,30 @@ public class ReconciliationController {
 
     private final JdbcTemplate jdbcTemplate;
     private final DailyReconciliationScheduler scheduler;
+    private final MeetingRoomReconciliationService meetingRoomService;
     private final RestClient http = RestClient.create();
     private final String paymentsBaseUrl;
 
     public ReconciliationController(JdbcTemplate jdbcTemplate,
                                     DailyReconciliationScheduler scheduler,
+                                    MeetingRoomReconciliationService meetingRoomService,
                                     @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
         this.scheduler = scheduler;
+        this.meetingRoomService = meetingRoomService;
         this.paymentsBaseUrl = paymentsBaseUrl;
+    }
+
+    @GetMapping("/meeting-rooms")
+    public ResponseEntity<Map<String, Object>> getMeetingRoomPastDue() {
+        List<MeetingRoomReconciliationService.PastDueRoomInvoice> rows = meetingRoomService.findPastDue();
+        Map<String, Object> result = new HashMap<>();
+        result.put("count", rows.size());
+        result.put("totalAmount", rows.stream()
+            .map(r -> r.total() != null ? r.total() : java.math.BigDecimal.ZERO)
+            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add));
+        result.put("rows", rows);
+        return ResponseEntity.ok(result);
     }
 
     @SuppressWarnings("unchecked")
