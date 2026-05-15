@@ -397,7 +397,8 @@ public class SubscriptionController {
         }
 
         // Create local invoices from Stripe data
-        if (stripeResponse != null && stripeResponse.containsKey("firstInvoice")) {
+        if (stripeResponse != null && stripeResponse.containsKey("firstInvoice")
+                && !"trialing".equals(stripeResponse.get("status"))) {
             // Auto-created subscription: create Pendiente invoice from first invoice
             try {
                 @SuppressWarnings("unchecked")
