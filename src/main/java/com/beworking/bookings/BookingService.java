@@ -65,6 +65,7 @@ class BookingService {
     private final com.beworking.contacts.ContactProfileService contactProfileService;
     private final com.beworking.tax.TaxResolver taxResolver;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final com.beworking.invoices.BillingSnapshotService billingSnapshotService;
 
     BookingService(ReservaRepository reservaRepository,
                    BloqueoRepository bloqueoRepository,
@@ -77,7 +78,8 @@ class BookingService {
                    RegisterService registerService,
                    @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
                    com.beworking.tax.TaxResolver taxResolver,
-                   org.springframework.context.ApplicationEventPublisher eventPublisher) {
+                   org.springframework.context.ApplicationEventPublisher eventPublisher,
+                   com.beworking.invoices.BillingSnapshotService billingSnapshotService) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
@@ -90,6 +92,7 @@ class BookingService {
         this.contactProfileService = contactProfileService;
         this.taxResolver = taxResolver;
         this.eventPublisher = eventPublisher;
+        this.billingSnapshotService = billingSnapshotService;
     }
 
     @Transactional(readOnly = true)
@@ -336,6 +339,7 @@ class BookingService {
                         note,
                         request.getStripePaymentIntentId()
                     );
+                    billingSnapshotService.snapshot(nextId, contact.getId());
 
                     // Insert line items — one per session
                     for (BloqueoResponse bi : allBloqueos) {

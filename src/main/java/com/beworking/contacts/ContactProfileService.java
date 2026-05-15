@@ -547,6 +547,14 @@ public class ContactProfileService {
         // Track original status to update timestamp if needed
         String originalStatus = profile.getStatus();
 
+        // Snapshot billing identity so we only push to Stripe when it actually
+        // changes (name / tax id / tax-id type / VAT validity).
+        String origName = profile.getName();
+        String origBillingName = profile.getBillingName();
+        String origTaxId = profile.getBillingTaxId();
+        String origTaxIdType = profile.getBillingTaxIdType();
+        Boolean origVatValid = profile.getVatValid();
+
         if (request.getName() != null && !request.getName().isBlank()) {
             profile.setName(request.getName().trim());
         }
@@ -683,7 +691,19 @@ public class ContactProfileService {
             runVatValidation(profile);
         }
 
-        return repository.save(profile);
+        ContactProfile saved = repository.save(profile);
+
+        boolean identityChanged =
+            !java.util.Objects.equals(origName, saved.getName())
+            || !java.util.Objects.equals(origBillingName, saved.getBillingName())
+            || !java.util.Objects.equals(origTaxId, saved.getBillingTaxId())
+            || !java.util.Objects.equals(origTaxIdType, saved.getBillingTaxIdType())
+            || !java.util.Objects.equals(origVatValid, saved.getVatValid());
+        if (identityChanged) {
+            eventPublisher.publishEvent(new ContactBillingChangedEvent(saved.getId()));
+        }
+
+        return saved;
     }
 
     private static final java.util.Set<String> EU_VAT_PREFIXES = java.util.Set.of(
@@ -791,9 +811,15 @@ public class ContactProfileService {
     public boolean revalidateVat(Long contactId) {
         ContactProfile profile = repository.findById(contactId).orElse(null);
         if (profile == null) return false;
+        Boolean origVatValid = profile.getVatValid();
+        String origTaxIdType = profile.getBillingTaxIdType();
         runVatValidation(profile);
-        repository.save(profile);
-        return Boolean.TRUE.equals(profile.getVatValid());
+        ContactProfile saved = repository.save(profile);
+        if (!java.util.Objects.equals(origVatValid, saved.getVatValid())
+            || !java.util.Objects.equals(origTaxIdType, saved.getBillingTaxIdType())) {
+            eventPublisher.publishEvent(new ContactBillingChangedEvent(contactId));
+        }
+        return Boolean.TRUE.equals(saved.getVatValid());
     }
 
     /**
@@ -836,10 +862,16 @@ public class ContactProfileService {
             if (p.getBillingTaxId() == null || p.getBillingTaxId().isBlank()) continue;
             if (Boolean.TRUE.equals(p.getVatValid())) continue;
             try {
+                Boolean origVatValid = p.getVatValid();
                 runVatValidation(p);
-                repository.save(p);  // its own short transaction → commits now
+                ContactProfile saved = repository.save(p);  // its own short transaction → commits now
                 processed++;
-                if (Boolean.TRUE.equals(p.getVatValid())) validated++; else invalid++;
+                if (Boolean.TRUE.equals(saved.getVatValid())) validated++; else invalid++;
+                // Only the flipped subset (small) pushes to Stripe; paced by
+                // the 1s VIES throttle below, so no rate-limit storm.
+                if (!java.util.Objects.equals(origVatValid, saved.getVatValid())) {
+                    eventPublisher.publishEvent(new ContactBillingChangedEvent(saved.getId()));
+                }
             } catch (Exception e) {
                 errors++;
                 LOGGER.warn("Reseed failed for contact {}: {}", p.getId(), e.getMessage());

@@ -28,6 +28,7 @@ public class ContactProfileController {
     private final RegisterService registerService;
     private final com.beworking.subscriptions.SubscriptionService subscriptionService;
     private final com.beworking.auth.EmailService emailService;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     public ContactProfileController(ContactProfileService contactProfileService,
                                      ContactProfileRepository contactProfileRepository,
@@ -36,7 +37,8 @@ public class ContactProfileController {
                                      ViesVatService viesVatService,
                                      RegisterService registerService,
                                      com.beworking.subscriptions.SubscriptionService subscriptionService,
-                                     com.beworking.auth.EmailService emailService) {
+                                     com.beworking.auth.EmailService emailService,
+                                     org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.contactProfileService = contactProfileService;
         this.contactProfileRepository = contactProfileRepository;
         this.userRepository = userRepository;
@@ -45,6 +47,7 @@ public class ContactProfileController {
         this.registerService = registerService;
         this.subscriptionService = subscriptionService;
         this.emailService = emailService;
+        this.eventPublisher = eventPublisher;
     }
 
     @GetMapping
@@ -341,6 +344,10 @@ public class ContactProfileController {
         // Snapshot after-state for the response.
         Map<String, Object> after = jdbcTemplate.queryForMap(
             "SELECT vat_valid, billing_tax_id_type FROM beworking.contact_profiles WHERE id = ?", id);
+
+        // Push the final identity (post type-flip + relock) to Stripe so the
+        // customer's name / tax id / tax-exempt match our DB.
+        eventPublisher.publishEvent(new ContactBillingChangedEvent(id));
 
         Map<String, Object> body = new HashMap<>();
         body.put("contactId", id);

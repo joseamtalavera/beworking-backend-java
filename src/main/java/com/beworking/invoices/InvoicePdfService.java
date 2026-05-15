@@ -114,7 +114,7 @@ public class InvoicePdfService {
             lines = List.of(new LineItem(concept, BigDecimal.ONE, subtotal, subtotal));
         }
 
-        ClientInfo clientInfo = fetchClientInfo(header.clientId());
+        ClientInfo clientInfo = fetchClientInfo(invoiceId);
         String centerName = fetchCenterName(header.centerId());
 
         try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -142,7 +142,7 @@ public class InvoicePdfService {
     public String getClientEmail(Long invoiceId) {
         InvoiceHeader header = fetchHeader(invoiceId);
         if (header == null || header.clientId() == null) return null;
-        ClientInfo info = fetchClientInfo(header.clientId());
+        ClientInfo info = fetchClientInfo(invoiceId);
         return info != null ? info.email() : null;
     }
 
@@ -152,7 +152,7 @@ public class InvoicePdfService {
     public String getClientName(Long invoiceId) {
         InvoiceHeader header = fetchHeader(invoiceId);
         if (header == null || header.clientId() == null) return null;
-        ClientInfo info = fetchClientInfo(header.clientId());
+        ClientInfo info = fetchClientInfo(invoiceId);
         return info != null ? info.name() : null;
     }
 
@@ -214,15 +214,33 @@ public class InvoicePdfService {
         );
     }
 
-    ClientInfo fetchClientInfo(Long clientId) {
-        if (clientId == null) return null;
+    /**
+     * Resolves the billing identity for an invoice.
+     *
+     * When the factura has a frozen billing snapshot (billing_snapshot_at NOT
+     * NULL — true for every row after V60), the name / tax id / address are
+     * read from the factura itself, so editing the customer's profile never
+     * rewrites a past invoice. Legacy rows with no snapshot fall back to the
+     * customer's live contact_profiles. Email is always live (it's a delivery
+     * address, not part of the frozen legal identity).
+     */
+    ClientInfo fetchClientInfo(Long invoiceId) {
+        if (invoiceId == null) return null;
         try {
             return jdbcTemplate.queryForObject(
-                "SELECT COALESCE(NULLIF(billing_name, ''), name) AS display_name,"
-                    + " COALESCE(NULLIF(email_secondary, ''), email_primary, email_tertiary, representative_email) AS email,"
-                    + " billing_address, billing_postal_code, billing_city,"
-                    + " billing_province, billing_country, billing_tax_id"
-                    + " FROM beworking.contact_profiles WHERE id = ?",
+                "SELECT CASE WHEN f.billing_snapshot_at IS NOT NULL"
+                    + "      THEN COALESCE(NULLIF(f.billing_name, ''), cp.name)"
+                    + "      ELSE COALESCE(NULLIF(cp.billing_name, ''), cp.name) END AS display_name,"
+                    + " COALESCE(NULLIF(cp.email_secondary, ''), cp.email_primary, cp.email_tertiary, cp.representative_email) AS email,"
+                    + " CASE WHEN f.billing_snapshot_at IS NOT NULL THEN f.billing_address     ELSE cp.billing_address     END AS billing_address,"
+                    + " CASE WHEN f.billing_snapshot_at IS NOT NULL THEN f.billing_postal_code ELSE cp.billing_postal_code END AS billing_postal_code,"
+                    + " CASE WHEN f.billing_snapshot_at IS NOT NULL THEN f.billing_city        ELSE cp.billing_city        END AS billing_city,"
+                    + " CASE WHEN f.billing_snapshot_at IS NOT NULL THEN f.billing_province    ELSE cp.billing_province    END AS billing_province,"
+                    + " CASE WHEN f.billing_snapshot_at IS NOT NULL THEN f.billing_country     ELSE cp.billing_country     END AS billing_country,"
+                    + " CASE WHEN f.billing_snapshot_at IS NOT NULL THEN f.billing_tax_id      ELSE cp.billing_tax_id      END AS billing_tax_id"
+                    + " FROM beworking.facturas f"
+                    + " LEFT JOIN beworking.contact_profiles cp ON cp.id = f.idcliente"
+                    + " WHERE f.id = ?",
                 (rs, rowNum) -> new ClientInfo(
                     rs.getString("display_name"),
                     rs.getString("email"),
@@ -233,7 +251,7 @@ public class InvoicePdfService {
                     rs.getString("billing_country"),
                     rs.getString("billing_tax_id")
                 ),
-                clientId
+                invoiceId
             );
         } catch (EmptyResultDataAccessException ex) {
             return null;

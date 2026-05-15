@@ -29,6 +29,7 @@ public class SubscriptionService {
     private final com.beworking.contacts.ContactProfileService contactProfileService;
     private final StripeTaxSyncClient stripeTaxSyncClient;
     private final com.beworking.tax.TaxResolver taxResolver;
+    private final com.beworking.invoices.BillingSnapshotService billingSnapshotService;
 
     public SubscriptionService(SubscriptionRepository subscriptionRepository,
                                CuentaService cuentaService,
@@ -36,7 +37,8 @@ public class SubscriptionService {
                                ViesVatService viesVatService,
                                @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
                                StripeTaxSyncClient stripeTaxSyncClient,
-                               com.beworking.tax.TaxResolver taxResolver) {
+                               com.beworking.tax.TaxResolver taxResolver,
+                               com.beworking.invoices.BillingSnapshotService billingSnapshotService) {
         this.subscriptionRepository = subscriptionRepository;
         this.cuentaService = cuentaService;
         this.jdbcTemplate = jdbcTemplate;
@@ -44,6 +46,7 @@ public class SubscriptionService {
         this.contactProfileService = contactProfileService;
         this.stripeTaxSyncClient = stripeTaxSyncClient;
         this.taxResolver = taxResolver;
+        this.billingSnapshotService = billingSnapshotService;
     }
 
     public List<Subscription> findAll() {
@@ -237,6 +240,7 @@ public class SubscriptionService {
             invoiceNumber,
             invoicePdf != null && !invoicePdf.isBlank() ? invoicePdf : null
         );
+        billingSnapshotService.snapshot(nextInternalId, subscription.getContactId());
 
         // Insert line item
         Long nextDesgloseId = jdbcTemplate.queryForObject(
@@ -349,6 +353,7 @@ public class SubscriptionService {
             vatAmount,
             invoiceNumber
         );
+        billingSnapshotService.snapshot(nextInternalId, subscription.getContactId());
 
         // Insert line item
         Long nextDesgloseId = jdbcTemplate.queryForObject(

@@ -54,6 +54,7 @@ public class InvoiceService {
     private final CuentaService cuentaService;
     private final com.beworking.contacts.ContactProfileService contactProfileService;
     private final com.beworking.tax.TaxResolver taxResolver;
+    private final BillingSnapshotService billingSnapshotService;
     private final String paymentsBaseUrl;
 
     public InvoiceService(
@@ -62,6 +63,7 @@ public class InvoiceService {
             CuentaService cuentaService,
             @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
             com.beworking.tax.TaxResolver taxResolver,
+            BillingSnapshotService billingSnapshotService,
             @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
         this.http = RestClient.create();
@@ -69,6 +71,7 @@ public class InvoiceService {
         this.cuentaService = cuentaService;
         this.contactProfileService = contactProfileService;
         this.taxResolver = taxResolver;
+        this.billingSnapshotService = billingSnapshotService;
         this.paymentsBaseUrl = paymentsBaseUrl;
     }
 
@@ -480,6 +483,7 @@ public class InvoiceService {
             cuentaCodigo,
             cuentaId
         );
+        billingSnapshotService.snapshot(nextId, contactId);
 
         for (Map.Entry<Bloqueo, LineComputation> entry : computedLines.entrySet()) {
             Bloqueo bloqueo = entry.getKey();
@@ -1122,6 +1126,7 @@ public class InvoiceService {
             creditTotal, origIva, creditTotalIva,
             origCuenta, origCuentaId, "RECT-" + origInvoiceNum
         );
+        billingSnapshotService.snapshot(nextId, origClientId);
 
         // Insert negated line items
         if (!origLines.isEmpty()) {
@@ -1375,6 +1380,7 @@ public class InvoiceService {
                 nextId, nextLegacy, contactId, centerId, description,
                 lineTotal, vatPercent, total, "Pagado", Timestamp.valueOf(now)
             );
+            billingSnapshotService.snapshot(nextId, contactId);
 
             Long nextDesgloseId = jdbcTemplate.queryForObject(
                 "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
@@ -1682,6 +1688,7 @@ public class InvoiceService {
                 request.getNote(),
                 request.getStripeInvoiceId()
             );
+            billingSnapshotService.snapshot(nextInternalId, request.getClientId());
 
             // Insert line items
             if (request.getLineItems() != null && !request.getLineItems().isEmpty()) {

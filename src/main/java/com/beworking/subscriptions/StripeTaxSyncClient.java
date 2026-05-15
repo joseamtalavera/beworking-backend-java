@@ -64,4 +64,46 @@ public class StripeTaxSyncClient {
             return false;
         }
     }
+
+    /**
+     * Pushes the contact's billing identity (name + tax id + tax-exempt) onto
+     * the Stripe customer so future Stripe-billed invoices show what our DB
+     * says. Called whenever name/VAT data changes (profile edit, VAT
+     * revalidation). Best-effort: never throws — the DB is the source of truth.
+     *
+     * Returns true if Stripe accepted the update; false on any error.
+     */
+    public boolean syncCustomerIdentity(String stripeCustomerId, String name, String taxId,
+                                        String taxIdType, boolean taxExempt, String cuenta) {
+        if (stripeCustomerId == null || stripeCustomerId.isBlank()) return false;
+        if (paymentsBaseUrl == null || paymentsBaseUrl.isBlank()) {
+            logger.warn("Stripe payments base URL not configured — skipping identity sync for customer {}",
+                stripeCustomerId);
+            return false;
+        }
+
+        String tenant = "GT".equalsIgnoreCase(cuenta) ? "gt" : "bw";
+        try {
+            http.post()
+                .uri(paymentsBaseUrl + "/api/customers/" + stripeCustomerId + "/sync-identity")
+                .header("Content-Type", "application/json")
+                .body(Map.of(
+                    "name", name == null ? "" : name,
+                    "tax_id", taxId == null ? "" : taxId,
+                    "tax_id_type", taxIdType == null ? "" : taxIdType,
+                    "tax_exempt", taxExempt,
+                    "tenant", tenant
+                ))
+                .retrieve()
+                .toBodilessEntity();
+            logger.info("Synced Stripe customer identity {}: name='{}', taxExempt={}, tenant={}",
+                stripeCustomerId, name, taxExempt, tenant);
+            return true;
+        } catch (Exception e) {
+            logger.warn("Failed to sync Stripe customer identity {} (tenant={}): {}",
+                stripeCustomerId, tenant, e.getMessage());
+            // Intentionally not rethrown — local DB is the source of truth.
+            return false;
+        }
+    }
 }
