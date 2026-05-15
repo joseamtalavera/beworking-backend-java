@@ -187,7 +187,9 @@ public class InvoiceService {
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf,
                 f.holdedcuenta,
-                MAX(COALESCE(NULLIF(c.billing_name, ''), NULLIF(c.name, ''), c.contact_name)) AS client_name,
+                MAX(CASE WHEN f.billing_snapshot_at IS NOT NULL
+                         THEN COALESCE(NULLIF(f.billing_name, ''), NULLIF(c.name, ''), c.contact_name)
+                         ELSE COALESCE(NULLIF(c.billing_name, ''), NULLIF(c.name, ''), c.contact_name) END) AS client_name,
                 MAX(
                     COALESCE(
                         c.email_primary,
@@ -797,7 +799,9 @@ public class InvoiceService {
                        f.total, f.iva, f.totaliva, f.estado, f.creacionfecha,
                        f.holdedinvoicenum, f.notas, f.holdedcuenta, f.id_cuenta,
                        f.fechacreacionreal, f.fechacobro1,
-                       COALESCE(NULLIF(c.billing_name, ''), NULLIF(c.name, ''), c.contact_name) AS client_name,
+                       CASE WHEN f.billing_snapshot_at IS NOT NULL
+                            THEN COALESCE(NULLIF(f.billing_name, ''), NULLIF(c.name, ''), c.contact_name)
+                            ELSE COALESCE(NULLIF(c.billing_name, ''), NULLIF(c.name, ''), c.contact_name) END AS client_name,
                        c.tenant_type
                 FROM beworking.facturas f
                 LEFT JOIN beworking.contact_profiles c ON c.id = f.idcliente
