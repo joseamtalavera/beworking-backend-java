@@ -228,9 +228,14 @@ public class SubscriptionController {
                 boolean isFuture = startDate.isAfter(LocalDate.now());
 
                 if (isFuture) {
-                    // Future start: use Stripe subscription schedules (handled by stripe-service)
-                    long anchorEpoch = startDate.atStartOfDay().toEpochSecond(ZoneOffset.UTC);
-                    stripeRequest.put("billing_cycle_anchor", anchorEpoch);
+                    // Future start: trial until the start date, then bill on the
+                    // natural cycle from there. billing_cycle_anchor can't be
+                    // used — Stripe rejects an anchor later than one interval
+                    // from creation ("cannot be later than next natural billing
+                    // date"). trial_end has no such limit and produces no
+                    // prorated first invoice.
+                    long trialEndEpoch = startDate.atStartOfDay().toEpochSecond(ZoneOffset.UTC);
+                    stripeRequest.put("trial_end", trialEndEpoch);
                     stripeRequest.put("proration_behavior", "none");
                 } else {
                     // Start now or in the past: anchor to 1st of next month, prorate
