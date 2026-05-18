@@ -378,7 +378,7 @@ public class SubscriptionController {
                         // without this they can never log in or recover a
                         // password (#205). Idempotent: an existing user is
                         // returned untouched (only a missing tenantId backfilled).
-                        RegisterService.BookingUserProvisionResult prov =
+                        com.beworking.auth.RegisterService.BookingUserProvisionResult prov =
                                 registerService.provisionBookingUser(
                                         contactEmail, contactName, saved.getContactId());
                         if (prov.user() != null && frontendUrl != null && !frontendUrl.isBlank()) {
