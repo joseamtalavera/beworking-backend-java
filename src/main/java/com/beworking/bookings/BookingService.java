@@ -379,19 +379,27 @@ class BookingService {
             }
         }
 
-        // ── Send emails and auto-create user account only after transaction commits ──
+        // ── Create the login account IN THIS TRANSACTION so it commits atomically
+        //    with the contact profile and the invoice. A paid booking must never
+        //    leave a contact without a users row (no login / no password recovery).
+        //    Only the welcome email is deferred to after commit. ──
         final String finalNote = note;
         final String contactEmail = contact.getEmailPrimary();
         final String contactName = contact.getContactName() != null ? contact.getContactName() : contact.getName();
         final Long contactId = contact.getId();
+        RegisterService.BookingUserProvisionResult userProvision =
+            registerService.provisionBookingUser(contactEmail, contactName, contactId);
+        final String welcomeToken = userProvision != null ? userProvision.welcomeToken() : null;
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 sendBookingEmails(request, reservaRequest.getStatus(), finalNote);
-                try {
-                    registerService.createUserForBookingContact(contactEmail, contactName, contactId);
-                } catch (Exception e) {
-                    LOGGER.warn("Failed to auto-create user account for booking contact {}: {}", contactEmail, e.getMessage());
+                if (welcomeToken != null) {
+                    try {
+                        registerService.sendBookingWelcomeEmail(contactEmail, contactName, welcomeToken);
+                    } catch (Exception e) {
+                        LOGGER.warn("Booking user created but welcome email failed for {}: {}", contactEmail, e.getMessage());
+                    }
                 }
             }
         });

@@ -479,9 +479,26 @@ public class RegisterService {
      * Idempotent: returns existing user if one already exists for this email.
      * Token expires in 48 hours.
      */
-    public User createUserForBookingContact(String email, String name, Long contactProfileId) {
+    /**
+     * Result of {@link #provisionBookingUser}: the user row (newly created or
+     * pre-existing) and, when a NEW account was created, the raw welcome token to
+     * email AFTER the surrounding transaction commits. {@code welcomeToken} is null
+     * for an already-existing user (nothing to send).
+     */
+    public record BookingUserProvisionResult(User user, String welcomeToken) {}
+
+    /**
+     * Creates the login {@code users} row for a booking contact IN THE CALLER'S
+     * TRANSACTION (no own @Transactional boundary), so the account commits
+     * atomically with the contact profile and the invoice — a paid booking can
+     * never end up with a contact but no users row. Sends no email; the welcome
+     * email is deferred to after commit via {@link #sendBookingWelcomeEmail}.
+     * Idempotent: an existing user is returned untouched (only a missing tenantId
+     * is backfilled), welcomeToken null. Token expires in 48 hours.
+     */
+    public BookingUserProvisionResult provisionBookingUser(String email, String name, Long contactProfileId) {
         if (email == null || email.isBlank()) {
-            return null;
+            return new BookingUserProvisionResult(null, null);
         }
 
         String normalizedEmail = email.toLowerCase().trim();
@@ -493,7 +510,7 @@ public class RegisterService {
                 user.setTenantId(contactProfileId);
                 userRepository.save(user);
             }
-            return user;
+            return new BookingUserProvisionResult(user, null);
         }
 
         String randomPassword = UUID.randomUUID().toString() + UUID.randomUUID().toString();
@@ -507,9 +524,29 @@ public class RegisterService {
         user.setConfirmationTokenExpiry(Instant.now().plus(48, ChronoUnit.HOURS));
         userRepository.save(user);
 
-        emailService.sendBookingWelcomeEmail(normalizedEmail, name != null ? name.trim() : null, rawToken);
+        return new BookingUserProvisionResult(user, rawToken);
+    }
 
-        return user;
+    /** Sends the booking welcome / password-set email. Safe to call after commit. */
+    public void sendBookingWelcomeEmail(String email, String name, String rawToken) {
+        if (email == null || email.isBlank() || rawToken == null) {
+            return;
+        }
+        emailService.sendBookingWelcomeEmail(email.toLowerCase().trim(),
+            name != null ? name.trim() : null, rawToken);
+    }
+
+    /**
+     * Legacy convenience: provision + send the welcome email in one call. Prefer
+     * the split {@link #provisionBookingUser} (in-tx) + {@link #sendBookingWelcomeEmail}
+     * (post-commit) so the account is never lost when the email send fails.
+     */
+    public User createUserForBookingContact(String email, String name, Long contactProfileId) {
+        BookingUserProvisionResult result = provisionBookingUser(email, name, contactProfileId);
+        if (result.welcomeToken() != null) {
+            sendBookingWelcomeEmail(email, name, result.welcomeToken());
+        }
+        return result.user();
     }
 
     public boolean changePassword(String email, String newPassword) {
