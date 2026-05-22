@@ -337,9 +337,17 @@ public class InvoiceController {
         }
 
         boolean deleteLinkedBookings = body != null && Boolean.TRUE.equals(body.get("deleteLinkedBookings"));
+        java.math.BigDecimal creditAmount = null;
+        if (body != null && body.get("creditAmount") != null) {
+            try {
+                creditAmount = new java.math.BigDecimal(body.get("creditAmount").toString());
+            } catch (NumberFormatException ignored) {
+                // Invalid amount — fall through as a full credit.
+            }
+        }
 
         try {
-            Map<String, Object> result = invoiceService.creditInvoice(id, deleteLinkedBookings);
+            Map<String, Object> result = invoiceService.creditInvoice(id, deleteLinkedBookings, creditAmount);
             return ResponseEntity.status(HttpStatus.CREATED).body(result);
         } catch (IllegalArgumentException e) {
             Map<String, Object> error = new HashMap<>();

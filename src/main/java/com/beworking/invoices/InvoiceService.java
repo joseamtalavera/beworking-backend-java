@@ -1090,19 +1090,32 @@ public class InvoiceService {
 
     @Transactional
     public Map<String, Object> creditInvoice(Long originalId) {
-        return creditInvoice(originalId, false);
+        return creditInvoice(originalId, false, null);
+    }
+
+    public Map<String, Object> creditInvoice(Long originalId, boolean deleteLinkedBookings) {
+        return creditInvoice(originalId, deleteLinkedBookings, null);
     }
 
     /**
-     * Issues a credit note (Rectificativa) for the given invoice and marks the
-     * original as Rectificado. Refunds Stripe if the invoice was paid; voids
-     * the Stripe invoice if it was unpaid.
+     * Issues a credit note (Rectificativa) for the given invoice.
      *
-     * @param deleteLinkedBookings when true, also deletes the bloqueos linked
-     *     via desglose rows. When false, those bloqueos are reverted to
-     *     'Booked' so they remain on the calendar.
+     * <p>When {@code creditAmount} is null or covers the whole invoice, this is
+     * a FULL credit: the original is marked Rectificado, Stripe is refunded in
+     * full (or the unpaid Stripe invoice voided), and linked bloqueos are
+     * handled per {@code deleteLinkedBookings}.
+     *
+     * <p>When {@code creditAmount} is less than the invoice total it is a
+     * PARTIAL credit: a credit note is issued for that gross amount (VAT split
+     * at the invoice's locked rate), the original stays valid and its bookings
+     * are left untouched, and Stripe is refunded only that amount.
+     *
+     * @param deleteLinkedBookings (full credit only) when true, deletes the
+     *     bloqueos linked via desglose rows; when false they revert to 'Booked'.
+     * @param creditAmount gross amount to credit, or null for a full credit.
      */
-    public Map<String, Object> creditInvoice(Long originalId, boolean deleteLinkedBookings) {
+    public Map<String, Object> creditInvoice(Long originalId, boolean deleteLinkedBookings,
+            java.math.BigDecimal creditAmount) {
         // Load original invoice
         Map<String, Object> original;
         try {
@@ -1129,6 +1142,97 @@ public class InvoiceService {
             ? (String) original.get("holdedinvoicenum")
             : (origLegacy != null ? origLegacy.toString() : originalId.toString());
 
+        // ── Partial credit ──────────────────────────────────────────────
+        // A credit note for PART of the invoice. The original stays valid —
+        // its bookings were used — and only the requested amount is reversed.
+        if (creditAmount != null && origTotal != null
+                && creditAmount.compareTo(BigDecimal.ZERO) > 0
+                && creditAmount.compareTo(origTotal.abs()) < 0) {
+
+            int ivaRate = origIva != null ? origIva : 0;
+            BigDecimal grossCredit = creditAmount.setScale(2, RoundingMode.HALF_UP);
+            // VAT contained within the gross amount, at the invoice's locked rate.
+            BigDecimal vatCredit = ivaRate == 0 ? BigDecimal.ZERO
+                : grossCredit.multiply(BigDecimal.valueOf(ivaRate))
+                    .divide(BigDecimal.valueOf(100L + ivaRate), 2, RoundingMode.HALF_UP);
+            BigDecimal netCredit = grossCredit.subtract(vatCredit);
+
+            Long pcId = nextFacturaId();
+            Integer pcLegacy = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
+
+            // Unique credit-note number — suffix when the invoice was credited before.
+            Integer priorCredits = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM beworking.facturas WHERE holdedinvoicenum LIKE ?",
+                Integer.class, "RECT-" + origInvoiceNum + "%");
+            String pcNumber = "RECT-" + origInvoiceNum
+                + (priorCredits != null && priorCredits > 0 ? "-" + (priorCredits + 1) : "");
+            String pcDescription = "Rectificación parcial de Factura #" + origInvoiceNum;
+
+            jdbcTemplate.update(
+                """
+                INSERT INTO beworking.facturas
+                (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado,
+                 creacionfecha, holdedcuenta, id_cuenta, holdedinvoicenum, category)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Rectificativa', CURRENT_TIMESTAMP, ?, ?, ?, ?)
+                """,
+                pcId, pcLegacy, origClientId, origCenterId, pcDescription,
+                grossCredit.negate(), ivaRate, vatCredit.negate(),
+                origCuenta, origCuentaId, pcNumber, (String) original.get("category"));
+            billingSnapshotService.snapshot(pcId, origClientId);
+
+            long pcDesgloseId = jdbcTemplate.queryForObject(
+                "SELECT nextval('beworking.facturasdesglose_id_seq')", Long.class);
+            jdbcTemplate.update(
+                """
+                INSERT INTO beworking.facturasdesglose
+                (id, idfacturadesglose, conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose, desgloseconfirmado, factura_id)
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                """,
+                pcDesgloseId, pcLegacy, pcDescription,
+                netCredit.negate(), BigDecimal.ONE, netCredit.negate(), pcId);
+
+            // Stripe: partial refund of the original card payment, if any.
+            String pcRefundId = null;
+            String pcStripePI = (String) original.get("stripepaymentintentid1");
+            String pcStripeStatus = (String) original.get("stripepaymentintentstatus1");
+            if (paymentsBaseUrl != null && !paymentsBaseUrl.isBlank()
+                    && pcStripePI != null && !pcStripePI.isBlank()
+                    && "succeeded".equalsIgnoreCase(pcStripeStatus)) {
+                try {
+                    Map<String, Object> refundBody = new HashMap<>();
+                    refundBody.put("payment_intent_id", pcStripePI);
+                    refundBody.put("amount_cents", grossCredit
+                        .multiply(BigDecimal.valueOf(100))
+                        .setScale(0, RoundingMode.HALF_UP)
+                        .intValueExact());
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> refundResult = http.post()
+                        .uri(paymentsBaseUrl + "/api/refunds")
+                        .header("Content-Type", "application/json")
+                        .body(refundBody)
+                        .retrieve()
+                        .body((Class<Map<String, Object>>) (Class<?>) Map.class);
+                    if (refundResult != null) {
+                        pcRefundId = (String) refundResult.get("refundId");
+                    }
+                } catch (Exception e) {
+                    System.err.println("Stripe partial refund failed for PI " + pcStripePI + ": " + e.getMessage());
+                }
+            }
+
+            Map<String, Object> pcResponse = new HashMap<>();
+            pcResponse.put("id", pcId);
+            pcResponse.put("idFactura", pcLegacy);
+            pcResponse.put("holdedInvoiceNum", pcNumber);
+            pcResponse.put("partial", true);
+            pcResponse.put("creditedAmount", grossCredit);
+            pcResponse.put("stripeRefundId", pcRefundId);
+            pcResponse.put("message", "Partial credit note " + pcNumber + " for "
+                + grossCredit + " of invoice #" + origInvoiceNum);
+            return pcResponse;
+        }
+
         // Load original line items
         List<Map<String, Object>> origLines = jdbcTemplate.queryForList(
             "SELECT conceptodesglose, precioundesglose, cantidaddesglose, totaldesglose"
@@ -1145,6 +1249,14 @@ public class InvoiceService {
         BigDecimal creditTotalIva = origTotalIva != null ? origTotalIva.negate() : BigDecimal.ZERO;
         String description = "Rectificación de Factura #" + origInvoiceNum;
 
+        // Unique credit-note number — suffix if this invoice was credited
+        // before (e.g. an earlier partial credit left the original valid).
+        Integer priorCreditCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM beworking.facturas WHERE holdedinvoicenum LIKE ?",
+            Integer.class, "RECT-" + origInvoiceNum + "%");
+        String fullCreditNumber = "RECT-" + origInvoiceNum
+            + (priorCreditCount != null && priorCreditCount > 0 ? "-" + (priorCreditCount + 1) : "");
+
         // Insert credit note
         jdbcTemplate.update(
             """
@@ -1155,7 +1267,7 @@ public class InvoiceService {
             """,
             nextId, nextLegacy, origClientId, origCenterId, description,
             creditTotal, origIva, creditTotalIva,
-            origCuenta, origCuentaId, "RECT-" + origInvoiceNum, (String) original.get("category")
+            origCuenta, origCuentaId, fullCreditNumber, (String) original.get("category")
         );
         billingSnapshotService.snapshot(nextId, origClientId);
 
