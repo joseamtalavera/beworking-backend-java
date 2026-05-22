@@ -1041,7 +1041,7 @@ public class InvoiceService {
         if (categories.isEmpty()) {
             return null;
         }
-        return categories.size() == 1 ? categories.iterator().next() : InvoiceCategory.OTHER;
+        return categories.size() == 1 ? categories.iterator().next() : InvoiceCategory.EXTRA;
     }
 
     private static Integer safeLongToInt(Long value) {

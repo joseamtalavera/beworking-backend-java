@@ -12,7 +12,7 @@ public final class InvoiceCategory {
     public static final String MEETING_ROOM = "meeting_room";
     public static final String COWORKING = "coworking";
     public static final String VIRTUAL_OFFICE = "virtual_office";
-    public static final String OTHER = "other";
+    public static final String EXTRA = "extra";
 
     private InvoiceCategory() {
     }
@@ -20,13 +20,13 @@ public final class InvoiceCategory {
     /** Maps a product type ({@code productos.tipo}) to an invoice category. */
     public static String fromProductTipo(String tipo) {
         if (tipo == null) {
-            return OTHER;
+            return EXTRA;
         }
         switch (tipo.trim().toLowerCase()) {
             case "aula":            return MEETING_ROOM;
             case "mesa":            return COWORKING;
             case "oficina virtual": return VIRTUAL_OFFICE;
-            default:                return OTHER;
+            default:                return EXTRA;
         }
     }
 }
