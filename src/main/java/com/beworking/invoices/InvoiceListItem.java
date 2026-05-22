@@ -21,5 +21,6 @@ public record InvoiceListItem(
     String clientTaxId,
     String tenantType,
     String products,
-    String cuenta
+    String cuenta,
+    String category
 ) { }

@@ -44,6 +44,9 @@ public class CreateManualInvoiceRequest {
 
     private String paymentMode; // "card" or "invoice"
 
+    /** meeting_room | coworking | virtual_office | other. Blank = derive from linked bookings. */
+    private String category;
+
     // Getters and Setters
     public String getClientName() {
         return clientName;
@@ -163,6 +166,14 @@ public class CreateManualInvoiceRequest {
 
     public void setPaymentMode(String paymentMode) {
         this.paymentMode = paymentMode;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
     }
 
     // Inner classes for line items and computed totals

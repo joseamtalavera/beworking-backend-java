@@ -187,6 +187,7 @@ public class InvoiceService {
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf,
                 f.holdedcuenta,
+                f.category,
                 MAX(CASE WHEN f.billing_snapshot_at IS NOT NULL
                          THEN COALESCE(NULLIF(f.billing_name, ''), NULLIF(c.name, ''), c.contact_name)
                          ELSE COALESCE(NULLIF(c.billing_name, ''), NULLIF(c.name, ''), c.contact_name) END) AS client_name,
@@ -226,7 +227,8 @@ public class InvoiceService {
                 f.creacionfecha,
                 f.holdedinvoicenum,
                 f.holdedinvoicepdf,
-                f.holdedcuenta
+                f.holdedcuenta,
+                f.category
             ORDER BY f.creacionfecha""" + (asc ? " ASC NULLS FIRST" : " DESC NULLS LAST") + ", f.id" + (asc ? " ASC" : " DESC") + """
 
             OFFSET ? LIMIT ?
@@ -264,7 +266,8 @@ public class InvoiceService {
                     rs.getString("client_tax_id"),
                     rs.getString("tenant_type"),
                     rs.getString("products"),
-                    rs.getString("holdedcuenta")
+                    rs.getString("holdedcuenta"),
+                    rs.getString("category")
                 );
             }
         );
@@ -463,11 +466,18 @@ public class InvoiceService {
             description = buildDefaultDescription(bloqueos);
         }
 
+        // Machine-readable category for the Overview stat cards. Honour an
+        // explicit choice from the admin; otherwise derive it from the products.
+        String category = request.getCategory();
+        if (category == null || category.isBlank()) {
+            category = deriveCategory(bloqueos);
+        }
+
         jdbcTemplate.update(
             """
             INSERT INTO beworking.facturas
-            (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado, creacionfecha, holdedinvoicenum, holdedinvoicepdf, stripeinvoiceid, holdedcuenta, id_cuenta)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado, creacionfecha, holdedinvoicenum, holdedinvoicepdf, stripeinvoiceid, holdedcuenta, id_cuenta, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             nextId,
             nextLegacy,
@@ -483,7 +493,8 @@ public class InvoiceService {
             null,
             request.getStripeInvoiceId(),
             cuentaCodigo,
-            cuentaId
+            cuentaId,
+            category
         );
         billingSnapshotService.snapshot(nextId, contactId);
 
@@ -1017,6 +1028,22 @@ public class InvoiceService {
         return productSummary + " bloqueos";
     }
 
+    /**
+     * Derives an invoice category from the products behind its bloqueos.
+     * Returns null when there are no bloqueos to derive from — the admin sets
+     * it explicitly in that case.
+     */
+    private static String deriveCategory(List<Bloqueo> bloqueos) {
+        Set<String> categories = bloqueos.stream()
+            .map(b -> b.getProducto() != null ? b.getProducto().getTipo() : null)
+            .map(InvoiceCategory::fromProductTipo)
+            .collect(Collectors.toSet());
+        if (categories.isEmpty()) {
+            return null;
+        }
+        return categories.size() == 1 ? categories.iterator().next() : InvoiceCategory.OTHER;
+    }
+
     private static Integer safeLongToInt(Long value) {
         if (value == null) {
             return null;
@@ -1081,7 +1108,7 @@ public class InvoiceService {
         try {
             original = jdbcTemplate.queryForMap(
                 "SELECT id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado,"
-                    + " holdedcuenta, id_cuenta, holdedinvoicenum,"
+                    + " holdedcuenta, id_cuenta, holdedinvoicenum, category,"
                     + " stripepaymentintentid1, stripepaymentintentstatus1, stripeinvoiceid"
                     + " FROM beworking.facturas WHERE id = ?",
                 originalId
@@ -1123,12 +1150,12 @@ public class InvoiceService {
             """
             INSERT INTO beworking.facturas
             (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado,
-             creacionfecha, holdedcuenta, id_cuenta, holdedinvoicenum)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Rectificativa', CURRENT_TIMESTAMP, ?, ?, ?)
+             creacionfecha, holdedcuenta, id_cuenta, holdedinvoicenum, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Rectificativa', CURRENT_TIMESTAMP, ?, ?, ?, ?)
             """,
             nextId, nextLegacy, origClientId, origCenterId, description,
             creditTotal, origIva, creditTotalIva,
-            origCuenta, origCuentaId, "RECT-" + origInvoiceNum
+            origCuenta, origCuentaId, "RECT-" + origInvoiceNum, (String) original.get("category")
         );
         billingSnapshotService.snapshot(nextId, origClientId);
 
@@ -1375,14 +1402,24 @@ public class InvoiceService {
             Integer nextLegacy = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(idfactura), 0) + 1 FROM beworking.facturas", Integer.class);
             LocalDateTime now = LocalDateTime.now();
 
+            String orphanCategory = null;
+            if (productId != null) {
+                try {
+                    orphanCategory = InvoiceCategory.fromProductTipo(jdbcTemplate.queryForObject(
+                        "SELECT tipo FROM beworking.productos WHERE id = ?", String.class, productId));
+                } catch (EmptyResultDataAccessException ignored) {
+                    // No product row — leave category null (dashboard falls back to keywords).
+                }
+            }
+
             jdbcTemplate.update(
                 """
                 INSERT INTO beworking.facturas
-                (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado, creacionfecha)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, idfactura, idcliente, idcentro, descripcion, total, iva, totaliva, estado, creacionfecha, category)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 nextId, nextLegacy, contactId, centerId, description,
-                lineTotal, vatPercent, total, "Pagado", Timestamp.valueOf(now)
+                lineTotal, vatPercent, total, "Pagado", Timestamp.valueOf(now), orphanCategory
             );
             billingSnapshotService.snapshot(nextId, contactId);
 
@@ -1640,14 +1677,28 @@ public class InvoiceService {
                 } catch (NumberFormatException ignored) {}
             }
 
+            // Resolve category — explicit choice from the admin, or derived from
+            // any bookings linked to the line items.
+            String category = request.getCategory();
+            if (category == null || category.isBlank()) {
+                List<Long> linkedIds = request.getLineItems() == null ? List.of()
+                    : request.getLineItems().stream()
+                        .map(CreateManualInvoiceRequest.LineItem::getBloqueoId)
+                        .filter(Objects::nonNull)
+                        .toList();
+                category = linkedIds.isEmpty()
+                    ? null
+                    : deriveCategory(bloqueoRepository.findAllById(linkedIds));
+            }
+
             // Insert the invoice into the database
             String insertSql = """
                 INSERT INTO beworking.facturas (
                     id, idfactura, idcliente, idcentro, holdedcuenta, id_cuenta,
                     descripcion, holdedinvoicenum,
                     fechacreacionreal, fechacobro1, estado,
-                    total, iva, totaliva, notas, creacionfecha, stripeinvoiceid
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                    total, iva, totaliva, notas, creacionfecha, stripeinvoiceid, category
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
                 RETURNING idfactura
                 """;
 
@@ -1690,7 +1741,8 @@ public class InvoiceService {
                 vatPercent,
                 request.getComputed().getTotalVat(),
                 request.getNote(),
-                request.getStripeInvoiceId()
+                request.getStripeInvoiceId(),
+                category
             );
             billingSnapshotService.snapshot(nextInternalId, request.getClientId());
 

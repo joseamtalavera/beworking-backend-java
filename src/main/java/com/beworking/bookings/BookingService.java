@@ -6,6 +6,7 @@ import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
 import com.beworking.auth.EmailService;
 import com.beworking.cuentas.CuentaService;
+import com.beworking.invoices.InvoiceCategory;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.DayOfWeek;
@@ -321,8 +322,8 @@ class BookingService {
                             descripcion, holdedinvoicenum,
                             fechacreacionreal, estado,
                             total, iva, totaliva, notas, creacionfecha,
-                            stripepaymentintentid1, stripepaymentintentstatus1
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pagado', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'succeeded')
+                            stripepaymentintentid1, stripepaymentintentstatus1, category
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pagado', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'succeeded', ?)
                         """,
                         nextId,
                         invoiceId,
@@ -337,7 +338,8 @@ class BookingService {
                         vatPercent,
                         vat,
                         note,
-                        request.getStripePaymentIntentId()
+                        request.getStripePaymentIntentId(),
+                        InvoiceCategory.fromProductTipo(producto.getTipo())
                     );
                     billingSnapshotService.snapshot(nextId, contact.getId());
 

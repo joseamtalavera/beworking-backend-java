@@ -26,6 +26,9 @@ public class CreateInvoiceRequest {
 
     private String cuenta;
 
+    /** meeting_room | coworking | virtual_office | other. Blank = auto-derive from products. */
+    private String category;
+
     public List<Long> getBloqueoIds() {
         return bloqueoIds;
     }
@@ -96,6 +99,14 @@ public class CreateInvoiceRequest {
 
     public void setCuenta(String cuenta) {
         this.cuenta = cuenta;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
     }
 
     public static class ExtraLineItem {

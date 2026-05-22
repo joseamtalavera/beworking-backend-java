@@ -3,6 +3,7 @@ package com.beworking.subscriptions;
 import com.beworking.contacts.ViesVatService;
 import com.beworking.cuentas.Cuenta;
 import com.beworking.cuentas.CuentaService;
+import com.beworking.invoices.InvoiceCategory;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -220,8 +221,8 @@ public class SubscriptionService {
                 fechacreacionreal, estado, descripcion,
                 total, iva, totaliva, creacionfecha,
                 stripeinvoiceid, stripepaymentintentid1, stripepaymentintentstatus1,
-                holdedinvoicenum, holdedinvoicepdf
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?)
+                holdedinvoicenum, holdedinvoicepdf, category
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
             """,
             nextInternalId,
             invoiceId,
@@ -238,7 +239,8 @@ public class SubscriptionService {
             payload.getStripePaymentIntentId(),
             "paid".equalsIgnoreCase(payload.getStatus()) ? "succeeded" : null,
             invoiceNumber,
-            invoicePdf != null && !invoicePdf.isBlank() ? invoicePdf : null
+            invoicePdf != null && !invoicePdf.isBlank() ? invoicePdf : null,
+            resolveSubscriptionCategory(subscription)
         );
         billingSnapshotService.snapshot(nextInternalId, subscription.getContactId());
 
@@ -338,8 +340,8 @@ public class SubscriptionService {
                 id, idfactura, idcliente, holdedcuenta, id_cuenta,
                 fechacreacionreal, estado, descripcion,
                 total, iva, totaliva, creacionfecha,
-                holdedinvoicenum
-            ) VALUES (?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                holdedinvoicenum, category
+            ) VALUES (?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
             """,
             nextInternalId,
             invoiceId,
@@ -351,7 +353,8 @@ public class SubscriptionService {
             total,
             vatPercent,
             vatAmount,
-            invoiceNumber
+            invoiceNumber,
+            resolveSubscriptionCategory(subscription)
         );
         billingSnapshotService.snapshot(nextInternalId, subscription.getContactId());
 
@@ -444,6 +447,32 @@ public class SubscriptionService {
         // legacy fresh-compute branch.
         contactProfileService.ensureVatValidated(subscription.getContactId());
         return taxResolver.computeFreshForContact(subscription.getContactId(), subscription.getCuenta());
+    }
+
+    /**
+     * Resolves the invoice category for a subscription invoice — from the
+     * linked product's type when known, otherwise a description heuristic.
+     * Subscriptions are virtual offices by default.
+     */
+    private String resolveSubscriptionCategory(Subscription subscription) {
+        if (subscription.getProductoId() != null) {
+            try {
+                String tipo = jdbcTemplate.queryForObject(
+                    "SELECT tipo FROM beworking.productos WHERE id = ?",
+                    String.class, subscription.getProductoId());
+                if (tipo != null) {
+                    return InvoiceCategory.fromProductTipo(tipo);
+                }
+            } catch (EmptyResultDataAccessException ignored) {
+                // No matching product — fall through to the description heuristic.
+            }
+        }
+        String desc = subscription.getDescription() == null
+            ? "" : subscription.getDescription().toLowerCase();
+        if (desc.contains("coworking") || desc.contains("mesa") || desc.contains("desk")) {
+            return InvoiceCategory.COWORKING;
+        }
+        return InvoiceCategory.VIRTUAL_OFFICE;
     }
 
     /**
