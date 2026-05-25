@@ -117,6 +117,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/public/**").permitAll()
                 // Email open-tracking pixel — recipients are not logged in.
                 .requestMatchers(HttpMethod.GET, "/api/track/**").permitAll()
+                // Admin-only API surface — must match before the authenticated() catch-all,
+                // otherwise any logged-in USER can reach admin endpoints (IDOR/authz bypass).
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/dashboard/admin/**").hasRole("ADMIN")
                 .requestMatchers("/dashboard/user/**").hasRole("USER")
                 .anyRequest().authenticated()
