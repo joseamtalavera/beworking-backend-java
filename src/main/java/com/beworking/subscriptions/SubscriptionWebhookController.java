@@ -150,10 +150,14 @@ public class SubscriptionWebhookController {
     }
 
     /**
-     * Stripe customer.subscription.deleted relay. Marks the local Subscription
-     * row inactive and — if the contact has no other active subs — flips the
-     * contact's funnel status to 'Inactivo'. Aula-only contacts never trigger
-     * this path because they have no Stripe subscriptions to cancel.
+     * Stripe customer.subscription.deleted relay — LOG ONLY.
+     *
+     * <p>Per product rule, DB subscription cancellation is manual-only and contact
+     * Activo→Inactivo demotion is owned exclusively by {@code ActivoAgingScheduler}
+     * (no factura in 12 months AND no active sub). This handler therefore does NOT
+     * mutate the local Subscription row or contact_profiles.status. It records the
+     * Stripe cancellation in the application log for audit, and returns 200 so the
+     * stripe-service relay treats the delivery as processed.
      */
     @PostMapping("/subscription-cancelled")
     public ResponseEntity<Map<String, Object>> subscriptionCancelled(
@@ -180,42 +184,25 @@ public class SubscriptionWebhookController {
             subOpt = subscriptionService.findByStripeCustomerId(customerId);
         }
 
+        Map<String, Object> response = new HashMap<>();
+        response.put("stripeSubscriptionId", subscriptionId);
+        response.put("customerId", customerId);
+        response.put("mutated", false);
+
         if (subOpt.isEmpty()) {
-            logger.warn("subscription-cancelled: no local subscription found for subscriptionId={} customerId={}",
+            logger.info("subscription-cancelled (log-only) — no local sub matched subscriptionId={} customerId={}",
                 subscriptionId, customerId);
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "no-op");
-            response.put("reason", "no local subscription matched");
+            response.put("matched", false);
             return ResponseEntity.ok(response);
         }
 
         Subscription subscription = subOpt.get();
-        subscription.setActive(false);
-        subscription.setEndDate(java.time.LocalDate.now());
-        subscriptionService.save(subscription);
-
-        Long contactId = subscription.getContactId();
-        boolean stillHasActiveSub = subscriptionService.findByContactIdAndActiveTrue(contactId).stream()
-            .anyMatch(s -> !s.getId().equals(subscription.getId()));
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("contactId", contactId);
-        response.put("subscriptionId", subscription.getId());
-        response.put("stripeSubscriptionId", subscriptionId);
-
-        if (stillHasActiveSub) {
-            logger.info("Subscription {} cancelled but contact {} retains other active subs — leaving status",
-                subscriptionId, contactId);
-            response.put("statusChanged", false);
-            response.put("reason", "contact has other active subscriptions");
-        } else {
-            int updated = subscriptionService.updateContactStatus(contactId, "Inactivo");
-            logger.info("Subscription {} cancelled — flipped contact {} → Inactivo (rows={})",
-                subscriptionId, contactId, updated);
-            response.put("statusChanged", true);
-            response.put("newStatus", "Inactivo");
-        }
-
+        logger.info("subscription-cancelled (log-only) — Stripe cancelled subId={} customerId={} localSubId={} contactId={}. "
+            + "DB sub NOT deactivated; contact status NOT changed. Manual review required.",
+            subscriptionId, customerId, subscription.getId(), subscription.getContactId());
+        response.put("matched", true);
+        response.put("localSubscriptionId", subscription.getId());
+        response.put("contactId", subscription.getContactId());
         return ResponseEntity.ok(response);
     }
 
