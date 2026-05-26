@@ -223,27 +223,15 @@ public class SubscriptionController {
                 stripeRequest.put("vat_number", taxExempt ? resolvedVat : "");
                 stripeRequest.put("tax_exempt", taxExempt);
 
-                // Anchor billing to the requested start date
+                // Bill full month from startDate. Never prorate.
+                //   - startDate = today  → Stripe invoices now for full month; next cycle today+1mo
+                //   - startDate = future → trial_end until startDate; first invoice on startDate
                 LocalDate startDate = request.getStartDate() != null ? request.getStartDate() : LocalDate.now();
-                boolean isFuture = startDate.isAfter(LocalDate.now());
-
-                if (isFuture) {
-                    // Future start: trial until the start date, then bill on the
-                    // natural cycle from there. billing_cycle_anchor can't be
-                    // used — Stripe rejects an anchor later than one interval
-                    // from creation ("cannot be later than next natural billing
-                    // date"). trial_end has no such limit and produces no
-                    // prorated first invoice.
+                if (startDate.isAfter(LocalDate.now())) {
                     long trialEndEpoch = startDate.atStartOfDay().toEpochSecond(ZoneOffset.UTC);
                     stripeRequest.put("trial_end", trialEndEpoch);
-                    stripeRequest.put("proration_behavior", "none");
-                } else {
-                    // Start now or in the past: anchor to 1st of next month, prorate
-                    LocalDate firstOfNextMonth = LocalDate.now().plusMonths(1).withDayOfMonth(1);
-                    long anchorEpoch = firstOfNextMonth.atStartOfDay().toEpochSecond(ZoneOffset.UTC);
-                    stripeRequest.put("billing_cycle_anchor", anchorEpoch);
-                    stripeRequest.put("proration_behavior", "create_prorations");
                 }
+                stripeRequest.put("proration_behavior", "none");
 
                 // Pass billing interval (month, quarter, year)
                 String interval = request.getBillingInterval() != null ? request.getBillingInterval() : "month";
