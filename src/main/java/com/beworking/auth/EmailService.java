@@ -669,6 +669,46 @@ public class EmailService {
                  content);
     }
 
+    public void sendSubscriptionCancellationAdminNotification(String contactName, String contactEmail,
+                                                              String description, String cuenta,
+                                                              String stripeSubscriptionId, Integer localSubId,
+                                                              String cancelledBy) {
+        String dash = "—";
+        String stripeLink = stripeSubscriptionId != null && !stripeSubscriptionId.isBlank()
+                ? "https://dashboard.stripe.com/subscriptions/" + stripeSubscriptionId
+                : null;
+
+        String body = "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"></head>"
+                + "<body style=\"margin:0;padding:0;background:#f7f7f8;font-family:Arial,Helvetica,sans-serif;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr><td align=\"center\" style=\"padding:24px 0;\">"
+                + "<table role=\"presentation\" width=\"600\" style=\"max-width:600px;\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\">"
+                + "<tr><td style=\"background:#b71c1c;color:#fff;padding:24px 28px;border-radius:14px 14px 0 0;\">"
+                + "<p style=\"margin:0 0 4px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.85;\">BEWORKING</p>"
+                + "<h1 style=\"margin:0;font-size:22px;font-weight:700;\">Suscripción cancelada</h1></td></tr>"
+                + "<tr><td style=\"background:#fff;padding:24px 28px;border:1px solid #eee;border-top:0;border-radius:0 0 14px 14px;\">"
+                + "<p style=\"margin:0 0 18px;color:#555;font-size:14px;\">Una suscripción acaba de ser cancelada manualmente.</p>"
+                + cancelRow("Cliente", contactName != null ? contactName : dash)
+                + cancelRow("Email", contactEmail != null ? contactEmail : dash)
+                + cancelRow("Concepto", description != null ? description : dash)
+                + cancelRow("Cuenta", cuenta != null ? cuenta : dash)
+                + cancelRow("Cancelado por", cancelledBy != null ? cancelledBy : dash)
+                + cancelRow("Sub local", localSubId != null ? String.valueOf(localSubId) : dash)
+                + cancelRow("Stripe ID", stripeSubscriptionId != null && !stripeSubscriptionId.isBlank() ? stripeSubscriptionId : dash)
+                + (stripeLink != null
+                    ? "<div style=\"margin-top:18px;text-align:center;\"><a href=\"" + stripeLink + "\" style=\"display:inline-block;background:#b71c1c;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 24px;border-radius:8px;\">Ver en Stripe</a></div>"
+                    : "")
+                + "</td></tr></table></td></tr></table></body></html>";
+
+        String subject = "🔴 Suscripción cancelada — " + (contactName != null ? contactName : (contactEmail != null ? contactEmail : "—"));
+        sendHtml("info@be-working.com", subject, body);
+    }
+
+    private static String cancelRow(String label, String value) {
+        return "<div style=\"padding:8px 0;border-bottom:1px dashed #eee;\">"
+                + "<div style=\"font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;\">" + label + "</div>"
+                + "<div style=\"font-size:16px;font-weight:700;color:#111;\">" + value + "</div></div>";
+    }
+
     @Async
     public void sendHtml(String to, String subject, String htmlContent) {
         sendHtml(to, subject, htmlContent, null);

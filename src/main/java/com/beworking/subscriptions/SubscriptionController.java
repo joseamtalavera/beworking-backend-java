@@ -673,6 +673,23 @@ public class SubscriptionController {
         }
         subscriptionService.deactivate(id);
 
+        // Notify info@ on every manual cancellation (admin + user self-cancel).
+        // Best-effort: never block the request.
+        try {
+            String cancelledBy = isAdmin(authentication)
+                    ? "ADMIN (" + authentication.getName() + ")"
+                    : "USER (" + authentication.getName() + ")";
+            contactRepository.findById(sub.getContactId()).ifPresent(c -> {
+                String email = c.getEmailPrimary() != null && !c.getEmailPrimary().isBlank()
+                        ? c.getEmailPrimary() : c.getEmailSecondary();
+                emailService.sendSubscriptionCancellationAdminNotification(
+                        c.getName(), email, sub.getDescription(), sub.getCuenta(),
+                        sub.getStripeSubscriptionId(), sub.getId(), cancelledBy);
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to send sub-cancel notification for sub {}: {}", id, e.getMessage());
+        }
+
         // If this was the contact's last active sub, drop tenant_type so the
         // free-booking allowance is removed.
         try {
