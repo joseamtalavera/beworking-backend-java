@@ -212,35 +212,25 @@ class BloqueoService {
 
     @Transactional
     void deleteBloqueo(Long id) {
-        // Block deletion if any linked invoice is still active. Per accounting
-        // rules, an invoice can only be cancelled via a credit note (Abono);
-        // the bloqueo deletion is then driven from that flow with the admin's
-        // explicit consent. Direct bloqueo deletion that would leave a dangling
-        // line on a live invoice is not allowed.
+        // Admin can always delete a bloqueo — invoices are kept untouched as a
+        // legal record. The link in facturasdesglose.idbloqueovinculado is
+        // NULL-ed out before the delete so no row dangles. Use case: customer
+        // cancels but is not entitled to a refund — revenue stays, slot frees.
+        // Customers who ARE entitled to a refund go through the Abono flow on
+        // the invoice, which can also drop linked bloqueos when requested.
         List<Map<String, Object>> linkedInvoices = jdbcTemplate.queryForList(
             """
-            SELECT f.id, f.idfactura, f.estado
+            SELECT f.idfactura, f.estado
             FROM beworking.facturasdesglose fd
             JOIN beworking.facturas f ON f.id = fd.factura_id
             WHERE fd.idbloqueovinculado = ?
             """, id);
 
-        for (Map<String, Object> invoice : linkedInvoices) {
-            String estado = (String) invoice.get("estado");
-            String estadoLower = estado != null ? estado.toLowerCase() : "";
-            boolean alreadyCredited = estadoLower.contains("rectific");
-            if (!alreadyCredited) {
-                Object invNum = invoice.get("idfactura");
-                throw new IllegalStateException(
-                    "Cannot delete bloqueo: linked invoice #" + invNum
-                        + " must be credited (Abono) first."
-                );
-            }
+        if (!linkedInvoices.isEmpty()) {
+            LOGGER.info("Deleting bloqueo {} — unlinking from {} invoice line(s): {}",
+                id, linkedInvoices.size(), linkedInvoices);
         }
 
-        // Linked invoices are all already credited — safe to unlink the
-        // dangling desglose references (the invoice line stays for legal
-        // record, just no longer points at this bloqueo).
         jdbcTemplate.update(
             "UPDATE beworking.facturasdesglose SET idbloqueovinculado = NULL WHERE idbloqueovinculado = ?", id);
 
