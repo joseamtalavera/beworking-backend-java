@@ -264,7 +264,8 @@ public class AutomationController {
             }
             case "activoAging" -> {
                 ActivoAgingScheduler.RunResult r = activoAging.runOnce();
-                result.put("flipped", r.flipped());
+                result.put("demoted", r.demoted());
+                result.put("promoted", r.promoted());
             }
             case "reengagement" -> {
                 InactivoReengagementScheduler.RunResult r = reengagement.runOnce();

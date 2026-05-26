@@ -7,34 +7,39 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Daily job that ages out dormant Activo contacts.
+ * Daily job that reconciles contact_profiles.status against the funnel rule:
  *
- * Symmetric counterpart to {@link PotencialAgingScheduler}. The funnel rule is:
- *   Activo means "currently active customer". A contact who hasn't been
- *   invoiced in {@value #DORMANCY_MONTHS} months is treated as dormant and
- *   flipped to Inactivo.
+ *   Activo  ⇔  has an active subscription (subscriptions.active = true)
+ *              OR has an invoice (facturas.creacionfecha) in the current
+ *              calendar month.
+ *   Inactivo otherwise (plus Potencial leads, handled by PotencialAgingScheduler).
  *
- * What this catches:
- *   - Aula (meeting-room) contacts: one-off bookings, no recurring sub.
- *     They're set to Activo on first paid booking and have no Stripe
- *     subscription, so the customer.subscription.deleted webhook never
- *     touches them. This job is the only path back to Inactivo for them.
+ * The cron does both directions in one run:
+ *   1. Demote Activo → Inactivo when neither condition holds.
+ *   2. Promote Inactivo → Activo when either condition starts holding
+ *      (e.g. a new factura lands mid-month, or a sub is restored).
  *
- * What this does NOT catch:
- *   - Active OV subscribers — their monthly recurring invoices keep
- *     creacionfecha fresh AND we additionally guard against demoting any
- *     contact with an active subscription row, even if their last invoice
- *     somehow predates the window (Stripe pause, billing drift, etc.).
- *   - Recently-cancelled OV subs — already handled by the
- *     subscription-cancelled webhook.
- *
- * Single SQL UPDATE; idempotent.
+ * Two single SQL UPDATEs; idempotent.
  */
 @Component
 public class ActivoAgingScheduler {
 
     private static final Logger logger = LoggerFactory.getLogger(ActivoAgingScheduler.class);
-    private static final int DORMANCY_MONTHS = 12;
+
+    private static final String ACTIVO_CRITERIA = """
+        EXISTS (
+            SELECT 1
+              FROM beworking.subscriptions s
+             WHERE s.contact_id = cp.id
+               AND s.active = TRUE
+        )
+        OR EXISTS (
+            SELECT 1
+              FROM beworking.facturas f
+             WHERE f.idcliente = cp.id
+               AND f.creacionfecha >= date_trunc('month', NOW())
+        )
+        """;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -44,36 +49,31 @@ public class ActivoAgingScheduler {
 
     // 04:00 UTC every day, after PotencialAgingScheduler at 03:00.
     @Scheduled(cron = "0 0 4 * * *")
-    public void ageOutDormantActivos() {
+    public void reconcileActivoStatus() {
         runOnce();
     }
 
     public RunResult runOnce() {
-        int flipped = jdbcTemplate.update("""
+        int demoted = jdbcTemplate.update("""
             UPDATE beworking.contact_profiles cp
                SET status = 'Inactivo',
                    status_changed_at = NOW()
              WHERE cp.status = 'Activo'
-               AND NOT EXISTS (
-                     SELECT 1
-                       FROM beworking.facturas f
-                      WHERE f.idcliente = cp.id
-                        AND f.creacionfecha >= NOW() - (? * INTERVAL '1 month')
-                   )
-               AND NOT EXISTS (
-                     SELECT 1
-                       FROM beworking.subscriptions s
-                      WHERE s.contact_id = cp.id
-                        AND s.active = TRUE
-                   )
-            """, DORMANCY_MONTHS);
+               AND NOT (""" + ACTIVO_CRITERIA + ")");
 
-        if (flipped > 0) {
-            logger.info("Activo aging cron: flipped {} dormant contacts to Inactivo (no invoice in {} months)",
-                flipped, DORMANCY_MONTHS);
+        int promoted = jdbcTemplate.update("""
+            UPDATE beworking.contact_profiles cp
+               SET status = 'Activo',
+                   status_changed_at = NOW()
+             WHERE cp.status = 'Inactivo'
+               AND (""" + ACTIVO_CRITERIA + ")");
+
+        if (demoted > 0 || promoted > 0) {
+            logger.info("Activo reconciliation: promoted={} demoted={} (rule: active sub OR factura this month)",
+                promoted, demoted);
         }
-        return new RunResult(flipped);
+        return new RunResult(demoted, promoted);
     }
 
-    public record RunResult(int flipped) {}
+    public record RunResult(int demoted, int promoted) {}
 }
