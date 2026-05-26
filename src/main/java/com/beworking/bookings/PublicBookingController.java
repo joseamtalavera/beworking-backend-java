@@ -98,15 +98,6 @@ public class PublicBookingController {
                                              @RequestParam String productName) {
         Map<String, Object> body = new HashMap<>();
 
-        // Must be product MA1A1
-        if (!FREE_PRODUCT_NAME.equalsIgnoreCase(productName)) {
-            body.put("used", 0);
-            body.put("freeLimit", 0);
-            body.put("isFree", false);
-            return ResponseEntity.ok(body);
-        }
-
-        // Must be Usuario Virtual or Usuario Mesa
         String normalizedEmail = email.trim().toLowerCase();
         ContactProfile contact = contactRepository
             .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
@@ -122,8 +113,9 @@ public class PublicBookingController {
 
         String tenantType = contact.getTenantType();
 
-        // Desk users: unlimited free bookings in MA1A1
-        if (FREE_TENANT_TYPE_DESK.equalsIgnoreCase(tenantType)) {
+        // Desk users: unlimited free bookings on the desk product only.
+        if (FREE_TENANT_TYPE_DESK.equalsIgnoreCase(tenantType)
+            && FREE_PRODUCT_NAME.equalsIgnoreCase(productName)) {
             body.put("used", 0);
             body.put("freeLimit", -1);
             body.put("isFree", true);
@@ -131,7 +123,7 @@ public class PublicBookingController {
             return ResponseEntity.ok(body);
         }
 
-        // Virtual office users: 5 free bookings per month in MA1A1
+        // Virtual office users: 5 free bookings per month — ANY product.
         if (!FREE_TENANT_TYPE_VIRTUAL.equalsIgnoreCase(tenantType)) {
             body.put("used", 0);
             body.put("freeLimit", 0);
@@ -139,20 +131,12 @@ public class PublicBookingController {
             return ResponseEntity.ok(body);
         }
 
-        Producto producto = productoRepository.findByNombreIgnoreCase(productName).orElse(null);
-        if (producto == null) {
-            body.put("used", 0);
-            body.put("freeLimit", FREE_MONTHLY_LIMIT);
-            body.put("isFree", true);
-            return ResponseEntity.ok(body);
-        }
-
         YearMonth currentMonth = YearMonth.now();
         LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
         LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
 
-        long used = reservaRepository.countByContactAndProductInMonth(
-            contact.getId(), producto.getId(), monthStart, monthEnd);
+        long used = reservaRepository.countByContactInMonth(
+            contact.getId(), monthStart, monthEnd);
 
         body.put("used", used);
         body.put("freeLimit", FREE_MONTHLY_LIMIT);

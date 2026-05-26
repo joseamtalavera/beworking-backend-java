@@ -202,24 +202,25 @@ class BookingService {
         String note = null;
         boolean isFreeEligible = false;
 
-        if (FREE_PRODUCT_NAME.equalsIgnoreCase(producto.getNombre())) {
-            String tenantType = contact.getTenantType();
-            if (FREE_TENANT_TYPE_DESK.equalsIgnoreCase(tenantType)) {
-                isFreeEligible = true;
-                note = "Free booking (desk user)";
-                reservaRequest.setStatus("Free");
-            } else if (FREE_TENANT_TYPE_VIRTUAL.equalsIgnoreCase(tenantType)) {
-                YearMonth currentMonth = YearMonth.now();
-                LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
-                LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
-                long usedThisMonth = reservaRepository.countByContactAndProductInMonth(
-                    contact.getId(), producto.getId(), monthStart, monthEnd);
+        String tenantType = contact.getTenantType();
+        // Usuario Mesa: unlimited free on the desk product (MA1A1).
+        if (FREE_TENANT_TYPE_DESK.equalsIgnoreCase(tenantType)
+            && FREE_PRODUCT_NAME.equalsIgnoreCase(producto.getNombre())) {
+            isFreeEligible = true;
+            note = "Free booking (desk user)";
+            reservaRequest.setStatus("Free");
+        } else if (FREE_TENANT_TYPE_VIRTUAL.equalsIgnoreCase(tenantType)) {
+            // Usuario Virtual: 5 free bookings per month — ANY product.
+            YearMonth currentMonth = YearMonth.now();
+            LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
+            LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
+            long usedThisMonth = reservaRepository.countByContactInMonth(
+                contact.getId(), monthStart, monthEnd);
 
-                if (usedThisMonth < FREE_MONTHLY_LIMIT) {
-                    isFreeEligible = true;
-                    note = "Free booking (" + (usedThisMonth + 1) + " of " + FREE_MONTHLY_LIMIT + ")";
-                    reservaRequest.setStatus("Free");
-                }
+            if (usedThisMonth < FREE_MONTHLY_LIMIT) {
+                isFreeEligible = true;
+                note = "Free booking (" + (usedThisMonth + 1) + " of " + FREE_MONTHLY_LIMIT + ")";
+                reservaRequest.setStatus("Free");
             }
         }
 
@@ -607,6 +608,30 @@ class BookingService {
         // Pessimistic lock on the product row — serializes concurrent bookings for the same product
         Producto producto = productoRepository.findByIdForUpdate(request.getProductoId())
             .orElseThrow(() -> new IllegalArgumentException("Producto not found: " + request.getProductoId()));
+
+        // Usuario Virtual free-booking limit (5/month, any product, any creation path).
+        // Rejects when admin/user tries to register a free booking past the cap so the
+        // counter and the actual rule stay in sync.
+        if (FREE_TENANT_TYPE_VIRTUAL.equalsIgnoreCase(cliente.getTenantType())) {
+            String status = request.getStatus();
+            Double tarifa = request.getTarifa();
+            boolean treatedAsFree =
+                "Free".equalsIgnoreCase(status) || "Gratis".equalsIgnoreCase(status)
+                || ((status == null || status.isBlank())
+                    && (tarifa == null || tarifa == 0.0));
+            if (treatedAsFree) {
+                YearMonth currentMonth = YearMonth.now();
+                LocalDateTime monthStart = currentMonth.atDay(1).atStartOfDay();
+                LocalDateTime monthEnd = currentMonth.plusMonths(1).atDay(1).atStartOfDay();
+                long usedThisMonth = reservaRepository.countByContactInMonth(
+                    cliente.getId(), monthStart, monthEnd);
+                if (usedThisMonth >= FREE_MONTHLY_LIMIT) {
+                    throw new IllegalArgumentException(
+                        "Monthly free-booking limit reached for this contact ("
+                        + FREE_MONTHLY_LIMIT + "). This booking must be marked as paid.");
+                }
+            }
+        }
 
         Set<DayOfWeek> weekdays = normalizeWeekdays(request.getWeekdays());
         LocalDate startDate = request.getDateFrom();

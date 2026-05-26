@@ -314,12 +314,9 @@ public class BookingController {
             if (FREE_TENANT_TYPE_DESK.equalsIgnoreCase(tenantType)) {
                 body.put("freeBookings", "unlimited");
             } else if (FREE_TENANT_TYPE_VIRTUAL.equalsIgnoreCase(tenantType)) {
-                Producto producto = productoRepository.findByNombreIgnoreCase(FREE_PRODUCT_NAME).orElse(null);
-                long freeUsed = 0;
-                if (producto != null) {
-                    freeUsed = reservaRepository.countByContactAndProductInMonth(
-                        contactId, producto.getId(), monthStart, monthEnd);
-                }
+                // 5 free per month, ANY product (counts every booking the contact has this month).
+                long freeUsed = reservaRepository.countByContactInMonth(
+                    contactId, monthStart, monthEnd);
                 long freeLeft = Math.max(0, FREE_MONTHLY_LIMIT - freeUsed);
                 body.put("freeBookings", freeUsed);
                 body.put("freeBookingsLeft", freeLeft);
