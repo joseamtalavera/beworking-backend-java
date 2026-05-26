@@ -1,6 +1,8 @@
 package com.beworking.invoices;
 
 import com.beworking.auth.EmailService;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,21 +91,67 @@ public class PaymentWebhookController {
 
         double amount = amountCents.doubleValue() / 100.0;
         String formattedAmount = String.format("%.2f %s", amount, currency.toUpperCase());
+        String dash = "—";
+        String displayName = customerName.isBlank() ? customerEmail : customerName;
+
         String linesHtml = lineDescriptions.isEmpty()
             ? ""
-            : "<ul>" + String.join("", lineDescriptions.stream().map(d -> "<li>" + d + "</li>").toList()) + "</ul>";
+            : "<div style=\"padding:8px 0 0;\">"
+              + "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;\">Conceptos</div>"
+              + "<ul style=\"margin:0;padding-left:18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222;\">"
+              + String.join("", lineDescriptions.stream()
+                    .map(d -> "<li style=\"margin:2px 0;\">" + d + "</li>")
+                    .toList())
+              + "</ul></div>";
 
-        String subject = "Factura enviada a " + (customerName.isBlank() ? customerEmail : customerName)
-            + " — " + formattedAmount;
-        String html = "<p>Se ha enviado una factura de Stripe al cliente:</p>"
-            + "<table style='border-collapse:collapse;'>"
-            + "<tr><td style='padding:4px 12px 4px 0;font-weight:bold;'>Cliente:</td><td>" + customerName + " (" + customerEmail + ")</td></tr>"
-            + "<tr><td style='padding:4px 12px 4px 0;font-weight:bold;'>Importe:</td><td>" + formattedAmount + "</td></tr>"
-            + "<tr><td style='padding:4px 12px 4px 0;font-weight:bold;'>ID Factura:</td><td>" + stripeInvoiceId + "</td></tr>"
-            + "</table>"
-            + (linesHtml.isEmpty() ? "" : "<p><strong>Conceptos:</strong></p>" + linesHtml)
-            + (hostedUrl.isBlank() ? "" : "<p><a href='" + hostedUrl + "'>Ver factura en Stripe</a></p>")
-            + (invoicePdf.isBlank() ? "" : "<p><a href='" + invoicePdf + "'>Descargar PDF</a></p>");
+        String waText = "Hola" + (customerName.isBlank() ? "" : " " + customerName)
+            + ", aquí tienes tu factura de BeWorking por " + formattedAmount
+            + (hostedUrl.isBlank() ? "" : ": " + hostedUrl);
+        String waUrl = "https://wa.me/?text=" + URLEncoder.encode(waText, StandardCharsets.UTF_8);
+
+        StringBuilder buttons = new StringBuilder("<div style=\"margin-top:20px;text-align:center;\">");
+        if (!hostedUrl.isBlank()) {
+            buttons.append("<a href=\"").append(hostedUrl)
+                   .append("\" style=\"display:inline-block;margin:4px 6px;background:#009624;color:#ffffff;")
+                   .append("text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:14px;")
+                   .append("padding:12px 20px;border-radius:8px;\">Ver factura en Stripe</a>");
+        }
+        if (!invoicePdf.isBlank()) {
+            buttons.append("<a href=\"").append(invoicePdf)
+                   .append("\" style=\"display:inline-block;margin:4px 6px;background:#ffffff;color:#009624;")
+                   .append("text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:14px;")
+                   .append("padding:12px 20px;border-radius:8px;border:1px solid #009624;\">Descargar PDF</a>");
+        }
+        if (!hostedUrl.isBlank()) {
+            buttons.append("<a href=\"").append(waUrl)
+                   .append("\" style=\"display:inline-block;margin:4px 6px;background:#25D366;color:#ffffff;")
+                   .append("text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:14px;")
+                   .append("padding:12px 20px;border-radius:8px;\">Enviar por WhatsApp</a>");
+        }
+        buttons.append("</div>");
+
+        String html = "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\">"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            + "<title>Factura enviada</title></head>"
+            + "<body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;\">"
+            + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\">"
+            + "<tr><td align=\"center\" style=\"padding:24px 0;\">"
+            + "<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:600px;max-width:600px;margin:0 auto;\">"
+            + "<tr><td style=\"background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:28px 32px;color:#ffffff;border-radius:14px 14px 0 0;\">"
+            + "<p style=\"margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;\">BEWORKING</p>"
+            + "<h1 style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;line-height:1.2;color:#ffffff;\">Factura enviada</h1>"
+            + "</td></tr>"
+            + "<tr><td style=\"background:#ffffff;padding:28px 32px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">"
+            + "<p style=\"margin:0 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#555;\">Se ha enviado una factura de Stripe al cliente.</p>"
+            + row("Cliente", displayName)
+            + row("Email", customerEmail.isBlank() ? dash : customerEmail)
+            + row("Importe", formattedAmount)
+            + row("ID Stripe", stripeInvoiceId.isBlank() ? dash : stripeInvoiceId)
+            + linesHtml
+            + buttons.toString()
+            + "</td></tr></table></td></tr></table></body></html>";
+
+        String subject = "🧾 Factura enviada — " + displayName + " — " + formattedAmount;
 
         logger.info("Invoice sent webhook — sending CC to {} for invoice {} (customer={})",
             invoiceCcEmail, stripeInvoiceId, customerEmail);
@@ -114,5 +162,11 @@ public class PaymentWebhookController {
         response.put("ccSentTo", invoiceCcEmail);
         response.put("stripeInvoiceId", stripeInvoiceId);
         return ResponseEntity.ok(response);
+    }
+
+    private static String row(String label, String value) {
+        return "<div style=\"padding:8px 0;border-bottom:1px dashed #eee;\">"
+            + "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;\">" + label + "</div>"
+            + "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#111;word-break:break-all;\">" + value + "</div></div>";
     }
 }
