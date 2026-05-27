@@ -158,6 +158,16 @@ public class SubscriptionService {
             }
         }
 
+        // Active-sub gate: block CREATION of new facturas for inactive subs.
+        // Comes AFTER the dedup branch above so a late payment on an already
+        // existing factura can still flip it to Pagado even if the sub was
+        // cancelled in the meantime (Claudia GT5733 case, 2026-05-25).
+        if (!Boolean.TRUE.equals(subscription.getActive())) {
+            logger.warn("Subscription {} is inactive; skipping factura creation for stripeInvoiceId={}",
+                subscription.getStripeSubscriptionId(), payload.getStripeInvoiceId());
+            return null;
+        }
+
         // Resolve cuenta
         String cuentaCodigo = subscription.getCuenta();
         Integer cuentaId = null;

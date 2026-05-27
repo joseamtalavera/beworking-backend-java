@@ -80,12 +80,13 @@ public class SubscriptionWebhookController {
         }
 
         Subscription subscription = subOpt.get();
-        if (!subscription.getActive()) {
-            logger.warn("Subscription {} is inactive, skipping invoice creation", subId);
-            Map<String, Object> error = new HashMap<>();
-            error.put("error", "Subscription is inactive");
-            return ResponseEntity.status(HttpStatus.GONE).body(error);
-        }
+        // NOTE: the "subscription is inactive" check used to live here, before
+        // calling the service. That blocked late payments for invoices already
+        // in the DB — when a sub was cancelled between invoice emission and
+        // customer payment, the existing Pendiente factura never flipped to
+        // Pagado (e.g. Claudia GT5733, 2026-05-25). The gate now lives inside
+        // `createInvoiceFromSubscription`, AFTER the dedup-and-mark-paid path,
+        // so late payments on already-issued invoices still settle.
 
         Map<String, Object> result = subscriptionService.createInvoiceFromSubscription(subscription, payload);
 
