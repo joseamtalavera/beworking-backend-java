@@ -104,10 +104,16 @@ public class PaymentWebhookController {
                     .toList())
               + "</ul></div>";
 
-        String waText = "Hola" + (customerName.isBlank() ? "" : " " + customerName)
+        String shareText = "Hola" + (customerName.isBlank() ? "" : " " + customerName)
             + ", aquí tienes tu factura de BeWorking por " + formattedAmount
             + (hostedUrl.isBlank() ? "" : ": " + hostedUrl);
-        String waUrl = "https://wa.me/?text=" + URLEncoder.encode(waText, StandardCharsets.UTF_8);
+        String waUrl = "https://wa.me/?text=" + URLEncoder.encode(shareText, StandardCharsets.UTF_8);
+
+        String mailSubject = "Factura BeWorking — " + formattedAmount;
+        String mailUrl = "https://mail.google.com/mail/?view=cm&fs=1&authuser=info@be-working.com"
+            + "&to=" + URLEncoder.encode(customerEmail, StandardCharsets.UTF_8)
+            + "&su=" + URLEncoder.encode(mailSubject, StandardCharsets.UTF_8)
+            + "&body=" + URLEncoder.encode(shareText, StandardCharsets.UTF_8);
 
         StringBuilder buttons = new StringBuilder("<div style=\"margin-top:20px;text-align:center;\">");
         if (!hostedUrl.isBlank()) {
@@ -121,6 +127,12 @@ public class PaymentWebhookController {
                    .append("\" style=\"display:inline-block;margin:4px 6px;background:#ffffff;color:#009624;")
                    .append("text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:14px;")
                    .append("padding:12px 20px;border-radius:8px;border:1px solid #009624;\">Descargar PDF</a>");
+        }
+        if (!customerEmail.isBlank()) {
+            buttons.append("<a href=\"").append(mailUrl)
+                   .append("\" style=\"display:inline-block;margin:4px 6px;background:#1a73e8;color:#ffffff;")
+                   .append("text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:14px;")
+                   .append("padding:12px 20px;border-radius:8px;\">Enviar por email</a>");
         }
         if (!hostedUrl.isBlank()) {
             buttons.append("<a href=\"").append(waUrl)
