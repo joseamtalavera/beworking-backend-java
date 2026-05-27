@@ -76,7 +76,9 @@ public class PublicLookupController {
                     ? List.of()
                     : List.of(room.getTags().split("\\s*,\\s*")),
                 room.getImages().stream().map(img -> img.getUrl()).toList(),
-                room.getSizeSqm()
+                room.getSizeSqm(),
+                room.getDescriptionEn(),
+                room.getSubtitleEn()
                 );
             })
             .collect(Collectors.toList());
@@ -106,7 +108,9 @@ public class PublicLookupController {
                 List.of(), // amenities
                 List.of(), // tags
                 List.of(), // images
-                null       // sizeSqm
+                null,      // sizeSqm
+                null,      // descriptionEn
+                null       // subtitleEn
             ))
             .collect(Collectors.toList());
     }
@@ -117,5 +121,6 @@ public class PublicLookupController {
                                          Integer capacity, java.math.BigDecimal priceFrom, String priceUnit,
                                          java.math.BigDecimal ratingAverage, Integer ratingCount, Boolean instantBooking,
                                          String description, List<String> amenities, List<String> tags, List<String> images,
-                                         Integer sizeSqm) {}
+                                         Integer sizeSqm,
+                                         String descriptionEn, String subtitleEn) {}
 }

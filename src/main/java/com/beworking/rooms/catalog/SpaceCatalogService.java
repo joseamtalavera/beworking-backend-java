@@ -86,7 +86,9 @@ public class SpaceCatalogService {
         room.setCentroCode(dto.centroCode());
         room.setName(dto.displayName());
         room.setSubtitle(dto.subtitle());
+        room.setSubtitleEn(dto.subtitleEn());
         room.setDescription(dto.description());
+        room.setDescriptionEn(dto.descriptionEn());
         room.setAddress(dto.address());
         room.setCity(dto.city());
         room.setPostalCode(dto.postalCode());
@@ -164,7 +166,9 @@ public class SpaceCatalogService {
             room.getCentroCode(),
             room.getName(),
             room.getSubtitle(),
+            room.getSubtitleEn(),
             room.getDescription(),
+            room.getDescriptionEn(),
             room.getAddress(),
             room.getCity(),
             room.getPostalCode(),

@@ -31,8 +31,14 @@ public class Room {
     @Column(length = 255)
     private String subtitle;
 
+    @Column(name = "subtitle_en", length = 255)
+    private String subtitleEn;
+
     @Column(length = 2000)
     private String description;
+
+    @Column(name = "description_en", length = 2000)
+    private String descriptionEn;
 
     @Column(length = 255)
     private String address;
@@ -166,6 +172,22 @@ public class Room {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getDescriptionEn() {
+        return descriptionEn;
+    }
+
+    public void setDescriptionEn(String descriptionEn) {
+        this.descriptionEn = descriptionEn;
+    }
+
+    public String getSubtitleEn() {
+        return subtitleEn;
+    }
+
+    public void setSubtitleEn(String subtitleEn) {
+        this.subtitleEn = subtitleEn;
     }
 
     public String getAddress() {
