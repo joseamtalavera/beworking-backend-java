@@ -111,15 +111,17 @@ public class DailyReconciliationScheduler {
         result.dbScheduled = dbScheduled != null ? dbScheduled : 0;
         result.dbActive = result.dbStripe + result.dbBankTransfer;
 
-        // 1b. Pendiente invoices for current year (mirrors dashboard pendingByAccount).
-        //     Buckets by f.holdedcuenta with NULL → 'PT' default, matching the
-        //     dashboard expression `(invoice.cuenta || 'PT').toUpperCase()`.
-        //     Status keywords kept in sync with Overview.jsx pendingByAccount.
+        // 1b. Pendiente invoices for current year (mirrors dashboard pendingByAccount
+        //     in ReconciliationCard.jsx). Restricted to subscription categories
+        //     (`virtual_office`, `coworking`) so meeting-room one-offs and extras
+        //     don't inflate the sub-reconciliation count. Category column was
+        //     backfilled by V64; sub-eligible category values stay in sync there.
         Map<String, Object> pendiente = jdbcTemplate.queryForMap(
             "SELECT COUNT(*) AS cnt, COALESCE(SUM(f.total), 0) AS amt " +
             "  FROM beworking.facturas f " +
             " WHERE EXTRACT(YEAR FROM f.creacionfecha) = EXTRACT(YEAR FROM CURRENT_DATE) " +
             "   AND UPPER(COALESCE(NULLIF(f.holdedcuenta, ''), 'PT')) = ? " +
+            "   AND LOWER(COALESCE(f.category, '')) IN ('virtual_office', 'coworking') " +
             "   AND (LOWER(COALESCE(f.estado,'')) LIKE '%pend%' " +
             "     OR LOWER(COALESCE(f.estado,'')) LIKE '%confir%' " +
             "     OR LOWER(COALESCE(f.estado,'')) LIKE '%fact%' " +
