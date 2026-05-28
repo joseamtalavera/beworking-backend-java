@@ -338,11 +338,17 @@ public class DailyReconciliationScheduler {
         // Outer card matching dashboard surface
         html.append("<div style='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px 32px'>");
 
-        // Header: title + last run date (mirrors dashboard ReconciliationCard header)
-        html.append("<div style='display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f0f0f0;padding-bottom:16px;margin-bottom:24px'>");
-        html.append("<h1 style='margin:0;font-size:18px;font-weight:600;letter-spacing:-0.015em;color:#111'>Subscription Reconciliation</h1>");
+        // Header: title + last run date as a 2-cell table (Gmail/Outlook strip flex layout).
+        html.append("<table style='width:100%;border-collapse:collapse;margin-bottom:24px'>");
+        html.append("<tr>");
+        html.append("<td style='padding:0 16px 16px 0;text-align:left;border-bottom:1px solid #f0f0f0'>");
+        html.append("<span style='font-size:18px;font-weight:600;letter-spacing:-0.015em;color:#111'>Subscription Reconciliation</span>");
+        html.append("</td>");
+        html.append("<td style='padding:0 0 16px 16px;text-align:right;border-bottom:1px solid #f0f0f0;white-space:nowrap;vertical-align:baseline'>");
         html.append("<span style='font-size:12px;color:#6b7280'>Last run: ").append(LocalDate.now()).append("</span>");
-        html.append("</div>");
+        html.append("</td>");
+        html.append("</tr>");
+        html.append("</table>");
 
         for (AccountResult r : results) {
             boolean ok = !r.hasIssues();
