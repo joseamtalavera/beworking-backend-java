@@ -245,7 +245,16 @@ class BookingService {
         entityManager.flush();
 
         // ── Auto-create invoice for paid public bookings ──
-        boolean isPaid = request.getStripePaymentIntentId() != null && !isFreeEligible;
+        // Skip when the booking is backed by a Stripe Subscription — the
+        // SubscriptionWebhookController creates a factura per monthly invoice
+        // at the subscription rate. Auto-invoicing here would (a) double-bill
+        // in the DB and (b) compute the wrong amount: the booking spans the
+        // full sub period (one bloqueo per day) priced at the daily walk-in
+        // rate, while Stripe collects monthly. Volodymyr Lokotarov hit this
+        // 2026-05-27 — €4,404.40 phantom invoice vs €108.90/mo actual charge.
+        boolean isPaid = request.getStripePaymentIntentId() != null
+                && request.getStripeSubscriptionId() == null
+                && !isFreeEligible;
         if (isPaid && response.bloqueos() != null && !response.bloqueos().isEmpty()) {
             try {
                 List<BloqueoResponse> allBloqueos = response.bloqueos();
