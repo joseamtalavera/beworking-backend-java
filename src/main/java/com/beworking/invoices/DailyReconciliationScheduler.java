@@ -124,7 +124,8 @@ public class DailyReconciliationScheduler {
             "       COALESCE(NULLIF(f.billing_name, ''), f.descripcion) AS \"clientName\", " +
             "       f.estado, " +
             "       f.creacionfecha AS \"fechaFactura\", " +
-            "       f.total " +
+            "       f.total, " +
+            "       f.stripeinvoiceid AS \"stripeInvoiceId\" " +
             "  FROM beworking.facturas f " +
             " WHERE EXTRACT(YEAR FROM f.creacionfecha) = EXTRACT(YEAR FROM CURRENT_DATE) " +
             "   AND UPPER(COALESCE(NULLIF(f.holdedcuenta, ''), 'PT')) = ? " +
@@ -579,9 +580,14 @@ public class DailyReconciliationScheduler {
                 Object cuenta = inv.get("cuenta");
                 Object name = inv.get("clientName");
                 Object total = inv.get("total");
+                Object stripeId = inv.get("stripeInvoiceId");
                 html.append(cuenta != null ? cuenta : "").append(num != null ? num : "")
                     .append(" &nbsp;·&nbsp; <span style='color:#6b7280'>").append(name != null ? name : "—").append("</span>")
-                    .append(" &nbsp;·&nbsp; ").append(formatEur(total)).append("<br>");
+                    .append(" &nbsp;·&nbsp; ").append(formatEur(total));
+                if (stripeId != null && !String.valueOf(stripeId).isBlank()) {
+                    html.append(" &nbsp;·&nbsp; <span style='color:#9ca3af'>").append(stripeId).append("</span>");
+                }
+                html.append("<br>");
             }
             html.append("</div>");
         }
