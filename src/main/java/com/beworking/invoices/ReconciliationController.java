@@ -118,6 +118,7 @@ public class ReconciliationController {
                 COALESCE(r.pendiente_amount, 0)           as pendiente_amount,
                 COALESCE(r.pending_invoices::text, '[]')  as pending_invoices,
                 COALESCE(r.stripe_paid_db_pending::text, '[]') as stripe_paid_db_pending,
+                COALESCE(r.stripe_closed_db_pending::text, '[]') as stripe_closed_db_pending,
                 r.created_at,
                 COALESCE((
                     SELECT COUNT(*) FROM beworking.subscriptions s

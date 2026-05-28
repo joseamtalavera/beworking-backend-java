@@ -212,6 +212,34 @@ public class DailyReconciliationScheduler {
             result.stripePaidDbPending = findStripePaidDbPending(paidInvoiceIds, account);
         }
 
+        // 7. Stripe-closed (void/uncollectible) invoices that are still Pendiente
+        //    in our DB. Partition them out of the Unpaid bucket and surface as
+        //    a separate Deviation row so admin can clean up the local rows.
+        @SuppressWarnings("unchecked")
+        List<String> closedInvoiceIds = (List<String>) stripeData.get("closedInvoiceIds");
+        if (closedInvoiceIds != null && !closedInvoiceIds.isEmpty() && !result.pendingInvoices.isEmpty()) {
+            Set<String> closedSet = new HashSet<>(closedInvoiceIds);
+            List<Map<String, Object>> remaining = new ArrayList<>();
+            for (Map<String, Object> p : result.pendingInvoices) {
+                String sid = (String) p.get("stripeInvoiceId");
+                if (sid != null && closedSet.contains(sid)) {
+                    result.stripeClosedDbPending.add(p);
+                } else {
+                    remaining.add(p);
+                }
+            }
+            if (!result.stripeClosedDbPending.isEmpty()) {
+                result.pendingInvoices = remaining;
+                result.pendienteCount = remaining.size();
+                BigDecimal recalcSum = BigDecimal.ZERO;
+                for (Map<String, Object> row : remaining) {
+                    Object t = row.get("total");
+                    if (t != null) recalcSum = recalcSum.add(new BigDecimal(t.toString()));
+                }
+                result.pendienteAmount = recalcSum;
+            }
+        }
+
         logger.info("Reconciliation [{}]: dbActive={} stripeActive={} pastDue={} missing={} dbOnly={} stripeOnly={} stripePaidDbPending={}",
             account, result.dbActive, result.stripeActive, result.stripePastDue,
             result.missingInvoices.size(), result.dbOnlySubIds.size(), result.stripeOnlySubIds.size(),
@@ -375,14 +403,15 @@ public class DailyReconciliationScheduler {
             String stripeOnlyJson = objectMapper.writeValueAsString(result.stripeOnlySubIds);
             String pendingJson = objectMapper.writeValueAsString(result.pendingInvoices);
             String stripePaidDbPendingJson = objectMapper.writeValueAsString(result.stripePaidDbPending);
+            String stripeClosedDbPendingJson = objectMapper.writeValueAsString(result.stripeClosedDbPending);
 
             jdbcTemplate.update("""
                 INSERT INTO beworking.reconciliation_results
                     (run_date, account, db_active, db_stripe, db_bank_transfer, stripe_active, stripe_past_due,
                      past_due_amount, missing_invoice_count, missing_invoices, past_due_subs,
                      db_only_subs, stripe_only_subs, pendiente_count, pendiente_amount, pending_invoices,
-                     stripe_paid_db_pending)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?::jsonb, ?::jsonb)
+                     stripe_paid_db_pending, stripe_closed_db_pending)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb)
                 ON CONFLICT (run_date, account) DO UPDATE SET
                     db_active = EXCLUDED.db_active,
                     db_stripe = EXCLUDED.db_stripe,
@@ -399,12 +428,13 @@ public class DailyReconciliationScheduler {
                     pendiente_amount = EXCLUDED.pendiente_amount,
                     pending_invoices = EXCLUDED.pending_invoices,
                     stripe_paid_db_pending = EXCLUDED.stripe_paid_db_pending,
+                    stripe_closed_db_pending = EXCLUDED.stripe_closed_db_pending,
                     created_at = CURRENT_TIMESTAMP
                 """,
                 LocalDate.now(), result.account, result.dbActive, result.dbStripe, result.dbBankTransfer,
                 result.stripeActive, result.stripePastDue, result.pastDueAmount, result.missingInvoices.size(),
                 missingJson, pastDueJson, dbOnlyJson, stripeOnlyJson,
-                result.pendienteCount, result.pendienteAmount, pendingJson, stripePaidDbPendingJson);
+                result.pendienteCount, result.pendienteAmount, pendingJson, stripePaidDbPendingJson, stripeClosedDbPendingJson);
 
         } catch (Exception e) {
             logger.error("Failed to persist reconciliation result for {}: {}", result.account, e.getMessage(), e);
@@ -546,7 +576,7 @@ public class DailyReconciliationScheduler {
 
     private void renderInvoiceBody(StringBuilder html, AccountResult r) {
         // 3-metric grid: Overdue / Unpaid / Deviation
-        int devCount = r.missingInvoices.size() + r.stripePaidDbPending.size();
+        int devCount = r.missingInvoices.size() + r.stripePaidDbPending.size() + r.stripeClosedDbPending.size();
         html.append("<table style='border-collapse:collapse;width:100%;table-layout:fixed'>");
         html.append("<tr>");
         addMetric(html, "Overdue",   String.valueOf(r.stripePastDue),
@@ -592,7 +622,7 @@ public class DailyReconciliationScheduler {
             html.append("</div>");
         }
 
-        if (!r.missingInvoices.isEmpty() || !r.stripePaidDbPending.isEmpty()) {
+        if (!r.missingInvoices.isEmpty() || !r.stripePaidDbPending.isEmpty() || !r.stripeClosedDbPending.isEmpty()) {
             html.append(sectionTitle("Deviation — Stripe vs DB", "#dc2626"));
             html.append("<div style='font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#374151;line-height:1.8;background:#fafafa;border:1px solid #f0f0f0;border-radius:6px;padding:10px 12px'>");
             for (Map<String, Object> inv : r.missingInvoices) {
@@ -603,6 +633,16 @@ public class DailyReconciliationScheduler {
                 String invId = String.valueOf(inv.get("stripeInvoiceId"));
                 Object name = inv.get("clientName");
                 html.append(invId).append(" &nbsp;·&nbsp; <span style='color:#6b7280'>").append(name != null ? name : "—").append(" — DB still Pendiente</span><br>");
+            }
+            for (Map<String, Object> inv : r.stripeClosedDbPending) {
+                String invId = String.valueOf(inv.get("stripeInvoiceId"));
+                Object name = inv.get("clientName");
+                Object num = inv.get("idfactura");
+                Object cuenta = inv.get("cuenta");
+                String localRef = String.valueOf(cuenta != null ? cuenta : "") + String.valueOf(num != null ? num : "");
+                html.append(invId).append(" &nbsp;·&nbsp; <span style='color:#6b7280'>")
+                    .append(name != null ? name : "—")
+                    .append(" — Stripe void, DB ").append(localRef).append(" still Pendiente</span><br>");
             }
             html.append("</div>");
         }
@@ -657,6 +697,7 @@ public class DailyReconciliationScheduler {
         List<Map<String, Object>> pastDueSubs = new ArrayList<>();
         List<Map<String, Object>> missingInvoices = new ArrayList<>();
         List<Map<String, Object>> stripePaidDbPending = new ArrayList<>();
+        List<Map<String, Object>> stripeClosedDbPending = new ArrayList<>();
         List<String> dbOnlySubIds = new ArrayList<>();
         List<Map<String, Object>> dbOnlySubs = new ArrayList<>();
         List<String> stripeOnlySubIds = new ArrayList<>();
@@ -686,6 +727,7 @@ public class DailyReconciliationScheduler {
             return error != null
                 || !missingInvoices.isEmpty()
                 || !stripePaidDbPending.isEmpty()
+                || !stripeClosedDbPending.isEmpty()
                 || stripePastDue > 0
                 || pendienteCount > 0;
         }
