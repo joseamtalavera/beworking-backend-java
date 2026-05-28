@@ -363,8 +363,18 @@ public class InvoiceService {
                 LEFT JOIN beworking.productos p ON p.id = b.id_producto
             """;
 
-        // Append the WHERE conditions to the subquery + exclude cancelled/rectified
-        revenueSql += where.toString() + " AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%cancel%' AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%anula%' AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%void%' AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%rectificad%') f";
+        // Exclude only fully cancelled/voided invoices. Rectified pairs (original
+        // 'Rectificado' positive + 'Rectificativa' credit negative) stay IN: the
+        // credit note nets the original back out at its true refund amount.
+        // Earlier we filtered LIKE '%rectificad%' here, but that substring only
+        // matches 'rectificado' (not 'rectificativa', which lacks the trailing
+        // 'd'), so it dropped positive originals while keeping negative credits
+        // — silently undercounting revenue. Overview YTD uses the same
+        // include-net definition; both surfaces now agree.
+        revenueSql += where.toString()
+            + " AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%cancel%'"
+            + " AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%anula%'"
+            + " AND LOWER(COALESCE(f.estado, '')) NOT LIKE '%void%') f";
         
         try {
             BigDecimal totalRevenue = args.isEmpty()
