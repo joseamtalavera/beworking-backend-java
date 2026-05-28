@@ -379,6 +379,31 @@ public class RegisterService {
         return token;
     }
 
+    /**
+     * Resends the email-confirmation link for a user who hit the unconfirmed
+     * gate at login. Generates a fresh token (1h expiry, same as initial
+     * registration) and overwrites any stale one. Returns true if sent.
+     */
+    public boolean resendConfirmationEmail(String email) {
+        if (email != null) {
+            email = email.toLowerCase().trim();
+        }
+        var userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return false;
+        }
+        User user = userOpt.get();
+        if (user.isEmailConfirmed()) {
+            return false;
+        }
+        String token = UUID.randomUUID().toString();
+        user.setConfirmationToken(hashToken(token));
+        user.setConfirmationTokenExpiry(Instant.now().plus(1, ChronoUnit.HOURS));
+        userRepository.save(user);
+        emailService.sendConfirmationEmail(email, token);
+        return true;
+    }
+
     public boolean sendPasswordResetEmail(String email) {
         if (email != null) {
             email = email.toLowerCase().trim();
@@ -413,6 +438,11 @@ public class RegisterService {
         }
         String hashedPassword = passwordEncoder.encode(newPassword);
         user.setPassword(hashedPassword);
+        // Completing the reset proves the user controls the inbox the link was
+        // sent to — that's the same proof the confirmation email asks for. Flip
+        // emailConfirmed so a self-registered user who missed the 1h confirmation
+        // window can recover purely through forgot-password (no admin needed).
+        user.setEmailConfirmed(true);
         user.setConfirmationToken(null);
         user.setConfirmationTokenExpiry(null);
         userRepository.save(user);

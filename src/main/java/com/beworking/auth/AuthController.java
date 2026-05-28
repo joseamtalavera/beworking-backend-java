@@ -1,6 +1,8 @@
 package com.beworking.auth;
 
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -22,6 +24,7 @@ import com.beworking.subscriptions.SubscriptionRepository;
 @RequestMapping("/api/auth")
 
 public class AuthController {
+    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
     private final LoginService loginService;
     private final JwtUtil jwtUtil;
     private final RegisterService registerService;
@@ -68,6 +71,15 @@ public class AuthController {
         if (userOpt.isPresent()) {
             User user = userOpt.get();
             if (!user.isEmailConfirmed()) {
+                // Auto-resend the confirmation email so the frontend modal's
+                // "we sent you a confirmation link" copy is actually truthful.
+                // The original registration token expires after 1h — without
+                // this, an inactive user has no recovery path short of admin.
+                try {
+                    registerService.resendConfirmationEmail(user.getEmail());
+                } catch (Exception e) {
+                    logger.warn("Failed to resend confirmation email for {}: {}", user.getEmail(), e.getMessage());
+                }
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(new AuthResponse("Please confirm your email before logging in", null, null));
             }
