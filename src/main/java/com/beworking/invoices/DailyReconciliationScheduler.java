@@ -111,13 +111,18 @@ public class DailyReconciliationScheduler {
         result.dbScheduled = dbScheduled != null ? dbScheduled : 0;
         result.dbActive = result.dbStripe + result.dbBankTransfer;
 
-        // 1b. Pendiente invoices for current year (mirrors dashboard pendingByAccount
-        //     in ReconciliationCard.jsx). Restricted to subscription categories
-        //     (`virtual_office`, `coworking`) so meeting-room one-offs and extras
-        //     don't inflate the sub-reconciliation count. Category column was
-        //     backfilled by V64; sub-eligible category values stay in sync there.
-        Map<String, Object> pendiente = jdbcTemplate.queryForMap(
-            "SELECT COUNT(*) AS cnt, COALESCE(SUM(f.total), 0) AS amt " +
+        // 1b. Pendiente invoices for current year. Restricted to subscription
+        //     categories (`virtual_office`, `coworking`) so meeting-room one-offs
+        //     and extras don't inflate the sub-reconciliation count. Persisted
+        //     as a JSONB list so the dashboard renders the exact same rows the
+        //     email summarises — no client-side filtering, no drift.
+        result.pendingInvoices = jdbcTemplate.queryForList(
+            "SELECT f.id, f.idfactura, " +
+            "       UPPER(COALESCE(NULLIF(f.holdedcuenta, ''), 'PT')) AS cuenta, " +
+            "       COALESCE(NULLIF(f.billing_name, ''), f.descripcion) AS \"clientName\", " +
+            "       f.estado, " +
+            "       f.creacionfecha AS \"fechaFactura\", " +
+            "       f.total " +
             "  FROM beworking.facturas f " +
             " WHERE EXTRACT(YEAR FROM f.creacionfecha) = EXTRACT(YEAR FROM CURRENT_DATE) " +
             "   AND UPPER(COALESCE(NULLIF(f.holdedcuenta, ''), 'PT')) = ? " +
@@ -126,11 +131,16 @@ public class DailyReconciliationScheduler {
             "     OR LOWER(COALESCE(f.estado,'')) LIKE '%confir%' " +
             "     OR LOWER(COALESCE(f.estado,'')) LIKE '%fact%' " +
             "     OR LOWER(COALESCE(f.estado,'')) LIKE '%invoice%' " +
-            "     OR LOWER(COALESCE(f.estado,'')) LIKE '%created%')",
+            "     OR LOWER(COALESCE(f.estado,'')) LIKE '%created%') " +
+            " ORDER BY f.creacionfecha DESC, f.id DESC",
             account);
-        result.pendienteCount = ((Number) pendiente.get("cnt")).intValue();
-        Object amt = pendiente.get("amt");
-        result.pendienteAmount = amt != null ? new BigDecimal(amt.toString()) : BigDecimal.ZERO;
+        result.pendienteCount = result.pendingInvoices.size();
+        BigDecimal sum = BigDecimal.ZERO;
+        for (Map<String, Object> row : result.pendingInvoices) {
+            Object t = row.get("total");
+            if (t != null) sum = sum.add(new BigDecimal(t.toString()));
+        }
+        result.pendienteAmount = sum;
 
         // 2. Stripe data
         Map<String, Object> stripeData = http.get()
@@ -282,13 +292,14 @@ public class DailyReconciliationScheduler {
             String pastDueJson = objectMapper.writeValueAsString(result.pastDueSubs);
             String dbOnlyJson = objectMapper.writeValueAsString(result.dbOnlySubIds);
             String stripeOnlyJson = objectMapper.writeValueAsString(result.stripeOnlySubIds);
+            String pendingJson = objectMapper.writeValueAsString(result.pendingInvoices);
 
             jdbcTemplate.update("""
                 INSERT INTO beworking.reconciliation_results
                     (run_date, account, db_active, db_stripe, db_bank_transfer, stripe_active, stripe_past_due,
                      past_due_amount, missing_invoice_count, missing_invoices, past_due_subs,
-                     db_only_subs, stripe_only_subs)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb)
+                     db_only_subs, stripe_only_subs, pendiente_count, pendiente_amount, pending_invoices)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?::jsonb)
                 ON CONFLICT (run_date, account) DO UPDATE SET
                     db_active = EXCLUDED.db_active,
                     db_stripe = EXCLUDED.db_stripe,
@@ -301,11 +312,15 @@ public class DailyReconciliationScheduler {
                     past_due_subs = EXCLUDED.past_due_subs,
                     db_only_subs = EXCLUDED.db_only_subs,
                     stripe_only_subs = EXCLUDED.stripe_only_subs,
+                    pendiente_count = EXCLUDED.pendiente_count,
+                    pendiente_amount = EXCLUDED.pendiente_amount,
+                    pending_invoices = EXCLUDED.pending_invoices,
                     created_at = CURRENT_TIMESTAMP
                 """,
                 LocalDate.now(), result.account, result.dbActive, result.dbStripe, result.dbBankTransfer,
                 result.stripeActive, result.stripePastDue, result.pastDueAmount, result.missingInvoices.size(),
-                missingJson, pastDueJson, dbOnlyJson, stripeOnlyJson);
+                missingJson, pastDueJson, dbOnlyJson, stripeOnlyJson,
+                result.pendienteCount, result.pendienteAmount, pendingJson);
 
         } catch (Exception e) {
             logger.error("Failed to persist reconciliation result for {}: {}", result.account, e.getMessage(), e);
@@ -365,7 +380,7 @@ public class DailyReconciliationScheduler {
                 html.append("<tr>");
                 addMetric(html, "Stripe", String.valueOf(r.stripeLive()), null, null);
                 addMetric(html, "Scheduled", String.valueOf(r.dbScheduled), null, null);
-                addMetric(html, "Transfer", String.valueOf(r.dbBankTransfer), null, null);
+                addMetric(html, "Bank", String.valueOf(r.dbBankTransfer), null, null);
                 addMetric(html, "Deviation", String.valueOf(r.deviation()), null,
                     r.deviation() > 0 ? "#dc2626" : null);
                 addMetric(html, "Overdue", String.valueOf(r.stripePastDue),
@@ -524,6 +539,7 @@ public class DailyReconciliationScheduler {
         BigDecimal pastDueAmount = BigDecimal.ZERO;
         int pendienteCount;
         BigDecimal pendienteAmount = BigDecimal.ZERO;
+        List<Map<String, Object>> pendingInvoices = new ArrayList<>();
         List<Map<String, Object>> pastDueSubs = new ArrayList<>();
         List<Map<String, Object>> missingInvoices = new ArrayList<>();
         List<String> dbOnlySubIds = new ArrayList<>();

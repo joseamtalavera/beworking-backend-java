@@ -114,6 +114,9 @@ public class ReconciliationController {
                 r.past_due_subs,
                 COALESCE(r.db_only_subs, '[]'::jsonb) as db_only_subs,
                 COALESCE(r.stripe_only_subs, '[]'::jsonb) as stripe_only_subs,
+                COALESCE(r.pendiente_count, 0)         as pendiente_count,
+                COALESCE(r.pendiente_amount, 0)        as pendiente_amount,
+                COALESCE(r.pending_invoices, '[]'::jsonb) as pending_invoices,
                 r.created_at,
                 COALESCE((
                     SELECT COUNT(*) FROM beworking.subscriptions s
