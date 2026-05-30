@@ -46,8 +46,11 @@ public class OverviewMetricsService {
     public Map<String, Object> getMetrics(int year) {
         LocalDate today = LocalDate.now();
         int month = today.getMonthValue();
-        int prevMonth = month == 1 ? 12 : month - 1;
-        int prevMonthYear = month == 1 ? year - 1 : year;
+        // YoY-style comparison: this month vs SAME month last year (e.g. May 2026 vs May 2025).
+        // Previously compared to the previous month of the same year, which mixed
+        // seasonality with YoY growth and hid real trends.
+        int prevMonth = month;
+        int prevMonthYear = year - 1;
         LocalDate samePointLastYear = today.minusYears(1);
 
         Map<String, Object> headline = jdbc.queryForMap("""
