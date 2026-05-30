@@ -151,8 +151,11 @@ public class OverviewMetricsService {
             prevMonthYear, prevMonth, CANCEL_PATTERN
         );
 
+        // Pull both the selected year AND the prior year in one query so the
+        // chart can overlay a last-year comparison line.
         List<Map<String, Object>> monthRows = jdbc.queryForList("""
             SELECT
+              EXTRACT(YEAR  FROM creacionfecha)::int                          AS yr,
               EXTRACT(MONTH FROM creacionfecha)::int                          AS month,
               COALESCE(SUM(CASE WHEN LOWER(COALESCE(estado,'')) !~ ?
                                  THEN total ELSE 0 END), 0)                  AS revenue,
@@ -162,30 +165,23 @@ public class OverviewMetricsService {
               COALESCE(SUM(CASE WHEN LOWER(COALESCE(estado,'')) ~ ?
                                  THEN total ELSE 0 END), 0)                  AS overdue
             FROM beworking.facturas
-            WHERE EXTRACT(YEAR FROM creacionfecha) = ?
-            GROUP BY 1
-            ORDER BY 1
+            WHERE EXTRACT(YEAR FROM creacionfecha) IN (?, ?)
+            GROUP BY 1, 2
+            ORDER BY 1, 2
             """,
-            CANCEL_PATTERN, PENDING_PATTERN, OVERDUE_PATTERN, year
+            CANCEL_PATTERN, PENDING_PATTERN, OVERDUE_PATTERN, year, year - 1
         );
 
-        List<Map<String, Object>> byMonth = new ArrayList<>(12);
-        for (int m = 1; m <= 12; m++) {
-            Map<String, Object> filled = new HashMap<>();
-            filled.put("month", m);
-            filled.put("revenue", BigDecimal.ZERO);
-            filled.put("pending", BigDecimal.ZERO);
-            filled.put("overdue", BigDecimal.ZERO);
-            byMonth.add(filled);
-        }
+        List<Map<String, Object>> byMonth = blankYear();
+        List<Map<String, Object>> byMonthLastYear = blankYear();
         for (Map<String, Object> row : monthRows) {
+            int yr = ((Number) row.get("yr")).intValue();
             int m = ((Number) row.get("month")).intValue();
-            if (m >= 1 && m <= 12) {
-                Map<String, Object> cell = byMonth.get(m - 1);
-                cell.put("revenue", row.get("revenue"));
-                cell.put("pending", row.get("pending"));
-                cell.put("overdue", row.get("overdue"));
-            }
+            if (m < 1 || m > 12) continue;
+            Map<String, Object> cell = (yr == year ? byMonth : byMonthLastYear).get(m - 1);
+            cell.put("revenue", row.get("revenue"));
+            cell.put("pending", row.get("pending"));
+            cell.put("overdue", row.get("overdue"));
         }
 
         Map<String, Object> revenue = Map.of(
@@ -212,6 +208,21 @@ public class OverviewMetricsService {
         out.put("overdue", overdue);
         out.put("byCategory", categoryRows);
         out.put("byMonth", byMonth);
+        out.put("byMonthLastYear", byMonthLastYear);
         return out;
+    }
+
+    /** 12 zero-filled month cells (1-indexed by position). */
+    private static List<Map<String, Object>> blankYear() {
+        List<Map<String, Object>> months = new ArrayList<>(12);
+        for (int m = 1; m <= 12; m++) {
+            Map<String, Object> cell = new HashMap<>();
+            cell.put("month", m);
+            cell.put("revenue", BigDecimal.ZERO);
+            cell.put("pending", BigDecimal.ZERO);
+            cell.put("overdue", BigDecimal.ZERO);
+            months.add(cell);
+        }
+        return months;
     }
 }
