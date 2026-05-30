@@ -53,7 +53,6 @@ public class ContactProfileServiceTest {
         validContact.setPhonePrimary("+34600000000");
         validContact.setStatus("Activo");
         validContact.setTenantType("Usuario Virtual");
-        validContact.setActive(true);
         validContact.setCreatedAt(LocalDateTime.now().minusDays(5));
     }
 
@@ -187,9 +186,11 @@ public class ContactProfileServiceTest {
         }
 
         @Test
-        void resolvesStatusFromActiveFlag_whenStatusNull() {
+        void resolvesStatusInactivo_whenStatusNull() {
+            // After V79 dropped is_active, the resolveStatus fallback for a
+            // missing status is always "Inactivo" — ActivoAgingScheduler is
+            // the sole source of truth and will promote it on the next tick.
             validContact.setStatus(null);
-            validContact.setActive(true);
             Page<ContactProfile> page = new PageImpl<>(List.of(validContact));
             when(repository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
 
@@ -197,21 +198,7 @@ public class ContactProfileServiceTest {
                 0, 10, null, null, null, null, null, null, null
             );
 
-            assertThat(response.items().get(0).status()).isEqualTo("Active");
-        }
-
-        @Test
-        void resolvesStatusUnknown_whenBothNull() {
-            validContact.setStatus(null);
-            validContact.setActive(null);
-            Page<ContactProfile> page = new PageImpl<>(List.of(validContact));
-            when(repository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
-
-            ContactProfilesPageResponse response = service.getContactProfiles(
-                0, 10, null, null, null, null, null, null, null
-            );
-
-            assertThat(response.items().get(0).status()).isEqualTo("Unknown");
+            assertThat(response.items().get(0).status()).isEqualTo("Inactivo");
         }
 
         @Test
@@ -286,7 +273,6 @@ public class ContactProfileServiceTest {
             assertThat(result.getStatus()).isEqualTo("Potencial");
             assertThat(result.getTenantType()).isEqualTo("Usuario Virtual");
             assertThat(result.getPhonePrimary()).isEqualTo("+34600111222");
-            assertThat(result.getActive()).isTrue();
             assertThat(result.getCreatedAt()).isNotNull();
         }
 
