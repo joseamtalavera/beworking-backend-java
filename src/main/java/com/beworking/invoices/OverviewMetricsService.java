@@ -99,9 +99,35 @@ public class OverviewMetricsService {
             year
         );
 
+        // The 5 revenue cards group by CUSTOMER tenant_type, NOT facturas.category
+        // (the category column is dormant — see project_invoice_category.md).
+        // Bucketing matches Overview.jsx#bucketOf:
+        //   aulas → meeting_room
+        //   mesa/nóma/noma → coworking
+        //   virtual → virtual_office
+        //   portal/servicio → app
+        //   everything else (proveedor, distribuidor, free, NULL) → extra
         List<Map<String, Object>> categoryRows = jdbc.queryForList("""
+            WITH classified AS (
+              SELECT
+                f.creacionfecha,
+                f.total,
+                f.estado,
+                CASE
+                  WHEN LOWER(COALESCE(c.tenant_type,'')) LIKE '%aula%'    THEN 'meeting_room'
+                  WHEN LOWER(COALESCE(c.tenant_type,'')) LIKE '%mesa%'    THEN 'coworking'
+                  WHEN LOWER(COALESCE(c.tenant_type,'')) LIKE '%nóma%'    THEN 'coworking'
+                  WHEN LOWER(COALESCE(c.tenant_type,'')) LIKE '%noma%'    THEN 'coworking'
+                  WHEN LOWER(COALESCE(c.tenant_type,'')) LIKE '%virtual%' THEN 'virtual_office'
+                  WHEN LOWER(COALESCE(c.tenant_type,'')) LIKE '%portal%'  THEN 'app'
+                  WHEN LOWER(COALESCE(c.tenant_type,'')) LIKE '%servicio%' THEN 'app'
+                  ELSE 'extra'
+                END AS bucket
+              FROM beworking.facturas f
+              LEFT JOIN beworking.contact_profiles c ON c.id = f.idcliente
+            )
             SELECT
-              COALESCE(LOWER(NULLIF(category,'')), 'uncategorized') AS category,
+              bucket AS category,
               COALESCE(SUM(CASE WHEN EXTRACT(YEAR FROM creacionfecha) = ?
                                  AND LOWER(COALESCE(estado,'')) !~ ?
                                 THEN total ELSE 0 END), 0)         AS ytd,
@@ -113,7 +139,7 @@ public class OverviewMetricsService {
                                  AND EXTRACT(MONTH FROM creacionfecha) = ?
                                  AND LOWER(COALESCE(estado,'')) !~ ?
                                 THEN total ELSE 0 END), 0)         AS prev_month
-            FROM beworking.facturas
+            FROM classified
             GROUP BY 1
             ORDER BY 1
             """,
