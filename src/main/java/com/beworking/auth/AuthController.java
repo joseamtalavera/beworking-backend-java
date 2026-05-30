@@ -607,12 +607,24 @@ public class AuthController {
         user.setConfirmationTokenExpiry(null);
         registerService.saveUser(user);
 
-        // Free users (no active sub) get a marketing welcome email nudging
-        // them toward BeWorkingVirtual. Subscribers already received a
-        // dedicated subscription welcome from the registration flow.
+        // Free users get a marketing welcome email nudging them toward
+        // BeWorkingVirtual. Anyone already on a paid tier (active sub OR
+        // paid tenant_type) skips it — the upsell would suggest they
+        // "level up" to a plan they already have.
         boolean hasActiveSub = user.getTenantId() != null
             && !subscriptionRepository.findByContactIdAndActiveTrue(user.getTenantId()).isEmpty();
-        if (!hasActiveSub) {
+        boolean isFreeTenant = true;
+        if (user.getTenantId() != null) {
+            String tenantType = contactProfileRepository.findById(user.getTenantId())
+                .map(ContactProfile::getTenantType)
+                .orElse(null);
+            if (tenantType != null) {
+                String t = tenantType.toLowerCase();
+                // Anything other than 'Usuario Free' is a paid tier.
+                isFreeTenant = t.contains("free");
+            }
+        }
+        if (!hasActiveSub && isFreeTenant) {
             try {
                 emailService.sendFreeRegistrationWelcomeEmail(user.getEmail(), user.getName());
             } catch (Exception e) {
