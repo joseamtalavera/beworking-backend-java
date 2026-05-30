@@ -278,44 +278,6 @@ public class MonthlyInvoiceScheduler {
         return taxResolver.computeFreshForContact(contactId, cuenta);
     }
 
-    @SuppressWarnings("unused")
-    private int resolveContactVatPercentLegacy(Long contactId, String cuenta) {
-        String supplierCountry = "GT".equals(cuenta) ? "EE" : "ES";
-
-        // JIT VIES validation: heal vat_valid before reading it.
-        contactProfileService.ensureVatValidated(contactId);
-
-        String taxId = null;
-        String billingCountry = null;
-        Boolean vatValid = null;
-        try {
-            Map<String, Object> row = jdbcTemplate.queryForMap(
-                "SELECT billing_tax_id, billing_country, vat_valid FROM beworking.contact_profiles WHERE id = ?",
-                contactId);
-            taxId = (String) row.get("billing_tax_id");
-            billingCountry = (String) row.get("billing_country");
-            vatValid = (Boolean) row.get("vat_valid");
-        } catch (EmptyResultDataAccessException ignored) {}
-
-        String customerCountry = resolveCustomerCountry(billingCountry, taxId);
-        if (customerCountry == null) {
-            return com.beworking.subscriptions.SubscriptionService.vatRateFor(supplierCountry);
-        }
-        if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals(customerCountry)) {
-            logger.info("Reverse charge: contact {} taxId={} (country={}) vs supplier {} → 0% VAT",
-                contactId, taxId, customerCountry, supplierCountry);
-            return 0;
-        }
-        int rate = com.beworking.subscriptions.SubscriptionService.vatRateFor(customerCountry);
-        logger.info("VAT resolved: contact {} taxId={} customerCountry={} supplier={} vatValid={} → {}%",
-            contactId, taxId, customerCountry, supplierCountry, vatValid, rate);
-        return rate;
-    }
-
-    private String resolveCustomerCountry(String billingCountry, String taxId) {
-        return com.beworking.subscriptions.SubscriptionService.deriveCustomerCountry(taxId, billingCountry);
-    }
-
     private void sendStatusEmail(YearMonth month, int successCount, int failCount, List<String> errors) {
         boolean allOk = failCount == 0 && errors.isEmpty();
         String statusLabel = allOk ? "OK" : "CON ERRORES";

@@ -1634,45 +1634,6 @@ public class InvoiceService {
         return taxResolver.computeFreshForContact(contactId, cuenta);
     }
 
-    @SuppressWarnings("unused")
-    private int resolveContactVatPercentLegacy(Long contactId) {
-        if (contactId == null) return 21;
-
-        // JIT VIES validation: heal vat_valid before reading it.
-        contactProfileService.ensureVatValidated(contactId);
-
-        // Determine supplier country from contact's active subscription cuenta
-        String supplierCountry = "ES";
-        try {
-            String cuenta = jdbcTemplate.queryForObject(
-                "SELECT cuenta FROM beworking.subscriptions WHERE contact_id = ? AND active = true ORDER BY id DESC LIMIT 1",
-                String.class, contactId);
-            if ("GT".equalsIgnoreCase(cuenta)) supplierCountry = "EE";
-        } catch (EmptyResultDataAccessException ignored) {}
-
-        String taxId = null;
-        String billingCountry = null;
-        Boolean vatValid = null;
-        try {
-            Map<String, Object> row = jdbcTemplate.queryForMap(
-                "SELECT billing_tax_id, billing_country, vat_valid FROM beworking.contact_profiles WHERE id = ?",
-                contactId);
-            taxId = (String) row.get("billing_tax_id");
-            billingCountry = (String) row.get("billing_country");
-            vatValid = (Boolean) row.get("vat_valid");
-        } catch (EmptyResultDataAccessException ignored) {}
-
-        String customerCountry = resolveCustomerCountry(billingCountry, taxId);
-        if (customerCountry == null) return com.beworking.subscriptions.SubscriptionService.vatRateFor(supplierCountry);
-
-        if (Boolean.TRUE.equals(vatValid) && !supplierCountry.equals(customerCountry)) return 0;
-        return com.beworking.subscriptions.SubscriptionService.vatRateFor(customerCountry);
-    }
-
-    private String resolveCustomerCountry(String billingCountry, String taxId) {
-        return com.beworking.subscriptions.SubscriptionService.deriveCustomerCountry(taxId, billingCountry);
-    }
-
     /**
      * Returns a safe next ID from the facturas sequence, auto-correcting if the sequence
      * is behind the actual max ID (prevents duplicate key violations).
