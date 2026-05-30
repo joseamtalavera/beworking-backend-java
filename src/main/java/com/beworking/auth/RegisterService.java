@@ -315,7 +315,6 @@ public class RegisterService {
             cp.setEmailPrimary(normalizedEmail);
             cp.setStatus("Activo");
             cp.setTenantType("Usuario Free");
-            cp.setActive(true);
             cp.setCreatedAt(LocalDateTime.now());
             cp.setStatusChangedAt(LocalDateTime.now());
             cp.setChannel("Self-registration-free");
@@ -623,7 +622,6 @@ public class RegisterService {
             cp.setEmailPrimary(normalizedEmail);
             cp.setStatus(status);
             cp.setTenantType("Usuario Virtual");
-            cp.setActive(true);
             cp.setCreatedAt(LocalDateTime.now());
             cp.setStatusChangedAt(LocalDateTime.now());
             cp.setChannel("Self-registration");

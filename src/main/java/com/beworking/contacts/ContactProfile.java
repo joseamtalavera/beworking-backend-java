@@ -81,9 +81,6 @@ public class ContactProfile {
 
     private String status;
 
-    @Column(name = "is_active")
-    private Boolean active;
-
     private String channel;
 
     @Column(name = "center_id")
@@ -347,14 +344,6 @@ public class ContactProfile {
 
     public void setStatus(String status) {
         this.status = status;
-    }
-
-    public Boolean getActive() {
-        return active;
-    }
-
-    public void setActive(Boolean active) {
-        this.active = active;
     }
 
     public String getChannel() {

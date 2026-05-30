@@ -372,11 +372,9 @@ public class ContactProfileService {
         if (profile.getStatus() != null && !profile.getStatus().isBlank()) {
             return profile.getStatus();
         }
-        // Aligned to 3-state funnel after V52. Legacy paths that didn't write
-        // status get classified by the active flag; everything else → Inactivo.
-        if (Boolean.TRUE.equals(profile.getActive())) {
-            return "Activo";
-        }
+        // Aligned to 3-state funnel after V52. ActivoAgingScheduler keeps
+        // status current — any row missing one defaults to Inactivo until
+        // the next cron tick reconciles it.
         return "Inactivo";
     }
 
@@ -512,7 +510,6 @@ public class ContactProfileService {
         runVatValidation(profile);
 
         // Set default values
-        profile.setActive(true);
         profile.setCreatedAt(LocalDateTime.now());
         profile.setStatusChangedAt(LocalDateTime.now());
 

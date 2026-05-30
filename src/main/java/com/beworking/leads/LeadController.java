@@ -257,7 +257,6 @@ public class LeadController {
             cp.setStatus("Potencial");
             cp.setStatusChangedAt(java.time.LocalDateTime.now());
             cp.setChannel(lead.getSource() != null ? lead.getSource() : "lead");
-            cp.setActive(true);
             cp.setCreatedAt(java.time.LocalDateTime.now());
             // Carry the lead's free-text notes onto the contact, prefixed with subject for context.
             String composed = (lead.getSubject() != null ? "Asunto: " + lead.getSubject() + "\n" : "")

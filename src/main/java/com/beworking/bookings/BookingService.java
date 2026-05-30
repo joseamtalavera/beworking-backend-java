@@ -170,7 +170,6 @@ class BookingService {
                 newContact.setBillingPostalCode(request.getBillingPostalCode());
                 newContact.setTenantType("Usuario Aulas");
                 newContact.setStatus("Activo");
-                newContact.setActive(true);
                 newContact.setChannel("Web");
                 newContact.setCreatedAt(java.time.LocalDateTime.now());
                 ContactProfile saved = contactRepository.save(newContact);
