@@ -1308,7 +1308,11 @@ public class InvoiceService {
             }
         }
 
-        // Mark original as rectified
+        // Mark original as rectified. The V78 guard trigger blocks any raw
+        // write of estado='Rectificado'; only this code path is allowed via
+        // a transaction-local session flag (third arg true → auto-clears
+        // at COMMIT/ROLLBACK, no bleed across requests).
+        jdbcTemplate.execute("SELECT set_config('beworking.allow_rectificado', 'on', true)");
         jdbcTemplate.update(
             "UPDATE beworking.facturas SET estado = 'Rectificado' WHERE id = ?",
             originalId
