@@ -312,8 +312,10 @@ public class MailroomDocumentService {
 
         boolean isPackage = document.getDocumentType() == MailroomDocumentType.PACKAGE;
         String subject = isPackage
-                ? (spanish ? "Tienes un paquete listo para recoger" : "You have a package ready for pickup")
-                : (spanish ? "Tienes nuevo correo en tu buzón digital" : "You have new mail in your digital mailbox");
+                ? (spanish ? "📦 BeWorking · Tienes un paquete listo para recoger"
+                           : "📦 BeWorking · You have a package ready for pickup")
+                : (spanish ? "✉️ BeWorking · Tienes nuevo correo en tu buzón digital"
+                           : "✉️ BeWorking · You have new mail in your digital mailbox");
         String htmlContent = isPackage
                 ? createPackageNotificationEmailHtml(document, name, spanish)
                 : createDocumentNotificationEmailHtml(document, name, spanish);
