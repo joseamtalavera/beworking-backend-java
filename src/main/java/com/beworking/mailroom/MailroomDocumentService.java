@@ -1,7 +1,7 @@
 package com.beworking.mailroom;
 
 import com.beworking.auth.EmailService;
-import com.beworking.storage.FileStorageService;
+import com.beworking.storage.FileStorage;
 import com.beworking.storage.StoredFile;
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -34,10 +34,10 @@ public class MailroomDocumentService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final MailroomDocumentRepository repository;
-    private final FileStorageService fileStorageService;
+    private final FileStorage fileStorageService;
     private final EmailService emailService;
 
-    public MailroomDocumentService(MailroomDocumentRepository repository, FileStorageService fileStorageService, EmailService emailService) {
+    public MailroomDocumentService(MailroomDocumentRepository repository, FileStorage fileStorageService, EmailService emailService) {
         this.repository = repository;
         this.fileStorageService = fileStorageService;
         this.emailService = emailService;
