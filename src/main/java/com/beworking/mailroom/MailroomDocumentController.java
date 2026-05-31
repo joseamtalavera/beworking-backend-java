@@ -44,39 +44,26 @@ public class MailroomDocumentController {
     public ResponseEntity<List<MailroomDocumentResponse>> listDocuments(
             Authentication authentication,
             @RequestParam(value = "contactEmail", required = false) String contactEmailParam) {
-        if (authentication == null || !authentication.isAuthenticated()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-        String userEmail = authentication.getName();
-        User user = userRepository.findByEmail(userEmail).orElse(null);
+        User user = resolveUser(authentication);
         if (user == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        UUID tenantFilter = null;
         String contactEmail = null;
-
-        // If a contactEmail filter is explicitly provided, use it
-        if (StringUtils.hasText(contactEmailParam)) {
-            contactEmail = contactEmailParam.trim();
-        } else if (user.getRole() == User.Role.USER) {
-            if (user.getTenantId() != null) {
-                contactEmail = user.getEmail();
-            } else {
-                final String[] emailHolder = {null};
-                contactService.findContactByEmail(user.getEmail()).ifPresent(contact -> {
-                    emailHolder[0] = firstNonBlank(
-                        contact.getEmailPrimary(),
-                        contact.getEmailSecondary(),
-                        contact.getEmailTertiary(),
-                        contact.getRepresentativeEmail()
-                    );
-                });
-                contactEmail = emailHolder[0];
+        if (user.getRole() == User.Role.ADMIN) {
+            // Admin may scope to any contact's email, or see all when no filter is given.
+            if (StringUtils.hasText(contactEmailParam)) {
+                contactEmail = contactEmailParam.trim();
+            }
+        } else {
+            // Non-admin: ALWAYS scoped to own email; client-supplied contactEmail ignored.
+            contactEmail = resolveOwnEmail(user);
+            if (contactEmail == null) {
+                return ResponseEntity.ok(List.of());
             }
         }
 
-        return ResponseEntity.ok(service.listRecentDocuments(tenantFilter, contactEmail));
+        return ResponseEntity.ok(service.listRecentDocuments(null, contactEmail));
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -92,6 +79,14 @@ public class MailroomDocumentController {
             @RequestParam(value = "documentType", required = false) String documentType,
             Authentication authentication
     ) {
+        User user = resolveUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (user.getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         MailroomDocumentResponse created = service.createDocument(
                 file,
                 title,
@@ -117,37 +112,91 @@ public class MailroomDocumentController {
     }
 
     @PostMapping("/{id}/notify")
-    public ResponseEntity<MailroomDocumentResponse> markNotified(@PathVariable("id") UUID documentId) {
+    public ResponseEntity<MailroomDocumentResponse> markNotified(
+            @PathVariable("id") UUID documentId,
+            Authentication authentication) {
+        User user = resolveUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (user.getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         MailroomDocumentResponse updated = service.markDocumentNotified(documentId);
         return ResponseEntity.ok(updated);
     }
 
     @PostMapping("/{id}/view")
-    public ResponseEntity<MailroomDocumentResponse> markViewed(@PathVariable("id") UUID documentId) {
+    public ResponseEntity<MailroomDocumentResponse> markViewed(
+            @PathVariable("id") UUID documentId,
+            Authentication authentication) {
+        User user = resolveUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (!canAccessDocument(user, documentId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         MailroomDocumentResponse updated = service.markDocumentViewed(documentId);
         return ResponseEntity.ok(updated);
     }
 
     @PostMapping("/verify-pickup")
-    public ResponseEntity<MailroomDocumentResponse> verifyPickup(@RequestParam("code") String code) {
+    public ResponseEntity<MailroomDocumentResponse> verifyPickup(
+            @RequestParam("code") String code,
+            Authentication authentication) {
+        User user = resolveUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (user.getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         MailroomDocumentResponse updated = service.verifyPickup(code);
         return ResponseEntity.ok(updated);
     }
 
     @PostMapping("/{id}/pickup")
-    public ResponseEntity<MailroomDocumentResponse> markPickedUp(@PathVariable("id") UUID documentId) {
+    public ResponseEntity<MailroomDocumentResponse> markPickedUp(
+            @PathVariable("id") UUID documentId,
+            Authentication authentication) {
+        User user = resolveUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (user.getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         MailroomDocumentResponse updated = service.verifyPickupById(documentId);
         return ResponseEntity.ok(updated);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteDocument(@PathVariable("id") UUID documentId) {
+    public ResponseEntity<Void> deleteDocument(
+            @PathVariable("id") UUID documentId,
+            Authentication authentication) {
+        User user = resolveUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (user.getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         service.deleteDocument(documentId);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<Resource> downloadDocument(@PathVariable("id") UUID documentId) {
+    public ResponseEntity<Resource> downloadDocument(
+            @PathVariable("id") UUID documentId,
+            Authentication authentication) {
+        User user = resolveUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (!canAccessDocument(user, documentId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         MailroomDocumentDownload download = service.getDocumentDownload(documentId);
         MediaType mediaType = MediaType.parseMediaType(download.contentType());
         ContentDisposition contentDisposition = ContentDisposition.inline()
@@ -159,6 +208,41 @@ public class MailroomDocumentController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
                 .body(download.resource());
     }
+
+    /** Loads the authenticated user from the verified token, or null if not authenticated/known. */
+    private User resolveUser(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return null;
+        }
+        return userRepository.findByEmail(authentication.getName()).orElse(null);
+    }
+
+    /** The caller's OWN contact email, derived from their identity (never from request input). */
+    private String resolveOwnEmail(User user) {
+        if (user.getTenantId() != null) {
+            return user.getEmail();
+        }
+        final String[] emailHolder = {null};
+        contactService.findContactByEmail(user.getEmail()).ifPresent(contact -> {
+            emailHolder[0] = firstNonBlank(
+                contact.getEmailPrimary(),
+                contact.getEmailSecondary(),
+                contact.getEmailTertiary(),
+                contact.getRepresentativeEmail()
+            );
+        });
+        return emailHolder[0];
+    }
+
+    /** Admins may touch any document; everyone else only their own. */
+    private boolean canAccessDocument(User user, UUID documentId) {
+        if (user.getRole() == User.Role.ADMIN) {
+            return true;
+        }
+        String own = resolveOwnEmail(user);
+        return own != null && service.isDocumentOwnedByEmail(documentId, own);
+    }
+
 
     private String firstNonBlank(String... values) {
         if (values == null) {

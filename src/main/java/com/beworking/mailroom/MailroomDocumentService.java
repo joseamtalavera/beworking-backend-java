@@ -137,6 +137,20 @@ public class MailroomDocumentService {
         return MailroomDocumentResponse.fromEntity(saved);
     }
 
+    /**
+     * True only if the document exists AND its contactEmail matches the given
+     * email (case-insensitive). Used to enforce per-user ownership on
+     * view/download. A null email or unknown document is never "owned".
+     */
+    public boolean isDocumentOwnedByEmail(UUID documentId, String email) {
+        if (email == null) {
+            return false;
+        }
+        return repository.findById(documentId)
+                .map(doc -> email.equalsIgnoreCase(doc.getContactEmail()))
+                .orElse(false);
+    }
+
     @Transactional
     public MailroomDocumentResponse verifyPickup(String code) {
         if (!StringUtils.hasText(code)) {
