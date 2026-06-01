@@ -9,6 +9,7 @@ import java.util.Optional;
 public interface BeKeyAccessRepository extends JpaRepository<BeKeyAccess, Long> {
 
     List<BeKeyAccess> findByContactIdAndRevokedAtIsNull(Long contactId);
+    List<BeKeyAccess> findByMemberGroupIdAndRevokedAtIsNull(Long memberGroupId);
 
     Optional<BeKeyAccess> findBySourceAndSourceRef(BeKeyAccess.Source source, Long sourceRef);
 
