@@ -406,7 +406,7 @@ public class ContactProfileController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteContactProfile(@PathVariable Long id) {
+    public ResponseEntity<Map<String, Object>> deleteContactProfile(@PathVariable Long id) {
         try {
             boolean deleted = contactProfileService.deleteContactProfile(id);
             if (deleted) {
@@ -414,7 +414,16 @@ public class ContactProfileController {
             } else {
                 return ResponseEntity.notFound().build();
             }
+        } catch (ContactHasInvoicesException e) {
+            // Blocked: invoices are linked. Tell the client how many so the UI
+            // can explain why deletion is refused.
+            Map<String, Object> body = new HashMap<>();
+            body.put("error", "contact_has_invoices");
+            body.put("message", e.getMessage());
+            body.put("invoiceCount", e.getInvoiceCount());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
         } catch (Exception e) {
+            logger.error("Failed to delete contact profile {}: {}", id, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

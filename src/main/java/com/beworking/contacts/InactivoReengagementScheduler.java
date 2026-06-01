@@ -44,7 +44,11 @@ public class InactivoReengagementScheduler {
     // 02:00 UTC on the 1st of each month.
     @Scheduled(cron = "0 0 2 1 * *")
     public void sendReengagementEmails() {
-        runOnce();
+        RunResult result = runOnce();
+        // Unattended cron: reengagement emails go 1:1 to the customer (no BCC).
+        // Send a single run-summary to info@ so the team knows it fired.
+        emailService.sendReengagementCronSummary(
+            result.sent(), result.skipped(), result.notDue(), result.totalCandidates());
     }
 
     /**

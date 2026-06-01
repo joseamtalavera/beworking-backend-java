@@ -904,7 +904,8 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             applyFrom(helper);
             helper.setTo(to);
-            helper.setBcc("info@be-working.com");
+            // No BCC to info@ — reengagement is a 1:1 customer touch. The cron
+            // sends a single run-summary to info@ instead (sendReengagementCronSummary).
             helper.setReplyTo("info@be-working.com");
             helper.setSubject("¿Cuánto tiempo! ¿Volvemos a vernos? — BeWorking");
             helper.setText(html, true);
@@ -912,6 +913,36 @@ public class EmailService {
             logger.info("Reengagement email sent to {}", to);
         } catch (Exception e) {
             logger.error("Failed to send reengagement email to {}: {}", to, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Single internal notice to info@ confirming the reengagement cron ran.
+     * Replaces the per-email BCC: the cron fires unattended, so the team gets
+     * one summary (counts) instead of a copy of every customer email.
+     */
+    public void sendReengagementCronSummary(int sent, int skipped, int notDue, int totalCandidates) {
+        String body = "<p style=\"margin:0 0 16px;\">El cron de reengagement (Inactivo) se ha ejecutado.</p>"
+            + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 0 16px;font-size:15px;color:#1a1a1a;\">"
+            + "<tr><td style=\"padding:4px 16px 4px 0;\">Emails enviados</td><td style=\"font-weight:600;\">" + sent + "</td></tr>"
+            + "<tr><td style=\"padding:4px 16px 4px 0;\">Saltados (sin email)</td><td>" + skipped + "</td></tr>"
+            + "<tr><td style=\"padding:4px 16px 4px 0;\">No tocaban aún</td><td>" + notDue + "</td></tr>"
+            + "<tr><td style=\"padding:4px 16px 4px 0;\">Candidatos Inactivo</td><td>" + totalCandidates + "</td></tr>"
+            + "</table>"
+            + "<p style=\"margin:0;color:#666;font-size:13px;\">Aviso automático interno. No requiere acción.</p>";
+        String html = recoveryEmailShell("Cron reengagement ejecutado", body);
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
+            helper.setTo("info@be-working.com");
+            helper.setReplyTo("info@be-working.com");
+            helper.setSubject("Cron reengagement ejecutado — " + sent + " enviados");
+            helper.setText(html, true);
+            mailSender.send(message);
+            logger.info("Reengagement cron summary sent to info@ (sent={})", sent);
+        } catch (Exception e) {
+            logger.error("Failed to send reengagement cron summary: {}", e.getMessage(), e);
         }
     }
 

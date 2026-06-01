@@ -892,6 +892,17 @@ public class ContactProfileService {
             return false;
         }
 
+        // Safeguard: never delete a contact (or its linked user) that has invoices
+        // attached. facturas are legal/accounting records keyed by idcliente; a
+        // delete would orphan them. Block the whole operation with a 409.
+        Number invoiceCount = (Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM beworking.facturas WHERE idcliente = ?")
+            .setParameter(1, id)
+            .getSingleResult();
+        if (invoiceCount != null && invoiceCount.longValue() > 0) {
+            throw new ContactHasInvoicesException(id, invoiceCount.longValue());
+        }
+
         // facturasdesglose must be deleted BEFORE bloqueos (FK on idbloqueovinculado)
         try {
             entityManager.createNativeQuery(
