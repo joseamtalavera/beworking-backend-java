@@ -31,7 +31,8 @@ public class RateLimitingFilter implements Filter {
         HttpServletRequest req = (HttpServletRequest) request;
         HttpServletResponse res = (HttpServletResponse) response;
         String path = req.getRequestURI();
-        if (isProtectedEndpoint(path)) {
+        String method = req.getMethod();
+        if (isProtectedEndpoint(path, method)) {
             String ip = req.getRemoteAddr();
             Bucket bucket = buckets.computeIfAbsent(ip, k -> Bucket4j.builder()
                     .addLimit(Bandwidth.classic(RATE_LIMIT, Refill.greedy(RATE_LIMIT, DURATION)))
@@ -48,11 +49,12 @@ public class RateLimitingFilter implements Filter {
         }
     }
 
-    private boolean isProtectedEndpoint(String path) {
+    private boolean isProtectedEndpoint(String path, String method) {
         return path.startsWith("/api/auth/login") ||
                path.startsWith("/api/auth/register") ||
                path.startsWith("/api/auth/forgot-password") ||
                path.startsWith("/api/auth/reset-password") ||
-               path.equals("/api/leads");
+               // Anti-spam on PUBLIC lead creation only; admin GET search/list must not be throttled.
+               (path.equals("/api/leads") && "POST".equalsIgnoreCase(method));
     }
 }
