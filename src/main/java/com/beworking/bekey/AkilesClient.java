@@ -108,4 +108,48 @@ public class AkilesClient {
                 .retrieve()
                 .body(Map.class);
     }
+
+    /** POST /gadgets/{gadgetId}/actions/{actionId} — actuates a gadget (opens a door). Body is empty. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> doGadgetAction(String gadgetId, String actionId) {
+        return http.post()
+                .uri("/gadgets/{gadgetId}/actions/{actionId}", gadgetId, actionId)
+                .header(authHeaderName, authHeaderValue())
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of())
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /** GET /members/{id}/pins — lists a member's PIN credentials (values masked; use revealMemberPin to read). */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> listMemberPins(String memberId) {
+        return http.get()
+                .uri("/members/{id}/pins", memberId)
+                .header(authHeaderName, authHeaderValue())
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /** POST /members/{id}/pins/{pinId}/reveal — returns the cleartext PIN value. Body is empty. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> revealMemberPin(String memberId, String pinId) {
+        return http.post()
+                .uri("/members/{id}/pins/{pinId}/reveal", memberId, pinId)
+                .header(authHeaderName, authHeaderValue())
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .body(Map.of())
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /** GET /member_groups/{id} — returns the group incl. its permission rules (which gadgets it opens). */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getMemberGroup(String memberGroupId) {
+        return http.get()
+                .uri("/member_groups/{id}", memberGroupId)
+                .header(authHeaderName, authHeaderValue())
+                .retrieve()
+                .body(Map.class);
+    }
 }

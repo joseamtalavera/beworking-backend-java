@@ -29,6 +29,7 @@ public class BeKeyAccessService {
     private final BeKeyAccessRepository accessRepository;
     private final BeKeyMemberGroupRepository memberGroupRepository;
     private final BeKeyMemberIdentityRepository beKeyMemberIdentityRepository;
+    private final BeKeyDeviceRepository deviceRepository;
     private final ObjectMapper objectMapper;
     private final BeKeyEventRepository eventRepository;
     private final ContactProfileRepository contactProfileRepository;
@@ -38,6 +39,7 @@ public class BeKeyAccessService {
             BeKeyAccessRepository accessRepository,
             BeKeyMemberGroupRepository memberGroupRepository,
             BeKeyMemberIdentityRepository memberIdentityRepository,
+            BeKeyDeviceRepository deviceRepository,
             BeKeyEventRepository eventRepository,
             ContactProfileRepository contactProfileRepository,
             ObjectMapper objectMapper
@@ -46,6 +48,7 @@ public class BeKeyAccessService {
         this.accessRepository = accessRepository;
         this.memberGroupRepository = memberGroupRepository;
         this.beKeyMemberIdentityRepository = memberIdentityRepository;
+        this.deviceRepository = deviceRepository;
         this.eventRepository = eventRepository;
         this.contactProfileRepository = contactProfileRepository;
         this.objectMapper = objectMapper;
@@ -61,6 +64,62 @@ public class BeKeyAccessService {
     @Transactional(readOnly = true)
     public List<BeKeyAccess> listForMemberGroup(Long memberGroupId) {
         return accessRepository.findByMemberGroupIdAndRevokedAtIsNull(memberGroupId);
+    }
+
+    /**
+     * Resolves the doors a contact may currently open: active grants -> member
+     * groups -> Akiles permission rules -> matching bekey_devices. Empty if the
+     * contact has no active grants.
+     */
+    @Transactional(readOnly = true)
+    public List<BeKeyDevice> listAccessibleDevices(Long contactId) {
+        Map<Long, BeKeyDevice> byId = new LinkedHashMap<>();   // dedup, preserve order
+        for (BeKeyAccess grant : accessRepository.findByContactIdAndRevokedAtIsNull(contactId)) {
+            BeKeyMemberGroup group = memberGroupRepository.findById(grant.getMemberGroupId()).orElse(null);
+            if (group == null) continue;
+            Map<String, Object> akilesGroup = akiles.getMemberGroup(group.getAkilesGroupId());
+            Object permsObj = akilesGroup.get("permissions");
+            if (!(permsObj instanceof List<?> perms)) continue;
+            for (Object ruleObj : perms) {
+                if (!(ruleObj instanceof Map<?, ?> rule)) continue;
+                String gadgetId = (String) rule.get("gadget_id");
+                String siteId = (String) rule.get("site_id");
+                if (gadgetId != null) {
+                    deviceRepository.findByAkilesGadgetId(gadgetId).ifPresent(d -> byId.put(d.getId(), d));
+                } else if (siteId != null) {
+                    deviceRepository.findByAkilesSiteId(siteId).forEach(d -> byId.put(d.getId(), d));
+                } else {
+                    deviceRepository.findAll().forEach(d -> byId.put(d.getId(), d));  // empty rule {} = all gadgets
+                }
+            }
+        }
+        return List.copyOf(byId.values());
+    }
+
+    /**
+     * The contact's cleartext keypad PIN (the fallback when the app isn't handy),
+     * or null if they have no Akiles identity / no PIN. Caches the pin id on the
+     * identity so subsequent reads skip the list lookup.
+     */
+    @Transactional
+    public String getRevealedPin(Long contactId) {
+        BeKeyMemberIdentity identity = beKeyMemberIdentityRepository.findById(contactId).orElse(null);
+        if (identity == null) return null;
+        String memberId = identity.getAkilesMemberId();
+
+        String pinId = identity.getAkilesPinId();
+        if (pinId == null) {
+            Map<String, Object> pins = akiles.listMemberPins(memberId);
+            if (!(pins.get("data") instanceof List<?> data) || data.isEmpty()) return null;
+            if (!(data.get(0) instanceof Map<?, ?> pin)) return null;
+            pinId = (String) pin.get("id");
+            if (pinId == null) return null;
+            identity.setAkilesPinId(pinId);
+            beKeyMemberIdentityRepository.save(identity);
+        }
+
+        Map<String, Object> revealed = akiles.revealMemberPin(memberId, pinId);
+        return (String) revealed.get("pin");
     }
 
     /**
@@ -157,6 +216,51 @@ public class BeKeyAccessService {
         // Audit: record the revoke in bekey_events.
         writeAuditEvent("access.revoked", "svc:revoke:" + access.getId(), access, reason);
         return access;
+    }
+
+    /**
+     * Opens a door for a contact, enforcing that the contact actually has access.
+     * Order matters: authorize, then fire the (irreversible) Akiles action, then audit.
+     *
+     * @throws SecurityException if no active grant covers the device
+     */
+    @Transactional
+    public BeKeyDevice openDoor(Long contactId, Long deviceId) {
+        BeKeyDevice device = listAccessibleDevices(contactId).stream()
+                .filter(d -> d.getId().equals(deviceId))
+                .findFirst()
+                .orElseThrow(() -> new SecurityException(
+                        "Contact " + contactId + " has no access to device " + deviceId));
+
+        akiles.doGadgetAction(device.getAkilesGadgetId(), device.getActionId());
+
+        LOGGER.info("openDoor: contact {} opened device {} (gadget {})",
+                contactId, deviceId, device.getAkilesGadgetId());
+        writeDoorEvent(contactId, device);
+        return device;
+    }
+
+    /** Writes a door-open audit row to bekey_events with a synthetic event id. */
+    private void writeDoorEvent(Long contactId, BeKeyDevice device) {
+        try {
+            OffsetDateTime now = OffsetDateTime.now();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("contactId", contactId);
+            payload.put("deviceId", device.getId());
+            payload.put("akilesGadgetId", device.getAkilesGadgetId());
+            payload.put("actionId", device.getActionId());
+
+            BeKeyEvent event = new BeKeyEvent();
+            event.setAkilesEventId("svc:open:" + device.getId() + ":" + now.toInstant().toEpochMilli());
+            event.setContactId(contactId);
+            event.setDeviceId(device.getId());
+            event.setEventType("door.opened");
+            event.setOccurredAt(now);
+            event.setRaw(objectMapper.writeValueAsString(payload));
+            eventRepository.save(event);
+        } catch (JsonProcessingException e) {
+            LOGGER.warn("failed to write door-open audit event for device {}: {}", device.getId(), e.getMessage());
+        }
     }
 
     /** Creates a fresh Akiles member for a contact and stores the identity mapping. */

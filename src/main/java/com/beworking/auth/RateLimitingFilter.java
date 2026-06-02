@@ -55,6 +55,8 @@ public class RateLimitingFilter implements Filter {
                path.startsWith("/api/auth/forgot-password") ||
                path.startsWith("/api/auth/reset-password") ||
                // Anti-spam on PUBLIC lead creation only; admin GET search/list must not be throttled.
-               (path.equals("/api/leads") && "POST".equalsIgnoreCase(method));
+               (path.equals("/api/leads") && "POST".equalsIgnoreCase(method)) ||
+               // Throttle door-open — each call actuates a physical lock via Akiles.
+               (path.startsWith("/api/bekey/open/") && "POST".equalsIgnoreCase(method));
     }
 }
