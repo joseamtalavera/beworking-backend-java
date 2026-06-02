@@ -6,4 +6,5 @@ import java.util.Optional;
 public interface BeKeyMemberGroupRepository extends JpaRepository<BeKeyMemberGroup, Long> {
     Optional<BeKeyMemberGroup> findByAkilesGroupId(String akilesGroupId);
     Optional<BeKeyMemberGroup> findByScope(String scope);
+    Optional<BeKeyMemberGroup> findByLabel(String label);
 }

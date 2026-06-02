@@ -188,6 +188,25 @@ public class BeKeyAccessService {
     }
 
     /**
+     * Auto-grants door access for a subscription based on its category (#148).
+     * Mapping: "coworking" -> MA1O1 (desks + street door). Other categories
+     * (virtual_office, meeting_room, extra) get NO standing access — virtual-office
+     * access is booking-driven, not subscription-driven. Idempotent via grant()'s
+     * (source, sourceRef) dedup. Returns the grant, or null if no access applies.
+     */
+    @Transactional
+    public BeKeyAccess grantForSubscription(Long contactId, Long subscriptionId, String category) {
+        String label = (category != null && category.equalsIgnoreCase("coworking")) ? "MA1O1" : null;
+        if (label == null) {
+            LOGGER.info("grantForSubscription: category '{}' -> no standing access (sub {})", category, subscriptionId);
+            return null;
+        }
+        BeKeyMemberGroup group = memberGroupRepository.findByLabel(label)
+                .orElseThrow(() -> new IllegalStateException("BeKey member group '" + label + "' not found"));
+        return grant(contactId, group.getId(), BeKeyAccess.Source.subscription, subscriptionId, null);
+    }
+
+    /**
      * Revokes an access grant and removes the association in Akiles.
      * Idempotent: revoking an already-revoked grant is a no-op.
      *
