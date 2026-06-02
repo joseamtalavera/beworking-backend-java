@@ -1015,10 +1015,11 @@ public class SubscriptionController {
             try {
                 String tenant = "GT".equalsIgnoreCase(sub.getCuenta()) ? "gt" : "bw";
 
-                // Resolve VAT
-                int vatPercent = sub.getVatPercent() != null ? sub.getVatPercent() : 21;
-                BigDecimal totalAmount = newAmount.add(newAmount.multiply(BigDecimal.valueOf(vatPercent)).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP));
-                int amountCents = totalAmount.multiply(BigDecimal.valueOf(100)).intValue();
+                // Send NET amount to Stripe. update-amount preserves the sub's
+                // default_tax_rate, so Stripe layers VAT once on top. Previously we
+                // sent base+VAT (gross) here while the tax rate also applied —
+                // double-taxation (same bug fixed on the create path in 0de88bc).
+                int amountCents = newAmount.multiply(BigDecimal.valueOf(100)).intValue();
 
                 http.post()
                     .uri("/api/subscriptions/" + sub.getStripeSubscriptionId() + "/update-amount")
