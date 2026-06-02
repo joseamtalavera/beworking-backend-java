@@ -853,6 +853,7 @@ public class SubscriptionController {
         String email = authentication.getName();
         String plan = (String) body.getOrDefault("plan", "basic");
         String stripeCustomerId = (String) body.get("stripeCustomerId");
+        String paymentMethodId = (String) body.get("paymentMethodId");
 
         if (stripeCustomerId == null || stripeCustomerId.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "stripeCustomerId is required"));
@@ -914,6 +915,11 @@ public class SubscriptionController {
             stripeRequest.put("collection_method", "charge_automatically");
             stripeRequest.put("tax_exempt", taxExempt);
             stripeRequest.put("customer_id", stripeCustomerId);
+            // SetupIntent PaymentMethod → stripe-service sets it as default before
+            // creating the sub (essential for SEPA, mandate not yet in PM list).
+            if (paymentMethodId != null && !paymentMethodId.isBlank()) {
+                stripeRequest.put("payment_method_id", paymentMethodId);
+            }
 
             @SuppressWarnings("unchecked")
             Map<String, Object> stripeResult = http.post()

@@ -205,7 +205,7 @@ public class RegisterService {
             String customerId = request.getStripeCustomerId();
             var stripeResult = createAutoSubscription(
                 normalizedEmail, name.trim(), baseAmountCents, "BeWorking " + planLabel,
-                customerId, taxExempt
+                customerId, taxExempt, request.getPaymentMethodId()
             );
 
             Subscription sub = new Subscription();
@@ -678,7 +678,7 @@ public class RegisterService {
     private Map<String, Object> createAutoSubscription(String email, String name,
                                                         int baseAmountCents,
                                                         String description, String customerId,
-                                                        boolean taxExempt) {
+                                                        boolean taxExempt, String paymentMethodId) {
         try {
             String stripeServiceUrl = System.getenv("STRIPE_SERVICE_URL") != null
                 ? System.getenv("STRIPE_SERVICE_URL")
@@ -695,6 +695,12 @@ public class RegisterService {
             body.put("tax_exempt", taxExempt);
             if (customerId != null && !customerId.isBlank()) {
                 body.put("customer_id", customerId);
+            }
+            // Pass the SetupIntent's PaymentMethod so stripe-service attaches it as
+            // the default before creating the sub. Essential for SEPA, whose mandate
+            // isn't yet in the customer's PM list at creation time.
+            if (paymentMethodId != null && !paymentMethodId.isBlank()) {
+                body.put("payment_method_id", paymentMethodId);
             }
 
             var client = new org.springframework.web.client.RestTemplate();

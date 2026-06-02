@@ -26,6 +26,7 @@ public class RegisterRequest {
     private String plan;          // "basis", "pro", or "max"
     private String setupIntentId; // Stripe SetupIntent ID
     private String stripeCustomerId; // Stripe Customer ID
+    private String paymentMethodId;  // Stripe PaymentMethod ID from the SetupIntent (card or SEPA)
     private String location;         // "malaga" or "sevilla"
 
     public RegisterRequest() {
@@ -79,6 +80,9 @@ public class RegisterRequest {
 
     public String getStripeCustomerId() { return stripeCustomerId; }
     public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
+
+    public String getPaymentMethodId() { return paymentMethodId; }
+    public void setPaymentMethodId(String paymentMethodId) { this.paymentMethodId = paymentMethodId; }
 
     public String getLocation() { return location; }
     public void setLocation(String location) { this.location = location; }
