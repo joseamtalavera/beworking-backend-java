@@ -405,6 +405,11 @@ public class MailroomDocumentService {
                 + (spanish
                         ? "Presenta este c&oacute;digo en recepci&oacute;n o muestra el c&oacute;digo QR desde tu panel."
                         : "Show this code at the front desk or present the QR code from your dashboard.")
+                + "</p>"
+                + "<p style=\"margin:10px 0 0;color:#0f172a;font-size:13px;text-align:center;font-weight:600;\">"
+                + (spanish
+                        ? "Horario de recogida: lunes a viernes de 8:00 a 14:00 h."
+                        : "Pickup hours: Monday to Friday, 8:00&ndash;14:00.")
                 + "</p>";
         String cta = spanish ? "Ver c&oacute;digo QR" : "View QR code";
         String closing = spanish ? "Un saludo,<br>El equipo de BeWorking"
