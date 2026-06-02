@@ -245,7 +245,13 @@ public class RegisterService {
                     inv.setInvoicePdf((String) firstInvoice.get("invoicePdf"));
                     inv.setPeriodStart((String) firstInvoice.get("periodStart"));
                     inv.setPeriodEnd((String) firstInvoice.get("periodEnd"));
-                    inv.setStatus("paid");
+                    // Reflect what Stripe actually collected. Card → invoice
+                    // "paid" immediately. SEPA → "open" (payment processing) → we
+                    // record Pendiente; the invoice.paid webhook flips it to
+                    // Pagado once the debit settles. Hardcoding "paid" produced
+                    // phantom-paid invoices for SEPA signups (Bartosz PT5134).
+                    String stripeInvStatus = (String) firstInvoice.get("status");
+                    inv.setStatus("paid".equalsIgnoreCase(stripeInvStatus) ? "paid" : "pending");
                     subscriptionService.createInvoiceFromSubscription(sub, inv);
                     logger.info("Created local invoice for subscription {}", sub.getStripeSubscriptionId());
                 } catch (Exception e) {
