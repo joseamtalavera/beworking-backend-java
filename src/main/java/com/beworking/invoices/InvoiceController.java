@@ -353,6 +353,11 @@ public class InvoiceController {
             Map<String, Object> error = new HashMap<>();
             error.put("error", e.getMessage());
             return ResponseEntity.badRequest().body(error);
+        } catch (IllegalStateException e) {
+            // e.g. invoice already rectified — surface the message, not a 500.
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
         } catch (Exception e) {
             logger.error("Failed to credit invoice {}: {}", id, e.getMessage(), e);
             Map<String, Object> error = new HashMap<>();

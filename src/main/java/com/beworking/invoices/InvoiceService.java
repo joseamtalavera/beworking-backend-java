@@ -1140,6 +1140,15 @@ public class InvoiceService {
             throw new IllegalArgumentException("Invoice not found: " + originalId);
         }
 
+        // Block crediting an invoice that was already fully rectified. The full
+        // credit path below sets estado='Rectificado'; without this guard a
+        // second call silently mints RECT-X-2 (and would re-refund Stripe).
+        // Partial credits leave estado untouched, so they can still stack.
+        String origEstado = original.get("estado") != null ? original.get("estado").toString() : "";
+        if ("Rectificado".equalsIgnoreCase(origEstado)) {
+            throw new IllegalStateException("La factura ya está rectificada; no se puede volver a abonar.");
+        }
+
         Integer origLegacy = (Integer) original.get("idfactura");
         Long origClientId = original.get("idcliente") != null ? ((Number) original.get("idcliente")).longValue() : null;
         Integer origCenterId = original.get("idcentro") != null ? ((Number) original.get("idcentro")).intValue() : null;
@@ -1910,13 +1919,32 @@ public class InvoiceService {
                     int amountCents = request.getComputed().getTotal()
                         .multiply(new java.math.BigDecimal("100")).intValue();
 
+                    // Reuse the contact's existing Stripe customer (the one on their
+                    // active subscription) so extra invoices charge the same customer
+                    // + saved card. Without this, a contact whose Stripe customer email
+                    // differs from contact_profiles.email gets a brand-new orphan
+                    // customer created (Elisabet Olvera / GRUPO GESTION, 2026-06).
+                    String existingStripeCustomerId = null;
+                    try {
+                        existingStripeCustomerId = jdbcTemplate.queryForObject(
+                            "SELECT stripe_customer_id FROM beworking.subscriptions"
+                                + " WHERE contact_id = ? AND active = TRUE AND stripe_customer_id IS NOT NULL"
+                                + " ORDER BY id DESC LIMIT 1",
+                            String.class, request.getClientId());
+                    } catch (EmptyResultDataAccessException ignored) {
+                        // No active sub with a Stripe customer — fall back to email lookup.
+                    }
+
                     try {
                         // Look up customer payment methods in Stripe
                         @SuppressWarnings("unchecked")
                         Map<String, Object> checkResult = http.get()
                             .uri(paymentsBaseUrl + "/api/customers/check?email="
                                 + java.net.URLEncoder.encode(contactEmail, "UTF-8")
-                                + "&tenant=" + tenant)
+                                + "&tenant=" + tenant
+                                + (existingStripeCustomerId != null
+                                    ? "&customer_id=" + java.net.URLEncoder.encode(existingStripeCustomerId, "UTF-8")
+                                    : ""))
                             .retrieve()
                             .body((Class<Map<String, Object>>) (Class<?>) Map.class);
 
@@ -1937,6 +1965,9 @@ public class InvoiceService {
                             Map<String, Object> chargeBody = new HashMap<>();
                             chargeBody.put("customer_email", contactEmail);
                             chargeBody.put("customer_name", contactName != null ? contactName : "");
+                            if (existingStripeCustomerId != null) {
+                                chargeBody.put("customer_id", existingStripeCustomerId);
+                            }
                             chargeBody.put("payment_method_id", paymentMethodId);
                             chargeBody.put("amount", amountCents);
                             chargeBody.put("currency", "eur");
@@ -1983,6 +2014,9 @@ public class InvoiceService {
                             Map<String, Object> invoiceBody = new HashMap<>();
                             invoiceBody.put("customer_email", contactEmail);
                             invoiceBody.put("customer_name", contactName);
+                            if (existingStripeCustomerId != null) {
+                                invoiceBody.put("customer_id", existingStripeCustomerId);
+                            }
                             invoiceBody.put("amount", amountCents);
                             invoiceBody.put("currency", "eur");
                             invoiceBody.put("description", description != null ? description : "Invoice " + invoiceNumber);
