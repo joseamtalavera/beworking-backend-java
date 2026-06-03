@@ -2042,6 +2042,19 @@ public class InvoiceService {
                             invoiceBody.put("due_days", 1);
                             invoiceBody.put("idempotency_key", "inv-" + invoiceNumber);
 
+                            // If the customer has a saved mandate (e.g. SEPA, no card),
+                            // auto-debit it via a charge_automatically invoice instead of
+                            // emailing a payable one — same collection as their subscription.
+                            // The factura stays Pendiente until the debit settles; the
+                            // invoice.paid webhook (markInvoicePaid) then flips it to Pagado.
+                            boolean hasSepa = checkResult != null
+                                && Boolean.TRUE.equals(checkResult.get("hasSepa"));
+                            Object defaultPm = checkResult != null ? checkResult.get("defaultPaymentMethod") : null;
+                            if (hasSepa && defaultPm != null) {
+                                invoiceBody.put("auto_charge", true);
+                                invoiceBody.put("default_payment_method", defaultPm.toString());
+                            }
+
                             @SuppressWarnings("unchecked")
                             Map<String, Object> invoiceResult = http.post()
                                 .uri(paymentsBaseUrl + "/api/invoices")
