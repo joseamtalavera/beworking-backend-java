@@ -1124,6 +1124,7 @@ public class InvoiceService {
      *     bloqueos linked via desglose rows; when false they revert to 'Booked'.
      * @param creditAmount gross amount to credit, or null for a full credit.
      */
+    @Transactional
     public Map<String, Object> creditInvoice(Long originalId, boolean deleteLinkedBookings,
             java.math.BigDecimal creditAmount) {
         // Load original invoice
@@ -1160,6 +1161,22 @@ public class InvoiceService {
         String origInvoiceNum = original.get("holdedinvoicenum") != null
             ? (String) original.get("holdedinvoicenum")
             : (origLegacy != null ? origLegacy.toString() : originalId.toString());
+
+        // Guard against a double FULL credit. Belt-and-braces alongside the
+        // estado='Rectificado' check above: block when existing credit notes
+        // already fully offset the invoice (covers the case where an earlier
+        // credit left the original Pendiente — e.g. the autocommit bug fixed
+        // by @Transactional). Partial credits are unaffected.
+        boolean isFullCredit = creditAmount == null
+            || (origTotal != null && creditAmount.compareTo(origTotal.abs()) >= 0);
+        if (isFullCredit && origTotal != null) {
+            BigDecimal alreadyCredited = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(total), 0) FROM beworking.facturas WHERE holdedinvoicenum LIKE ?",
+                BigDecimal.class, "RECT-" + origInvoiceNum + "%");
+            if (origTotal.add(alreadyCredited).compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalStateException("La factura ya está totalmente abonada; no se puede volver a abonar.");
+            }
+        }
 
         // ── Partial credit ──────────────────────────────────────────────
         // A credit note for PART of the invoice. The original stays valid —
