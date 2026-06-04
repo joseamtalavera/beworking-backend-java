@@ -327,6 +327,53 @@ public class BeKeyAccessService {
     }
 
     /**
+     * Edits the access window of a MANUAL grant (admin override). Booking/subscription
+     * grants are projections of their source and must not be edited here — the reconcile
+     * would overwrite them. Akiles has no association-update, so this removes the old
+     * association and adds a new one with the new window, in place on the same row.
+     *
+     * @throws IllegalStateException if the grant is not manual, already revoked, or the integration is off
+     */
+    @Transactional
+    public BeKeyAccess updateManualWindow(Long accessId, OffsetDateTime startsAt, OffsetDateTime expiresAt) {
+        if (!integrationEnabled) {
+            LOGGER.warn("updateManualWindow skipped: akiles.integration.enabled=false (access {})", accessId);
+            return null;
+        }
+        BeKeyAccess access = accessRepository.findById(accessId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown access id: " + accessId));
+        if (access.getSource() != BeKeyAccess.Source.manual) {
+            throw new IllegalStateException("Only manual grants can be edited; this grant is managed by " + access.getSource());
+        }
+        if (access.getRevokedAt() != null) {
+            throw new IllegalStateException("Cannot edit a revoked grant");
+        }
+        BeKeyMemberGroup group = memberGroupRepository.findById(access.getMemberGroupId())
+                .orElseThrow(() -> new IllegalStateException("Member group missing for access " + accessId));
+
+        OffsetDateTime effectiveStart = (startsAt != null) ? startsAt : access.getStartsAt();
+
+        // Akiles has no association-update: drop the old window, add the new one.
+        akiles.removeGroupAssociation(access.getAkilesMemberId(), access.getAkilesAssociationId());
+        Map<String, Object> assoc = akiles.addGroupAssociation(
+                access.getAkilesMemberId(), group.getAkilesGroupId(),
+                effectiveStart.toInstant(), expiresAt != null ? expiresAt.toInstant() : null);
+        String associationId = (String) assoc.get("id");
+        if (associationId == null) {
+            throw new IllegalStateException("Akiles addGroupAssociation returned no id for access " + accessId);
+        }
+
+        access.setAkilesAssociationId(associationId);
+        access.setStartsAt(effectiveStart);
+        access.setEndsAt(expiresAt);
+        access = accessRepository.save(access);
+
+        LOGGER.info("updateManualWindow: access {} re-windowed (start {}, end {})", accessId, effectiveStart, expiresAt);
+        writeAuditEvent("access.updated", "svc:update:" + access.getId() + ":" + effectiveStart.toInstant().toEpochMilli(), access, null);
+        return access;
+    }
+
+    /**
      * Opens a door for a contact, enforcing that the contact actually has access.
      * Order matters: authorize, then fire the (irreversible) Akiles action, then audit.
      *

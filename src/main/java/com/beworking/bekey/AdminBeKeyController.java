@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -34,15 +35,18 @@ public class AdminBeKeyController {
     private final BeKeyAccessRepository accessRepository;
     private final BeKeyDeviceRepository deviceRepository;
     private final BeKeyEventRepository eventRepository;
+    private final BeKeyMemberGroupRepository memberGroupRepository;
 
     public AdminBeKeyController(BeKeyAccessService accessService,
                                 BeKeyAccessRepository accessRepository,
                                 BeKeyDeviceRepository deviceRepository,
-                                BeKeyEventRepository eventRepository) {
+                                BeKeyEventRepository eventRepository,
+                                BeKeyMemberGroupRepository memberGroupRepository) {
         this.accessService = accessService;
         this.accessRepository = accessRepository;
         this.deviceRepository = deviceRepository;
         this.eventRepository = eventRepository;
+        this.memberGroupRepository = memberGroupRepository;
     }
 
     private boolean isAdmin(Authentication authentication) {
@@ -56,6 +60,12 @@ public class AdminBeKeyController {
     public ResponseEntity<List<BeKeyDevice>> listDevices(Authentication authentication) {
         if (!isAdmin(authentication)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         return ResponseEntity.ok(deviceRepository.findAll());
+    }
+
+    @GetMapping("/member-groups")
+    public ResponseEntity<List<BeKeyMemberGroup>> listMemberGroups(Authentication authentication) {
+        if (!isAdmin(authentication)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        return ResponseEntity.ok(memberGroupRepository.findAll());
     }
 
     @GetMapping("/access")
@@ -77,8 +87,18 @@ public class AdminBeKeyController {
         }
         BeKeyAccess access = accessService.grant(
                 req.contactId(), req.memberGroupId(),
-                BeKeyAccess.Source.manual, null, req.expiresAt());
+                BeKeyAccess.Source.manual, null, req.startsAt(), req.expiresAt());
         return ResponseEntity.status(HttpStatus.CREATED).body(access);
+    }
+
+    @PatchMapping("/access/{id}")
+    public ResponseEntity<?> updateWindow(@PathVariable Long id, @RequestBody UpdateRequest req, Authentication authentication) {
+        if (!isAdmin(authentication)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        try {
+            return ResponseEntity.ok(accessService.updateManualWindow(id, req.startsAt(), req.expiresAt()));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
+        }
     }
 
     @DeleteMapping("/access/{id}")
@@ -97,6 +117,9 @@ public class AdminBeKeyController {
         return ResponseEntity.ok(eventRepository.findAll(Sort.by(Sort.Direction.DESC, "occurredAt")));
     }
 
-    /** Manual-grant request body. expiresAt may be null for unbounded access. */
-    public record GrantRequest(Long contactId, Long memberGroupId, OffsetDateTime expiresAt) {}
+    /** Manual-grant request body. startsAt/expiresAt may be null (now / unbounded). */
+    public record GrantRequest(Long contactId, Long memberGroupId, OffsetDateTime startsAt, OffsetDateTime expiresAt) {}
+
+    /** Edit-window request body for a manual grant. */
+    public record UpdateRequest(OffsetDateTime startsAt, OffsetDateTime expiresAt) {}
 }
