@@ -12,7 +12,6 @@ public interface BeKeyAccessRepository extends JpaRepository<BeKeyAccess, Long> 
     List<BeKeyAccess> findByMemberGroupIdAndRevokedAtIsNull(Long memberGroupId);
 
     Optional<BeKeyAccess> findBySourceAndSourceRef(BeKeyAccess.Source source, Long sourceRef);
-    List<BeKeyAccess> findBySourceAndSourceRefAndRevokedAtIsNull(BeKeyAccess.Source source, Long sourceRef);
 
     @Query("""
         SELECT a FROM BeKeyAccess a
