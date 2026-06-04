@@ -13,7 +13,6 @@ public interface BeKeyAccessRepository extends JpaRepository<BeKeyAccess, Long> 
 
     Optional<BeKeyAccess> findBySourceAndSourceRef(BeKeyAccess.Source source, Long sourceRef);
     List<BeKeyAccess> findBySourceAndSourceRefAndRevokedAtIsNull(BeKeyAccess.Source source, Long sourceRef);
-    List<BeKeyAccess> findBySourceAndRevokedAtIsNull(BeKeyAccess.Source source);
 
     @Query("""
         SELECT a FROM BeKeyAccess a
