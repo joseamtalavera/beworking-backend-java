@@ -2,6 +2,7 @@ package com.beworking.bekey;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -49,13 +50,16 @@ public class BeKeyReconciliationScheduler {
     private final JdbcTemplate jdbcTemplate;
     private final BeKeyAccessService beKeyAccessService;
     private final BeKeyAccessRepository accessRepository;
+    private final boolean integrationEnabled;
 
     public BeKeyReconciliationScheduler(JdbcTemplate jdbcTemplate,
                                         BeKeyAccessService beKeyAccessService,
-                                        BeKeyAccessRepository accessRepository) {
+                                        BeKeyAccessRepository accessRepository,
+                                        @Value("${akiles.integration.enabled:false}") boolean integrationEnabled) {
         this.jdbcTemplate = jdbcTemplate;
         this.beKeyAccessService = beKeyAccessService;
         this.accessRepository = accessRepository;
+        this.integrationEnabled = integrationEnabled;
     }
 
     // Every 30 minutes (UTC). Day-pinned windows make exact timing non-critical.
@@ -65,6 +69,11 @@ public class BeKeyReconciliationScheduler {
     }
 
     public RunResult runOnce() {
+        // Master kill-switch (#244) - skip entirely (no DB query, no Akiles) when disabled.
+        if (!integrationEnabled) {
+            return new RunResult(0, 0);
+        }
+
         List<Map<String, Object>> desired = jdbcTemplate.queryForList(DESIRED_SQL);
 
         // Existing active booking grants, keyed by bloqueo id (sourceRef).

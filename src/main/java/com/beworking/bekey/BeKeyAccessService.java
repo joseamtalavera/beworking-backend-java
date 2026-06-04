@@ -4,6 +4,7 @@ import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +35,9 @@ public class BeKeyAccessService {
     private final BeKeyEventRepository eventRepository;
     private final ContactProfileRepository contactProfileRepository;
 
+    /** Master kill-switch for all Akiles writes (#244). Default false: safe everywhere until set true in the prod task-def. */
+    private final boolean integrationEnabled;
+
     public BeKeyAccessService(
             AkilesClient akiles,
             BeKeyAccessRepository accessRepository,
@@ -42,7 +46,8 @@ public class BeKeyAccessService {
             BeKeyDeviceRepository deviceRepository,
             BeKeyEventRepository eventRepository,
             ContactProfileRepository contactProfileRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            @Value("${akiles.integration.enabled:false}") boolean integrationEnabled
     ) {
         this.akiles = akiles;
         this.accessRepository = accessRepository;
@@ -52,6 +57,8 @@ public class BeKeyAccessService {
         this.eventRepository = eventRepository;
         this.contactProfileRepository = contactProfileRepository;
         this.objectMapper = objectMapper;
+        this.integrationEnabled = integrationEnabled;
+        LOGGER.info("BeKeyAccessService initialized: akiles.integration.enabled={}", integrationEnabled);
     }
 
     /** All currently-active (non-revoked) grants for a contact. */
@@ -148,6 +155,13 @@ public class BeKeyAccessService {
     @Transactional
     public BeKeyAccess grant(Long contactId, Long memberGroupId, BeKeyAccess.Source source,
                              Long sourceRef, OffsetDateTime startsAt, OffsetDateTime expiresAt) {
+        // 0. Master kill-switch (#244) - never write to Akiles when the integration is disabled.
+        if (!integrationEnabled) {
+            LOGGER.warn("grant skipped: akiles.integration.enabled=false (contact {}, source {}:{})",
+                    contactId, source, sourceRef);
+            return null;
+        }
+
         // 1. Idempotency - if this source already holds an active grant, return it.
         if (sourceRef != null) {
             Optional<BeKeyAccess> existing = accessRepository.findBySourceAndSourceRef(source, sourceRef);
@@ -284,6 +298,12 @@ public class BeKeyAccessService {
      */
     @Transactional
     public BeKeyAccess revoke(Long accessId, String reason) {
+        // Master kill-switch (#244) - never call Akiles when the integration is disabled.
+        if (!integrationEnabled) {
+            LOGGER.warn("revoke skipped: akiles.integration.enabled=false (access {})", accessId);
+            return null;
+        }
+
         BeKeyAccess access = accessRepository.findById(accessId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown access id: " + accessId));
 
@@ -314,6 +334,11 @@ public class BeKeyAccessService {
      */
     @Transactional
     public BeKeyDevice openDoor(Long contactId, Long deviceId) {
+        // Master kill-switch (#244) - never actuate a real door when the integration is disabled.
+        if (!integrationEnabled) {
+            throw new IllegalStateException("BeKey integration disabled (akiles.integration.enabled=false)");
+        }
+
         BeKeyDevice device = listAccessibleDevices(contactId).stream()
                 .filter(d -> d.getId().equals(deviceId))
                 .findFirst()
