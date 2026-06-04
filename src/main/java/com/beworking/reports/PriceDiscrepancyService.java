@@ -70,8 +70,24 @@ public class PriceDiscrepancyService {
                 ? new BigDecimal(r.get("total").toString()).setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-            BigDecimal stripeAmount = fetchStripeAmount(stripeId, cuenta);
-            if (stripeAmount == null) continue;
+            Map<String, Object> stripeInvoice = fetchStripeInvoice(stripeId, cuenta);
+            if (stripeInvoice == null) continue;
+
+            // Void / uncollectible / draft invoices legitimately have
+            // amount_paid = 0 — they're not price discrepancies, they're
+            // cancelled. Skip them so they don't pollute the audit.
+            String stripeStatus = stripeInvoice.get("status") != null
+                ? stripeInvoice.get("status").toString().toLowerCase()
+                : "";
+            if (stripeStatus.equals("void") || stripeStatus.equals("uncollectible")
+                || stripeStatus.equals("draft")) {
+                continue;
+            }
+
+            Object paid = stripeInvoice.get("amountPaid");
+            if (paid == null) paid = stripeInvoice.get("amountDue"); // fallback if stripe-service is older
+            if (paid == null) continue;
+            BigDecimal stripeAmount = new BigDecimal(paid.toString()).setScale(2, RoundingMode.HALF_UP);
 
             BigDecimal delta = stripeAmount.subtract(dbAmount).abs();
             if (delta.compareTo(THRESHOLD_EUR) > 0) {
@@ -97,19 +113,14 @@ public class PriceDiscrepancyService {
         return out;
     }
 
-    private BigDecimal fetchStripeAmount(String stripeInvoiceId, String account) {
+    private Map<String, Object> fetchStripeInvoice(String stripeInvoiceId, String account) {
         try {
-            Map<String, Object> resp = http.get()
+            return http.get()
                 .uri(paymentsBaseUrl + "/api/invoices/" + stripeInvoiceId + "/hosted-url?account=" + account)
                 .retrieve()
                 .body(new ParameterizedTypeReference<Map<String, Object>>() {});
-            if (resp == null) return null;
-            Object paid = resp.get("amountPaid");
-            if (paid == null) paid = resp.get("amountDue"); // fallback if stripe-service is older
-            if (paid == null) return null;
-            return new BigDecimal(paid.toString()).setScale(2, RoundingMode.HALF_UP);
         } catch (Exception e) {
-            logger.warn("Failed to fetch Stripe amount for {}: {}", stripeInvoiceId, e.getMessage());
+            logger.warn("Failed to fetch Stripe invoice for {}: {}", stripeInvoiceId, e.getMessage());
             return null;
         }
     }
