@@ -39,8 +39,6 @@ public class SubscriptionController {
     private final com.beworking.auth.EmailService emailService;
     private final com.beworking.auth.RegisterService registerService;
     private final RestClient http;
-    private final com.beworking.bekey.BeKeyAccessService beKeyAccessService;
-
 
     @Value("${app.frontend-url:}")
     private String frontendUrl;
@@ -53,7 +51,6 @@ public class SubscriptionController {
                                   com.beworking.contacts.ViesVatService viesVatService,
                                   com.beworking.auth.EmailService emailService,
                                   com.beworking.auth.RegisterService registerService,
-                                  com.beworking.bekey.BeKeyAccessService beKeyAccessService,
                                   @Value("${app.payments.base-url:http://beworking-stripe-service:8081}") String paymentsBaseUrl) {
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
@@ -63,7 +60,6 @@ public class SubscriptionController {
         this.viesVatService = viesVatService;
         this.emailService = emailService;
         this.registerService = registerService;
-        this.beKeyAccessService = beKeyAccessService;
         this.http = RestClient.builder().baseUrl(paymentsBaseUrl).build();
     }
 
@@ -339,17 +335,6 @@ public class SubscriptionController {
         sub.setUpdatedAt(LocalDateTime.now());
 
         Subscription saved = subscriptionService.save(sub);
-
-        // Best-effort: grant BeKey door access for this subscription's category
-        // (coworking → MA1O1; virtual office → no standing access). Never fail the
-        // request if Akiles/BeKey is unreachable.
-        try {
-            String bekeyCategory = subscriptionService.resolveSubscriptionCategory(saved);
-            beKeyAccessService.grantForSubscription(
-                    saved.getContactId(), saved.getId().longValue(), bekeyCategory);
-        } catch (Exception ex) {
-            logger.warn("BeKey grant on sub-create failed (sub {}): {}", saved.getId(), ex.getMessage());
-        }
 
         // Notify admin (info@be-working.com) and welcome the customer.
         // Best-effort: any failure is logged but doesn't fail the request — the
