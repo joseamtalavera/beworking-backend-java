@@ -15,8 +15,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -66,7 +64,6 @@ class BookingService {
     private final CuentaService cuentaService;
     private final RegisterService registerService;
     private final com.beworking.contacts.ContactProfileService contactProfileService;
-    private final com.beworking.bekey.BeKeyAccessService beKeyAccessService;
     private final com.beworking.tax.TaxResolver taxResolver;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final com.beworking.invoices.BillingSnapshotService billingSnapshotService;
@@ -83,8 +80,7 @@ class BookingService {
                    @org.springframework.context.annotation.Lazy com.beworking.contacts.ContactProfileService contactProfileService,
                    com.beworking.tax.TaxResolver taxResolver,
                    org.springframework.context.ApplicationEventPublisher eventPublisher,
-                   com.beworking.invoices.BillingSnapshotService billingSnapshotService,
-                   com.beworking.bekey.BeKeyAccessService beKeyAccessService) {
+                   com.beworking.invoices.BillingSnapshotService billingSnapshotService) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
@@ -98,7 +94,6 @@ class BookingService {
         this.taxResolver = taxResolver;
         this.eventPublisher = eventPublisher;
         this.billingSnapshotService = billingSnapshotService;
-        this.beKeyAccessService = beKeyAccessService;
     }
 
     @Transactional(readOnly = true)
@@ -540,9 +535,7 @@ class BookingService {
                     + "<td style='width:50%;padding:0 0 0 8px;vertical-align:top'>"
                     + "<div style='background:#f5faf6;border-radius:8px;padding:16px'>"
                     + "<p style='margin:0 0 4px;font-size:14px;font-weight:700;color:#333'>Acceso al centro</p>"
-                    + ("Pagado".equalsIgnoreCase(status)
-                        ? "<p style='margin:0;font-size:12px;color:#888'>Durante tu reserva podr\u00e1s abrir las puertas desde <strong>BeKey</strong> en tu panel (<a href='https://app.be-working.com' style='color:#009624;text-decoration:none;font-weight:600'>app.be-working.com</a>), donde tambi\u00e9n encontrar\u00e1s tu PIN de acceso.</p>"
-                        : "<p style='margin:0;font-size:12px;color:#888'>Presenta este email en recepci\u00f3n a tu llegada.</p>")
+                    + "<p style='margin:0;font-size:12px;color:#888'>Presenta este email en recepci\u00f3n a tu llegada.</p>"
                     + "</div></td>"
                     + "</tr></table>"
                     // ── Invoice access box ──
@@ -713,26 +706,6 @@ class BookingService {
 
         List<Bloqueo> savedBloqueos = bloqueoRepository.saveAll(bloqueosToPersist);
         savedReserva.setBloqueos(savedBloqueos);
-
-        // #150 — auto-grant BeKey door access per booked slot (bloqueo), but only for
-        // paid/confirmed bookings (never while Pendiente). Each grant's window is that
-        // slot's day in Málaga time, so the key opens only on the booked days.
-        // Best-effort: Akiles failure never breaks booking creation.
-        if ("Pagado".equalsIgnoreCase(request.getStatus()) && cliente != null && producto != null) {
-            ZoneId zone = ZoneId.of("Europe/Madrid");
-            for (Bloqueo b : savedBloqueos) {
-                try {
-                    OffsetDateTime startsAt = b.getFechaIni().toLocalDate().atStartOfDay(zone).toOffsetDateTime();
-                    OffsetDateTime expiresAt = isTrue(b.getFinIndefinido())
-                            ? null
-                            : b.getFechaFin().toLocalDate().plusDays(1).atStartOfDay(zone).minusSeconds(1).toOffsetDateTime();
-                    beKeyAccessService.grantForBloqueo(
-                            cliente.getId(), b.getId(), producto.getNombre(), startsAt, expiresAt);
-                } catch (Exception ex) {
-                    LOGGER.warn("BeKey grant on bloqueo {} failed: {}", b.getId(), ex.getMessage());
-                }
-            }
-        }
 
         List<BloqueoResponse> bloqueoResponses = savedBloqueos.stream()
             .map(BloqueoMapper::toResponse)
