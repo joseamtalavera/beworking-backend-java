@@ -25,6 +25,12 @@ public class BeKeyMemberIdentity {
 
     public BeKeyMemberIdentity() {}
 
+    @PrePersist
+    @PreUpdate
+    void touch() {
+        this.updatedAt = OffsetDateTime.now();
+    }
+
     public Long getContactId() { return contactId; }
     public void setContactId(Long contactId) { this.contactId = contactId; }
 
