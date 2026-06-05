@@ -251,6 +251,10 @@ public class LeadController {
         boolean created = false;
         if (cp == null) {
             cp = new com.beworking.contacts.ContactProfile();
+            // ContactProfile.@Id has no @GeneratedValue — Hibernate requires a
+            // manually assigned id before persist(). Mirror the timestamp-based
+            // id convention used in ContactProfileService.createContactProfile.
+            cp.setId(System.currentTimeMillis());
             cp.setName(lead.getName());
             cp.setEmailPrimary(emailLower);
             cp.setPhonePrimary(lead.getPhone());
