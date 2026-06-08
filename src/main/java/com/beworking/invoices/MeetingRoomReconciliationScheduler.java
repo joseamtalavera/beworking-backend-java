@@ -80,7 +80,18 @@ public class MeetingRoomReconciliationScheduler {
             String waCell;
             if (r.customerPhone() != null && !r.customerPhone().isBlank()) {
                 String waNumber = r.customerPhone().replaceAll("[^0-9]", "");
-                waCell = "<a href='https://wa.me/" + waNumber + "' "
+                // Prefill the message with greeting + amount + the customer-facing
+                // Stripe payment link so the team can chase payment in one tap.
+                // Falls back to a link-less message when the hosted URL is missing.
+                String greeting = r.customerName() != null && !r.customerName().isBlank()
+                    ? "Hola " + r.customerName() + ", " : "Hola, ";
+                String payUrl = r.hostedInvoiceUrl();
+                String msg = greeting + "tu recibo de BeWorking por " + formatEur(r.total())
+                    + " está pendiente de pago."
+                    + (payUrl != null && !payUrl.isBlank() ? " Puedes regularizarlo aquí: " + payUrl : "");
+                String encoded = java.net.URLEncoder.encode(msg, java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("+", "%20");
+                waCell = "<a href='https://wa.me/" + waNumber + "?text=" + encoded + "' "
                     + "style='display:inline-block;background:#25D366;color:#fff;text-decoration:none;"
                     + "padding:6px 12px;border-radius:14px;font-size:12px;font-weight:600;white-space:nowrap'>WhatsApp</a>";
             } else {

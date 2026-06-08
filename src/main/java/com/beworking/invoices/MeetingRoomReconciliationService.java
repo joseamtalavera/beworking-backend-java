@@ -7,8 +7,11 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 
 /**
  * Surfaces past-due meeting-room facturas (cuenta=PT, tenant_type='Usuario Aulas').
@@ -26,9 +29,13 @@ public class MeetingRoomReconciliationService {
     private static final Logger logger = LoggerFactory.getLogger(MeetingRoomReconciliationService.class);
 
     private final JdbcTemplate jdbcTemplate;
+    private final RestClient http = RestClient.create();
+    private final String paymentsBaseUrl;
 
-    public MeetingRoomReconciliationService(JdbcTemplate jdbcTemplate) {
+    public MeetingRoomReconciliationService(JdbcTemplate jdbcTemplate,
+                                            @Value("${app.payments.base-url:}") String paymentsBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
+        this.paymentsBaseUrl = paymentsBaseUrl;
     }
 
     public List<PastDueRoomInvoice> findPastDue() {
@@ -55,6 +62,7 @@ public class MeetingRoomReconciliationService {
         for (Map<String, Object> r : rows) {
             Number daysObj = (Number) r.get("days_past_due");
             int days = daysObj != null ? (int) Math.floor(daysObj.doubleValue()) : 0;
+            String stripeInvoiceId = (String) r.get("stripeinvoiceid");
             out.add(new PastDueRoomInvoice(
                 ((Number) r.get("id")).longValue(),
                 r.get("idfactura") != null ? ((Number) r.get("idfactura")).intValue() : null,
@@ -65,14 +73,38 @@ public class MeetingRoomReconciliationService {
                 r.get("total") != null ? new BigDecimal(r.get("total").toString()) : BigDecimal.ZERO,
                 r.get("creacionfecha") instanceof java.sql.Timestamp ts ? ts.toLocalDateTime() : null,
                 (String) r.get("estado"),
-                (String) r.get("stripeinvoiceid"),
-                days
+                stripeInvoiceId,
+                days,
+                fetchHostedInvoiceUrl(stripeInvoiceId)
             ));
         }
         if (!out.isEmpty()) {
             logger.info("Meeting-room past-due check: {} invoices", out.size());
         }
         return out;
+    }
+
+    /**
+     * Customer-facing Stripe hosted payment URL for a past-due invoice, so the
+     * WhatsApp outreach can embed a "pay here" link. Best-effort: returns null
+     * on any failure or when the row has no Stripe invoice. Meeting-room
+     * invoices are always the PT tenant.
+     */
+    private String fetchHostedInvoiceUrl(String stripeInvoiceId) {
+        if (paymentsBaseUrl == null || paymentsBaseUrl.isBlank()
+                || stripeInvoiceId == null || stripeInvoiceId.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> resp = http.get()
+                .uri(paymentsBaseUrl + "/api/invoices/" + stripeInvoiceId + "/hosted-url?account=PT")
+                .retrieve()
+                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            return resp != null ? (String) resp.get("hostedInvoiceUrl") : null;
+        } catch (Exception e) {
+            logger.warn("Failed to fetch hosted invoice URL for {}: {}", stripeInvoiceId, e.getMessage());
+            return null;
+        }
     }
 
     public record PastDueRoomInvoice(
@@ -86,6 +118,7 @@ public class MeetingRoomReconciliationService {
         LocalDateTime creacionfecha,
         String estado,
         String stripeInvoiceId,
-        int daysPastDue
+        int daysPastDue,
+        String hostedInvoiceUrl
     ) {}
 }
