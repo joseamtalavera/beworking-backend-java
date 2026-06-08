@@ -418,7 +418,11 @@ public class BeKeyAccessService {
 
         LOGGER.info("openDoor{}: contact {} opened device {} (gadget {})",
                 adminOverride ? "(admin)" : "", contactId, deviceId, device.getAkilesGadgetId());
-        if (contactId != null) {
+        // The door already opened — never let the audit write fail the request.
+        // bekey_events.contact_id has an FK to contact_profiles, so an admin whose
+        // account isn't a real contact (e.g. contact 1) would FK-violate and roll
+        // back a successful open. Only audit when the contact actually exists.
+        if (contactId != null && contactProfileRepository.existsById(contactId)) {
             writeDoorEvent(contactId, device);
         }
         return device;
