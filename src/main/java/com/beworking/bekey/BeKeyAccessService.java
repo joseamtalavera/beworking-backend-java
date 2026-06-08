@@ -137,6 +137,17 @@ public class BeKeyAccessService {
     @Transactional
     public BeKeyAccess grant(Long contactId, Long memberGroupId, BeKeyAccess.Source source,
                              Long sourceRef, OffsetDateTime expiresAt) {
+        return grant(contactId, memberGroupId, source, sourceRef, OffsetDateTime.now(), expiresAt);
+    }
+
+    /**
+     * Full grant with an explicit access-window start. Booking grants pin startsAt
+     * to the booking day, so a future booking paid today only opens the door on the
+     * booking day — Akiles enforces the window. A null startsAt defaults to now().
+     */
+    @Transactional
+    public BeKeyAccess grant(Long contactId, Long memberGroupId, BeKeyAccess.Source source,
+                             Long sourceRef, OffsetDateTime startsAt, OffsetDateTime expiresAt) {
         // 1. Idempotency - if this source already holds an active grant, return it.
         if (sourceRef != null) {
             Optional<BeKeyAccess> existing = accessRepository.findBySourceAndSourceRef(source, sourceRef);
@@ -156,11 +167,11 @@ public class BeKeyAccessService {
                 .orElseGet(() -> createIdentity(contactId));
 
         // 4. Mirror the grant into Akiles as a group association.
-        OffsetDateTime startsAt = OffsetDateTime.now();
+        OffsetDateTime effectiveStart = (startsAt != null) ? startsAt : OffsetDateTime.now();
         Map<String, Object> assoc = akiles.addGroupAssociation(
                 identity.getAkilesMemberId(),
                 group.getAkilesGroupId(),
-                startsAt.toInstant(),
+                effectiveStart.toInstant(),
                 expiresAt != null ? expiresAt.toInstant() : null);
         String associationId = (String) assoc.get("id");
         if (associationId == null) {
@@ -175,7 +186,7 @@ public class BeKeyAccessService {
         access.setMemberGroupId(memberGroupId);
         access.setSource(source);
         access.setSourceRef(sourceRef);
-        access.setStartsAt(startsAt);
+        access.setStartsAt(effectiveStart);
         access.setEndsAt(expiresAt);
         access = accessRepository.save(access);
 
@@ -225,6 +236,43 @@ public class BeKeyAccessService {
                         g.getId(), subscriptionId, ex.getMessage());
             }
         }
+    }
+
+    /**
+     * Auto-grants time-boxed door access for a single booked slot (bloqueo) (#150).
+     * Maps the booked product code (producto.nombre) to its BeKey member group:
+     * "MA1A1" -> MA1O1 (desks share the office group); "MA1A2".."MA1A5" -> same-named
+     * group. Virtual-office products (MA1O1-N) and any unmapped code get NO door.
+     * The window runs startsAt..expiresAt (that slot's day), so the key opens only on
+     * the booked day. Idempotent via grant()'s (source, sourceRef=bloqueoId) dedup.
+     * Returns the grant, or null if the room has no door.
+     */
+    @Transactional
+    public BeKeyAccess grantForBloqueo(Long contactId, Long bloqueoId, String roomCode,
+                                       OffsetDateTime startsAt, OffsetDateTime expiresAt) {
+        String label = resolveBookingGroupLabel(roomCode);
+        if (label == null) {
+            LOGGER.info("grantForBloqueo: room '{}' -> no door access (bloqueo {})", roomCode, bloqueoId);
+            return null;
+        }
+        BeKeyMemberGroup group = memberGroupRepository.findByLabel(label)
+                .orElseThrow(() -> new IllegalStateException("BeKey member group '" + label + "' not found"));
+        return grant(contactId, group.getId(), BeKeyAccess.Source.booking, bloqueoId, startsAt, expiresAt);
+    }
+
+    /** Maps a booked product code to a BeKey member-group label, or null if it has no door. */
+    private String resolveBookingGroupLabel(String roomCode) {
+        if (roomCode == null) {
+            return null;
+        }
+        String code = roomCode.trim().toUpperCase();
+        if (code.equals("MA1A1")) {
+            return "MA1O1";              // desks share the office group
+        }
+        if (code.matches("MA1A[2-5]")) {
+            return code;                 // aulas map to their same-named group
+        }
+        return null;                     // MA1O1-N (virtual office) + anything unmapped
     }
 
     /**
