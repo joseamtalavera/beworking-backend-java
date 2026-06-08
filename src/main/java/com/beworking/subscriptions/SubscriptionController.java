@@ -102,13 +102,14 @@ public class SubscriptionController {
 
         String billingMethod = request.getBillingMethod() != null ? request.getBillingMethod() : "stripe";
 
-        // --- "trans" flow: legacy "bank_transfer" label, now identical to the
-        // stripe flow below. Customer doesn't have a saved payment method yet,
-        // so Stripe sends them the hosted invoice email; they pick card or SEPA
-        // and pay. After first payment, sub auto-renews silently. We send a
-        // separate admin notification + user welcome from our own templates. ---
-        // (Old behavior — manual Pendiente invoice + bank-transfer reference —
-        // removed. We always go through Stripe now.)
+        // Bank-transfer subs are billed entirely in our own DB — no Stripe
+        // subscription and no Stripe-hosted invoice. We skip the whole Stripe
+        // block below, persist the sub as billing_method='bank_transfer', and
+        // issue a local Pendiente invoice immediately; the monthly
+        // LocalSubscriptionScheduler covers subsequent periods. (Previously this
+        // label silently went through Stripe, leaving phantom 'open' invoices on
+        // bank-transfer customers — the bug this fixes.)
+        boolean isBankTransfer = "bank_transfer".equals(billingMethod);
 
         // --- Stripe flow (existing logic) ---
         String stripeSubId = request.getStripeSubscriptionId();
@@ -136,8 +137,9 @@ public class SubscriptionController {
             }
         }
 
-        // If no Stripe subscription ID provided, create one via stripe-service
-        if (stripeSubId == null || stripeSubId.isBlank()) {
+        // If no Stripe subscription ID provided, create one via stripe-service.
+        // Bank-transfer subs never touch Stripe, so skip this entirely.
+        if (!isBankTransfer && (stripeSubId == null || stripeSubId.isBlank())) {
             Optional<ContactProfile> contactOpt = contactRepository.findById(request.getContactId());
             if (contactOpt.isEmpty()) {
                 Map<String, Object> error = new HashMap<>();
@@ -295,8 +297,9 @@ public class SubscriptionController {
             }
         }
 
-        // Check for duplicate stripe subscription ID
-        if (subscriptionService.findByStripeSubscriptionId(stripeSubId).isPresent()) {
+        // Check for duplicate stripe subscription ID (bank-transfer subs have none)
+        if (!isBankTransfer && stripeSubId != null && !stripeSubId.isBlank()
+                && subscriptionService.findByStripeSubscriptionId(stripeSubId).isPresent()) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Subscription with this Stripe ID already exists");
             return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
@@ -315,7 +318,7 @@ public class SubscriptionController {
 
         Subscription sub = new Subscription();
         sub.setContactId(request.getContactId());
-        sub.setBillingMethod("stripe");
+        sub.setBillingMethod(billingMethod);
         sub.setStripeSubscriptionId(request.getStripeSubscriptionId());
         sub.setStripeCustomerId(request.getStripeCustomerId());
         sub.setMonthlyAmount(request.getMonthlyAmount());
@@ -335,6 +338,25 @@ public class SubscriptionController {
         sub.setUpdatedAt(LocalDateTime.now());
 
         Subscription saved = subscriptionService.save(sub);
+
+        // Bank-transfer: issue the first Pendiente invoice now so the customer
+        // has something to pay immediately (the monthly LocalSubscriptionScheduler
+        // covers following periods). Best-effort — never fail the create. Note:
+        // mutates `saved` in place (no reassignment) to keep it effectively final
+        // for the email lambda below.
+        if (isBankTransfer) {
+            try {
+                String month = java.time.YearMonth.now().toString();
+                subscriptionService.createBankTransferInvoice(saved, month);
+                saved.setLastInvoicedMonth(month);
+                subscriptionService.save(saved);
+                logger.info("Created first bank_transfer Pendiente invoice for sub {} (month={})",
+                        saved.getId(), month);
+            } catch (Exception e) {
+                logger.error("Failed to create first bank_transfer invoice for sub {}: {}",
+                        saved.getId(), e.getMessage(), e);
+            }
+        }
 
         // Notify admin (info@be-working.com) and welcome the customer.
         // Best-effort: any failure is logged but doesn't fail the request — the
