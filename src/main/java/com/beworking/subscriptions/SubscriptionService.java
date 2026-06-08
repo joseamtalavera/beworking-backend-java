@@ -464,7 +464,7 @@ public class SubscriptionService {
      * linked product's type when known, otherwise a description heuristic.
      * Subscriptions are virtual offices by default.
      */
-    private String resolveSubscriptionCategory(Subscription subscription) {
+    public String resolveSubscriptionCategory(Subscription subscription) {
         if (subscription.getProductoId() != null) {
             try {
                 String tipo = jdbcTemplate.queryForObject(
