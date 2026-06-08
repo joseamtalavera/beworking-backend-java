@@ -373,30 +373,54 @@ public class BeKeyAccessService {
         return access;
     }
 
+    /** Every door in the building — the admin "master key" view, no grant required. */
+    @Transactional(readOnly = true)
+    public List<BeKeyDevice> listAllDevices() {
+        return deviceRepository.findAll();
+    }
+
     /**
      * Opens a door for a contact, enforcing that the contact actually has access.
-     * Order matters: authorize, then fire the (irreversible) Akiles action, then audit.
      *
      * @throws SecurityException if no active grant covers the device
      */
     @Transactional
     public BeKeyDevice openDoor(Long contactId, Long deviceId) {
+        return openDoor(contactId, deviceId, false);
+    }
+
+    /**
+     * Opens a door. With {@code adminOverride}, any door may be opened with no grant
+     * (the admin "master key": e.g. buzzing in a delivery at the street door). The
+     * gadget is actuated with the org API token, so no Akiles member is needed for
+     * the admin. Order matters: authorize, then fire the (irreversible) Akiles action,
+     * then audit.
+     *
+     * @throws SecurityException if (non-admin) no active grant covers the device, or the device is unknown
+     */
+    @Transactional
+    public BeKeyDevice openDoor(Long contactId, Long deviceId, boolean adminOverride) {
         // Master kill-switch (#244) - never actuate a real door when the integration is disabled.
         if (!integrationEnabled) {
             throw new IllegalStateException("BeKey integration disabled (akiles.integration.enabled=false)");
         }
 
-        BeKeyDevice device = listAccessibleDevices(contactId).stream()
-                .filter(d -> d.getId().equals(deviceId))
-                .findFirst()
-                .orElseThrow(() -> new SecurityException(
-                        "Contact " + contactId + " has no access to device " + deviceId));
+        BeKeyDevice device = adminOverride
+                ? deviceRepository.findById(deviceId)
+                        .orElseThrow(() -> new SecurityException("Unknown device " + deviceId))
+                : listAccessibleDevices(contactId).stream()
+                        .filter(d -> d.getId().equals(deviceId))
+                        .findFirst()
+                        .orElseThrow(() -> new SecurityException(
+                                "Contact " + contactId + " has no access to device " + deviceId));
 
         akiles.doGadgetAction(device.getAkilesGadgetId(), device.getActionId());
 
-        LOGGER.info("openDoor: contact {} opened device {} (gadget {})",
-                contactId, deviceId, device.getAkilesGadgetId());
-        writeDoorEvent(contactId, device);
+        LOGGER.info("openDoor{}: contact {} opened device {} (gadget {})",
+                adminOverride ? "(admin)" : "", contactId, deviceId, device.getAkilesGadgetId());
+        if (contactId != null) {
+            writeDoorEvent(contactId, device);
+        }
         return device;
     }
 

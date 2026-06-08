@@ -40,24 +40,37 @@ public class UserBeKeyController {
         return user != null ? user.getTenantId() : null;
     }
 
+    private boolean isAdmin(Authentication authentication) {
+        return authentication != null
+            && authentication.isAuthenticated()
+            && authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<?> me(Authentication authentication) {
+        boolean admin = isAdmin(authentication);
         Long contactId = resolveContactId(authentication);
-        if (contactId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        List<BeKeyDevice> devices = accessService.listAccessibleDevices(contactId);
-        String pin = accessService.getRevealedPin(contactId);   // keypad fallback; may be null
+        if (contactId == null && !admin) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        // Admins hold a master key: every door, independent of any booking or grant.
+        List<BeKeyDevice> devices = admin
+                ? accessService.listAllDevices()
+                : accessService.listAccessibleDevices(contactId);
+        String pin = contactId != null ? accessService.getRevealedPin(contactId) : null;  // keypad fallback; may be null
         Map<String, Object> body = new HashMap<>();
         body.put("devices", devices);
         body.put("pin", pin);
+        body.put("admin", admin);
         return ResponseEntity.ok(body);
     }
 
     @PostMapping("/open/{deviceId}")
     public ResponseEntity<?> open(@PathVariable Long deviceId, Authentication authentication) {
+        boolean admin = isAdmin(authentication);
         Long contactId = resolveContactId(authentication);
-        if (contactId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        if (contactId == null && !admin) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         try {
-            BeKeyDevice device = accessService.openDoor(contactId, deviceId);
+            BeKeyDevice device = accessService.openDoor(contactId, deviceId, admin);
             return ResponseEntity.ok(Map.of("opened", true, "deviceId", device.getId(), "name", device.getName()));
         } catch (SecurityException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "No access to this door"));

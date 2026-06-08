@@ -14,9 +14,14 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
+import com.beworking.contacts.ContactProfile;
+import com.beworking.contacts.ContactProfileRepository;
+
+import java.util.HashMap;
 import java.util.List;
 import java.time.OffsetDateTime;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Admin BeKey endpoints (ROLE_ADMIN only) behind the dashboard's BeKey tab.
@@ -36,17 +41,32 @@ public class AdminBeKeyController {
     private final BeKeyDeviceRepository deviceRepository;
     private final BeKeyEventRepository eventRepository;
     private final BeKeyMemberGroupRepository memberGroupRepository;
+    private final ContactProfileRepository contactRepository;
 
     public AdminBeKeyController(BeKeyAccessService accessService,
                                 BeKeyAccessRepository accessRepository,
                                 BeKeyDeviceRepository deviceRepository,
                                 BeKeyEventRepository eventRepository,
-                                BeKeyMemberGroupRepository memberGroupRepository) {
+                                BeKeyMemberGroupRepository memberGroupRepository,
+                                ContactProfileRepository contactRepository) {
         this.accessService = accessService;
         this.accessRepository = accessRepository;
         this.deviceRepository = deviceRepository;
         this.eventRepository = eventRepository;
         this.memberGroupRepository = memberGroupRepository;
+        this.contactRepository = contactRepository;
+    }
+
+    // Resolve each grant's contact name in one batch query so the admin list can
+    // show "Jose Talavera" instead of "Contacto 91009".
+    private void enrichContactNames(List<BeKeyAccess> rows) {
+        List<Long> ids = rows.stream().map(BeKeyAccess::getContactId).distinct().collect(Collectors.toList());
+        if (ids.isEmpty()) return;
+        Map<Long, String> names = new HashMap<>();
+        for (ContactProfile c : contactRepository.findAllById(ids)) {
+            names.put(c.getId(), c.getName());
+        }
+        rows.forEach(r -> r.setContactName(names.get(r.getContactId())));
     }
 
     private boolean isAdmin(Authentication authentication) {
@@ -76,6 +96,7 @@ public class AdminBeKeyController {
         List<BeKeyAccess> rows = (contactId != null)
                 ? accessService.listForContact(contactId)
                 : accessRepository.findAll();
+        enrichContactNames(rows);
         return ResponseEntity.ok(rows);
     }
 

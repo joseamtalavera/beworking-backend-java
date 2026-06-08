@@ -47,6 +47,11 @@ public class BeKeyAccess {
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
+    // Display-only: contact's name, resolved at read time for the admin list
+    // (not persisted). Lets the UI show "Jose Talavera" instead of "Contacto 91009".
+    @Transient
+    private String contactName;
+
     public BeKeyAccess() {}
 
     @PrePersist
@@ -89,4 +94,7 @@ public class BeKeyAccess {
 
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getContactName() { return contactName; }
+    public void setContactName(String contactName) { this.contactName = contactName; }
 }
