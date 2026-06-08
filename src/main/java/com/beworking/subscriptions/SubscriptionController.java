@@ -710,6 +710,13 @@ public class SubscriptionController {
         }
         subscriptionService.deactivate(id);
 
+        // Best-effort: revoke any BeKey door access tied to this subscription (#149).
+        try {
+            beKeyAccessService.revokeForSubscription(id.longValue(), "subscription cancelled");
+        } catch (Exception ex) {
+            logger.warn("BeKey revoke on sub-cancel failed (sub {}): {}", id, ex.getMessage());
+        }
+
         // Notify info@ on every manual cancellation (admin + user self-cancel).
         // Best-effort: never block the request.
         try {

@@ -207,6 +207,27 @@ public class BeKeyAccessService {
     }
 
     /**
+     * Auto-revokes all active door grants tied to a subscription (#149).
+     * Mirror of grantForSubscription: when a sub is cancelled/deactivated, every
+     * active grant with source=subscription and sourceRef=subscriptionId is revoked
+     * (Akiles association removed + row marked revoked + audited). Best-effort per
+     * grant — one failure doesn't abort the rest.
+     */
+    @Transactional
+    public void revokeForSubscription(Long subscriptionId, String reason) {
+        List<BeKeyAccess> grants = accessRepository.findBySourceAndSourceRefAndRevokedAtIsNull(
+                BeKeyAccess.Source.subscription, subscriptionId);
+        for (BeKeyAccess g : grants) {
+            try {
+                revoke(g.getId(), reason);
+            } catch (Exception ex) {
+                LOGGER.warn("revokeForSubscription: failed to revoke access {} for sub {}: {}",
+                        g.getId(), subscriptionId, ex.getMessage());
+            }
+        }
+    }
+
+    /**
      * Revokes an access grant and removes the association in Akiles.
      * Idempotent: revoking an already-revoked grant is a no-op.
      *
