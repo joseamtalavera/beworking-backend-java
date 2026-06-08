@@ -73,14 +73,20 @@ public class PriceDiscrepancyService {
             Map<String, Object> stripeInvoice = fetchStripeInvoice(stripeId, cuenta);
             if (stripeInvoice == null) continue;
 
-            // Void / uncollectible / draft invoices legitimately have
-            // amount_paid = 0 — they're not price discrepancies, they're
-            // cancelled. Skip them so they don't pollute the audit.
+            // A price discrepancy only exists when Stripe actually COLLECTED a
+            // different amount than the DB recorded — i.e. status 'paid'. Every
+            // other status legitimately has amount_paid = 0 and must be skipped,
+            // not flagged:
+            //   - void / uncollectible / draft → cancelled, never collected
+            //   - open / processing            → SEPA Direct Debit still pending
+            //     settlement. charge_automatically SEPA invoices sit 'open' with
+            //     amount_paid 0 for days (we mark the DB row 'pagado' optimistically)
+            //     then flip to 'paid' once the debit clears. Comparing during that
+            //     window produces a phantom full-amount discrepancy.
             String stripeStatus = stripeInvoice.get("status") != null
                 ? stripeInvoice.get("status").toString().toLowerCase()
                 : "";
-            if (stripeStatus.equals("void") || stripeStatus.equals("uncollectible")
-                || stripeStatus.equals("draft")) {
+            if (!stripeStatus.equals("paid")) {
                 continue;
             }
 
