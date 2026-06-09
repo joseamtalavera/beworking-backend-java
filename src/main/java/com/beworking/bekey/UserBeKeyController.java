@@ -62,10 +62,16 @@ public class UserBeKeyController {
                 ? accessService.listAllDevices()
                 : accessService.listAccessibleDevices(contactId);
         String pin = contactId != null ? accessService.getRevealedPin(contactId) : null;  // keypad fallback; may be null
+        // Only members holding their OWN (non-shared) access may share. A guest
+        // whose only access is a 'shared' grant cannot re-share it.
+        boolean canShare = !admin && contactId != null
+                && accessService.listForContact(contactId).stream()
+                        .anyMatch(g -> g.getSource() != BeKeyAccess.Source.shared);
         Map<String, Object> body = new HashMap<>();
         body.put("devices", devices);
         body.put("pin", pin);
         body.put("admin", admin);
+        body.put("canShare", canShare);
         return ResponseEntity.ok(body);
     }
 
