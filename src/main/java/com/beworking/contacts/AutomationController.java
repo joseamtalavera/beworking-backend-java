@@ -241,6 +241,27 @@ public class AutomationController {
                 """)
             ),
             jobDescriptor(
+                "bekeyBookingReconcile",
+                "BeKey: reconciliación de reservas",
+                "Concede acceso BeKey a las reservas (bloqueos) pagadas y vigentes en salas con puerta (MA1A1–MA1A5), y revoca el de las que ya no están pagadas/activas. Candidatos = reservas pagadas vigentes sin concesión vigente.",
+                "0 0,30 * * * *",
+                "Cada 30 min",
+                countQuery("""
+                    SELECT COUNT(*) FROM beworking.bloqueos b
+                      JOIN beworking.productos p ON p.id = b.id_producto
+                     WHERE b.estado = 'Pagado'
+                       AND b.id_cliente IS NOT NULL
+                       AND (b.fin_indefinido = 1 OR b.fecha_fin >= CURRENT_DATE)
+                       AND UPPER(p.nombre) IN ('MA1A1','MA1A2','MA1A3','MA1A4','MA1A5')
+                       AND NOT EXISTS (
+                             SELECT 1 FROM beworking.bekey_access a
+                              WHERE a.source = 'booking'
+                                AND a.source_ref = b.id
+                                AND a.revoked_at IS NULL
+                           )
+                """)
+            ),
+            jobDescriptor(
                 "bekeySubscriptionReconcile",
                 "BeKey: reconciliación de mesas (suscripciones)",
                 "Concede acceso BeKey (MA1O1: mesa + puerta de calle) a las suscripciones de coworking activas que aún no lo tienen, y revoca el de las que dejaron de estar activas. Candidatos = subs de coworking activas sin concesión vigente.",
@@ -343,6 +364,11 @@ public class AutomationController {
                 com.beworking.reports.PriceDiscrepancyAuditScheduler.RunResult r = priceDiscrepancyAudit.runOnce();
                 result.put("discrepancies", r.discrepancies());
                 result.put("emailSent", r.emailSent());
+            }
+            case "bekeyBookingReconcile" -> {
+                com.beworking.bekey.BeKeyReconciliationScheduler.RunResult r = bekeyReconciliation.runOnce();
+                result.put("granted", r.granted());
+                result.put("revoked", r.revoked());
             }
             case "bekeySubscriptionReconcile" -> {
                 com.beworking.bekey.BeKeyReconciliationScheduler.RunResult r = bekeyReconciliation.runSubscriptionsOnce();
@@ -455,6 +481,7 @@ public class AutomationController {
             case "recovery", "potencialAging", "activoAging", "reengagement", "leadAging", "leadNurture" -> "contacts";
             case "reconciliation", "monthlyInvoice", "localSubscription",
                  "meetingRoomReconciliation", "priceDiscrepancyAudit" -> "billing";
+            case "bekeyBookingReconcile", "bekeySubscriptionReconcile" -> "access";
             default -> "other";
         };
     }
