@@ -7,7 +7,7 @@ import java.time.OffsetDateTime;
 @Table(name = "bekey_access", schema = "beworking")
 public class BeKeyAccess {
 
-    public enum Source { subscription, booking, manual }
+    public enum Source { subscription, booking, manual, shared }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

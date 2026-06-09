@@ -5,12 +5,15 @@ import com.beworking.auth.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,10 +29,12 @@ import java.util.Map;
 public class UserBeKeyController {
 
     private final BeKeyAccessService accessService;
+    private final BeKeyShareService shareService;
     private final UserRepository userRepository;
 
-    public UserBeKeyController(BeKeyAccessService accessService, UserRepository userRepository) {
+    public UserBeKeyController(BeKeyAccessService accessService, BeKeyShareService shareService, UserRepository userRepository) {
         this.accessService = accessService;
+        this.shareService = shareService;
         this.userRepository = userRepository;
     }
 
@@ -76,4 +81,44 @@ public class UserBeKeyController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "No access to this door"));
         }
     }
+
+    /** Shares the caller created (active, non-revoked). */
+    @GetMapping("/shares")
+    public ResponseEntity<?> listShares(Authentication authentication) {
+        Long contactId = resolveContactId(authentication);
+        if (contactId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(shareService.listForSharer(contactId));
+    }
+
+    /** Share the caller's access with a guest for a bounded window (#243). */
+    @PostMapping("/shares")
+    public ResponseEntity<?> createShare(@RequestBody ShareRequest req, Authentication authentication) {
+        Long contactId = resolveContactId(authentication);
+        if (contactId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        try {
+            BeKeyShare share = shareService.createShare(
+                    contactId, req.guestName(), req.guestEmail(), req.startsAt(), req.endsAt());
+            return ResponseEntity.status(HttpStatus.CREATED).body(share);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Revoke a share the caller created. */
+    @DeleteMapping("/shares/{id}")
+    public ResponseEntity<?> revokeShare(@PathVariable Long id, Authentication authentication) {
+        Long contactId = resolveContactId(authentication);
+        if (contactId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        try {
+            shareService.revoke(id, contactId);
+            return ResponseEntity.ok(Map.of("revoked", true));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Not your share"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Create-share request body. startsAt null = now; endsAt required. */
+    public record ShareRequest(String guestName, String guestEmail, OffsetDateTime startsAt, OffsetDateTime endsAt) {}
 }

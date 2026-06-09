@@ -41,6 +41,7 @@ public class SubscriptionController {
     private final com.beworking.auth.RegisterService registerService;
     private final RestClient http;
     private final com.beworking.bekey.BeKeyAccessService beKeyAccessService;
+    private final com.beworking.bekey.BeKeyShareService beKeyShareService;
 
 
     @Value("${app.frontend-url:}")
@@ -55,6 +56,7 @@ public class SubscriptionController {
                                   com.beworking.auth.EmailService emailService,
                                   com.beworking.auth.RegisterService registerService,
                                   com.beworking.bekey.BeKeyAccessService beKeyAccessService,
+                                  com.beworking.bekey.BeKeyShareService beKeyShareService,
                                   @Value("${app.payments.base-url:http://beworking-stripe-service:8081}") String paymentsBaseUrl) {
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
@@ -65,6 +67,7 @@ public class SubscriptionController {
         this.emailService = emailService;
         this.registerService = registerService;
         this.beKeyAccessService = beKeyAccessService;
+        this.beKeyShareService = beKeyShareService;
         this.http = RestClient.builder().baseUrl(paymentsBaseUrl).build();
     }
 
@@ -738,6 +741,22 @@ public class SubscriptionController {
             beKeyAccessService.revokeForSubscription(id.longValue(), "subscription cancelled");
         } catch (Exception ex) {
             logger.warn("BeKey revoke on sub-cancel failed (sub {}): {}", id, ex.getMessage());
+        }
+
+        // Cascade (#243): if this cancellation leaves the member with no real
+        // access left, revoke the shares they handed out — you can't lend a key
+        // you no longer hold. A still-active sub/booking keeps their shares.
+        try {
+            Long sharerContactId = sub.getContactId();
+            if (sharerContactId != null) {
+                boolean stillHasAccess = beKeyAccessService.listForContact(sharerContactId).stream()
+                        .anyMatch(g -> g.getSource() != com.beworking.bekey.BeKeyAccess.Source.shared);
+                if (!stillHasAccess) {
+                    beKeyShareService.revokeSharesBySharer(sharerContactId, "sharer access ended");
+                }
+            }
+        } catch (Exception ex) {
+            logger.warn("BeKey share cascade on sub-cancel failed (sub {}): {}", id, ex.getMessage());
         }
 
         // Notify info@ on every manual cancellation (admin + user self-cancel).
