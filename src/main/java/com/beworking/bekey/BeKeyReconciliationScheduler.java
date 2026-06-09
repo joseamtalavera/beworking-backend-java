@@ -47,6 +47,25 @@ public class BeKeyReconciliationScheduler {
            AND UPPER(p.nombre) IN ('MA1A1','MA1A2','MA1A3','MA1A4','MA1A5')
         """;
 
+    // Active coworking subscriptions — mirrors SubscriptionService.resolveSubscriptionCategory:
+    // coworking iff the linked product's tipo is 'mesa', else (no product tipo) a description
+    // heuristic. These get a standing MA1O1 (desk + street door) grant. Virtual-office subs
+    // are deliberately excluded — their access is booking-driven, not subscription-driven.
+    private static final String SUBS_DESIRED_SQL = """
+        SELECT s.id AS sub_id, s.contact_id
+          FROM beworking.subscriptions s
+          LEFT JOIN beworking.productos p ON p.id = s.producto_id
+         WHERE s.active = true
+           AND s.contact_id IS NOT NULL
+           AND (
+                 LOWER(TRIM(p.tipo)) = 'mesa'
+              OR (p.tipo IS NULL AND (
+                    LOWER(COALESCE(s.description,'')) LIKE '%coworking%'
+                 OR LOWER(COALESCE(s.description,'')) LIKE '%mesa%'
+                 OR LOWER(COALESCE(s.description,'')) LIKE '%desk%'))
+               )
+        """;
+
     private final JdbcTemplate jdbcTemplate;
     private final BeKeyAccessService beKeyAccessService;
     private final BeKeyAccessRepository accessRepository;
@@ -129,6 +148,78 @@ public class BeKeyReconciliationScheduler {
 
         if (granted > 0 || revoked > 0) {
             logger.info("BeKey booking reconcile: granted={} revoked={} (desired slots={})",
+                    granted, revoked, desiredIds.size());
+        }
+        return new RunResult(granted, revoked);
+    }
+
+    // Subscription reconcile, offset 15 min from the booking reconcile. The first
+    // run after go-live backfills standing MA1O1 grants for coworking subs created
+    // before the integration existed; thereafter it heals drift (sub activated /
+    // deactivated / re-categorised outside the create+cancel paths).
+    @Scheduled(cron = "0 15,45 * * * *")
+    public void reconcileSubscriptions() {
+        runSubscriptionsOnce();
+    }
+
+    /**
+     * Diff active coworking subscriptions against active Source.subscription grants:
+     *   desired, not granted  -> grantForSubscription (coworking -> MA1O1)
+     *   granted, not desired  -> revoke (sub deactivated / no longer coworking)
+     * Idempotent via grant()'s (source, sourceRef) dedup. Best-effort per row.
+     */
+    public RunResult runSubscriptionsOnce() {
+        // Master kill-switch (#244) - skip entirely when disabled.
+        if (!integrationEnabled) {
+            return new RunResult(0, 0);
+        }
+
+        List<Map<String, Object>> desired = jdbcTemplate.queryForList(SUBS_DESIRED_SQL);
+
+        // Existing active subscription grants, keyed by subscription id (sourceRef).
+        Map<Long, BeKeyAccess> existing = new HashMap<>();
+        for (BeKeyAccess g : accessRepository.findBySourceAndRevokedAtIsNull(BeKeyAccess.Source.subscription)) {
+            if (g.getSourceRef() != null) {
+                existing.put(g.getSourceRef(), g);
+            }
+        }
+
+        int granted = 0;
+        int revoked = 0;
+        Set<Long> desiredIds = new HashSet<>();
+
+        // ADD — active coworking subs with no standing grant yet.
+        for (Map<String, Object> row : desired) {
+            Long subId = ((Number) row.get("sub_id")).longValue();
+            desiredIds.add(subId);
+            if (existing.containsKey(subId)) {
+                continue;   // already granted — no Akiles call
+            }
+            try {
+                Long contactId = ((Number) row.get("contact_id")).longValue();
+                beKeyAccessService.grantForSubscription(contactId, subId, "coworking");
+                granted++;
+            } catch (Exception ex) {
+                logger.warn("BeKey sub reconcile: grant for sub {} failed: {}", subId, ex.getMessage());
+            }
+        }
+
+        // REMOVE — active grants whose sub is no longer active/coworking.
+        for (Map.Entry<Long, BeKeyAccess> e : existing.entrySet()) {
+            if (desiredIds.contains(e.getKey())) {
+                continue;
+            }
+            try {
+                beKeyAccessService.revoke(e.getValue().getId(), "reconcile: subscription no longer active/coworking");
+                revoked++;
+            } catch (Exception ex) {
+                logger.warn("BeKey sub reconcile: revoke of access {} (sub {}) failed: {}",
+                        e.getValue().getId(), e.getKey(), ex.getMessage());
+            }
+        }
+
+        if (granted > 0 || revoked > 0) {
+            logger.info("BeKey subscription reconcile: granted={} revoked={} (desired subs={})",
                     granted, revoked, desiredIds.size());
         }
         return new RunResult(granted, revoked);

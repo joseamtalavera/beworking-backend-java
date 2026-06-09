@@ -37,6 +37,7 @@ public class AutomationController {
     private final com.beworking.subscriptions.LocalSubscriptionScheduler localSubscription;
     private final com.beworking.invoices.MeetingRoomReconciliationScheduler meetingRoomReconciliation;
     private final com.beworking.reports.PriceDiscrepancyAuditScheduler priceDiscrepancyAudit;
+    private final com.beworking.bekey.BeKeyReconciliationScheduler bekeyReconciliation;
     private final JdbcTemplate jdbcTemplate;
 
     public AutomationController(AbandonmentRecoveryScheduler recoveryScheduler,
@@ -50,6 +51,7 @@ public class AutomationController {
                                 com.beworking.subscriptions.LocalSubscriptionScheduler localSubscription,
                                 com.beworking.invoices.MeetingRoomReconciliationScheduler meetingRoomReconciliation,
                                 com.beworking.reports.PriceDiscrepancyAuditScheduler priceDiscrepancyAudit,
+                                com.beworking.bekey.BeKeyReconciliationScheduler bekeyReconciliation,
                                 JdbcTemplate jdbcTemplate) {
         this.recoveryScheduler = recoveryScheduler;
         this.potencialAging = potencialAging;
@@ -62,6 +64,7 @@ public class AutomationController {
         this.localSubscription = localSubscription;
         this.meetingRoomReconciliation = meetingRoomReconciliation;
         this.priceDiscrepancyAudit = priceDiscrepancyAudit;
+        this.bekeyReconciliation = bekeyReconciliation;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -236,6 +239,32 @@ public class AutomationController {
                        AND f.creacionfecha >= NOW() - INTERVAL '30 days'
                        AND f.idfactura < 100000
                 """)
+            ),
+            jobDescriptor(
+                "bekeySubscriptionReconcile",
+                "BeKey: reconciliación de mesas (suscripciones)",
+                "Concede acceso BeKey (MA1O1: mesa + puerta de calle) a las suscripciones de coworking activas que aún no lo tienen, y revoca el de las que dejaron de estar activas. Candidatos = subs de coworking activas sin concesión vigente.",
+                "0 15,45 * * * *",
+                "Cada 30 min",
+                countQuery("""
+                    SELECT COUNT(*) FROM beworking.subscriptions s
+                      LEFT JOIN beworking.productos p ON p.id = s.producto_id
+                     WHERE s.active = true
+                       AND s.contact_id IS NOT NULL
+                       AND (
+                             LOWER(TRIM(p.tipo)) = 'mesa'
+                          OR (p.tipo IS NULL AND (
+                                LOWER(COALESCE(s.description,'')) LIKE '%coworking%'
+                             OR LOWER(COALESCE(s.description,'')) LIKE '%mesa%'
+                             OR LOWER(COALESCE(s.description,'')) LIKE '%desk%'))
+                           )
+                       AND NOT EXISTS (
+                             SELECT 1 FROM beworking.bekey_access a
+                              WHERE a.source = 'subscription'
+                                AND a.source_ref = s.id
+                                AND a.revoked_at IS NULL
+                           )
+                """)
             )
         );
         return ResponseEntity.ok(jobs);
@@ -314,6 +343,11 @@ public class AutomationController {
                 com.beworking.reports.PriceDiscrepancyAuditScheduler.RunResult r = priceDiscrepancyAudit.runOnce();
                 result.put("discrepancies", r.discrepancies());
                 result.put("emailSent", r.emailSent());
+            }
+            case "bekeySubscriptionReconcile" -> {
+                com.beworking.bekey.BeKeyReconciliationScheduler.RunResult r = bekeyReconciliation.runSubscriptionsOnce();
+                result.put("granted", r.granted());
+                result.put("revoked", r.revoked());
             }
             default -> {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
