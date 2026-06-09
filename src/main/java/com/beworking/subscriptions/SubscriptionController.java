@@ -2,6 +2,7 @@ package com.beworking.subscriptions;
 
 import com.beworking.auth.User;
 import com.beworking.auth.UserRepository;
+import com.beworking.bookings.Producto;
 import com.beworking.bookings.ProductoRepository;
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
@@ -680,6 +681,28 @@ public class SubscriptionController {
             result.add(entry);
         }
 
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Lists the desk-slot products (MA1O1-N) so the admin Add-Subscription dialog
+     * can offer a desk picker. These products live only in the productos table —
+     * the booking/public lookup endpoints are rooms-first and never surface them.
+     * Returns the broad MA1O1- prefix; the frontend narrows to MA1O1-<digits>.
+     */
+    @GetMapping("/desk-products")
+    public ResponseEntity<?> deskProducts(Authentication authentication) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Producto p : productoRepository.findByNombrePrefix("MA1O1-")) {
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("id", p.getId());
+            entry.put("nombre", p.getNombre());
+            entry.put("tipo", p.getTipo());
+            result.add(entry);
+        }
         return ResponseEntity.ok(result);
     }
 

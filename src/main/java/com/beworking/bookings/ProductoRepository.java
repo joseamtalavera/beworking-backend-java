@@ -19,4 +19,7 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
 
     @Query("SELECT COUNT(p) FROM Producto p WHERE LOWER(p.nombre) LIKE LOWER(CONCAT(:prefix, '%'))")
     long countByNombrePrefix(@Param("prefix") String prefix);
+
+    @Query("SELECT p FROM Producto p WHERE LOWER(p.nombre) LIKE LOWER(CONCAT(:prefix, '%')) ORDER BY p.nombre")
+    java.util.List<Producto> findByNombrePrefix(@Param("prefix") String prefix);
 }
