@@ -36,7 +36,7 @@ public class EmailService {
     }
 
     public void sendConfirmationEmail(String to, String token) {
-        String subject = "Confirma tu cuenta \u2014 BeWorking";
+        String subject = "BeWorking: Confirma tu cuenta";
         String confirmationLink = baseUrl + "/api/auth/confirm?token=" + token;
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
@@ -92,7 +92,7 @@ public class EmailService {
     }
 
     public void sendPasswordResetEmail(String to, String token) {
-        String subject = "Restablecer contrase\u00f1a \u2014 BeWorking";
+        String subject = "BeWorking: Restablecer contrase\u00f1a";
         String resetLink = frontendUrl + "/reset-password?token=" + token;
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
@@ -155,7 +155,7 @@ public class EmailService {
     }
 
     public void sendWelcomeEmail(String to, String token) {
-        String subject = "Bienvenido a BeWorking \u2014 Configura tu contrase\u00f1a";
+        String subject = "BeWorking: Configura tu contrase\u00f1a";
         String resetLink = frontendUrl + "/reset-password?token=" + token;
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
@@ -353,7 +353,7 @@ public class EmailService {
         String greeting = safeName.isEmpty() ? "Hola," : "Hola " + safeName + ",";
         String dashboardUrl = frontendUrl + "/login";
         String upgradeWaLink = "https://wa.me/34640369759?text=Hola,%20me%20interesa%20BeWorkingVirtual%20por%2015%E2%82%AC/mes";
-        String subject = "Bienvenido a BeWorking";
+        String subject = "BeWorking: Bienvenido";
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
@@ -439,7 +439,7 @@ public class EmailService {
 
     @Async
     public void sendBookingWelcomeEmail(String to, String name, String token) {
-        String subject = "Tu cuenta BeWorking está lista";
+        String subject = "BeWorking: Tu cuenta está lista";
         String resetLink = frontendUrl + "/reset-password?token=" + token;
         String safeName = name != null ? name : "";
         String content = "<!doctype html>"
@@ -554,7 +554,7 @@ public class EmailService {
                 + "</td></tr></table>";
         }
 
-        String subject = "Bienvenido a BeWorking — Tu suscripción está activa";
+        String subject = "BeWorking: Tu suscripción está activa";
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
@@ -837,7 +837,7 @@ public class EmailService {
                     : "")
                 + "</td></tr></table></td></tr></table></body></html>";
 
-        String subject = "🔴 Suscripción cancelada — " + (contactName != null ? contactName : (contactEmail != null ? contactEmail : "—"));
+        String subject = "BeWorking: 🔴 Suscripción cancelada — " + (contactName != null ? contactName : (contactEmail != null ? contactEmail : "—"));
         sendHtml("info@be-working.com", subject, body);
     }
 
@@ -917,7 +917,7 @@ public class EmailService {
             helper.setTo(to);
             helper.setBcc("info@be-working.com");
             helper.setReplyTo("info@be-working.com");
-            helper.setSubject(tpl.subject());
+            helper.setSubject("BeWorking: " + tpl.subject());
             helper.setText(html, true);
             mailSender.send(message);
             logger.info("Recovery email #{} sent to {}", templateNumber, to);
@@ -945,7 +945,7 @@ public class EmailService {
             helper.setTo(to);
             helper.setBcc("info@be-working.com");
             helper.setReplyTo("info@be-working.com");
-            helper.setSubject(tpl.subject());
+            helper.setSubject("BeWorking: " + tpl.subject());
             helper.setText(html, true);
             mailSender.send(message);
             logger.info("Lead nurture email #{} sent to {}", templateNumber, to);
@@ -1045,7 +1045,7 @@ public class EmailService {
             // No BCC to info@ — reengagement is a 1:1 customer touch. The cron
             // sends a single run-summary to info@ instead (sendReengagementCronSummary).
             helper.setReplyTo("info@be-working.com");
-            helper.setSubject("¿Cuánto tiempo! ¿Volvemos a vernos? — BeWorking");
+            helper.setSubject("BeWorking: ¿Cuánto tiempo! ¿Volvemos a vernos?");
             helper.setText(html, true);
             mailSender.send(message);
             logger.info("Reengagement email sent to {}", to);
@@ -1075,7 +1075,7 @@ public class EmailService {
             applyFrom(helper);
             helper.setTo("info@be-working.com");
             helper.setReplyTo("info@be-working.com");
-            helper.setSubject("Cron reengagement ejecutado — " + sent + " enviados");
+            helper.setSubject("BeWorking: Cron reengagement ejecutado — " + sent + " enviados");
             helper.setText(html, true);
             mailSender.send(message);
             logger.info("Reengagement cron summary sent to info@ (sent={})", sent);
