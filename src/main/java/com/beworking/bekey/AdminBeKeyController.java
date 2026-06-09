@@ -150,7 +150,14 @@ public class AdminBeKeyController {
     public ResponseEntity<?> announce(@RequestParam(name = "dryRun", defaultValue = "true") boolean dryRun,
                                       Authentication authentication) {
         if (!isAdmin(authentication)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        return ResponseEntity.ok(announcementService.run(dryRun));
+        BeKeyAnnouncementService.Result preview = announcementService.preview();
+        if (dryRun) {
+            return ResponseEntity.ok(preview);
+        }
+        // Fire the send in the background so a bulk run can't trip the ALB 504.
+        announcementService.sendAsync();
+        return ResponseEntity.accepted().body(Map.of(
+                "started", true, "willSend", preview.pending(), "breakdown", preview.breakdown()));
     }
 
     /** Manual-grant request body. startsAt/expiresAt may be null (now / unbounded). */

@@ -227,7 +227,7 @@ public class EmailService {
         String ctaUrl = needsSetup ? frontendUrl + "/reset-password?token=" + setupToken : frontendUrl + "/login";
         String ctaLabel = needsSetup ? "Configurar contraseña" : "Entrar a la app";
 
-        String subject = sharerName + " te ha dado acceso a BeWorking";
+        String subject = "BeWorking: " + sharerName + " te ha dado acceso a la puerta";
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Acceso BeKey</title></head>"
@@ -288,7 +288,7 @@ public class EmailService {
         String holaEs = safeName.isEmpty() ? "Hola," : "Hola " + safeName + ",";
         String holaEn = safeName.isEmpty() ? "Hi," : "Hi " + safeName + ",";
         String loginUrl = frontendUrl + "/login";
-        String subject = "Tu acceso ahora está en la app — BeKey ya está aquí 🔑 / Your access is now in the app";
+        String subject = "BeWorking: Tu acceso ahora está en la app — BeKey 🔑 / Your access is now in the app";
 
         String content = "<!doctype html>"
                 + "<html lang=\"es\"><head><meta charset=\"utf-8\">"

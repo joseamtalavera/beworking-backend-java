@@ -34,7 +34,9 @@ public class BeKeyAnnouncementService {
           FROM beworking.contact_profiles cp
          WHERE COALESCE(NULLIF(cp.email_primary, ''), NULLIF(cp.email_secondary, '')) IS NOT NULL
            AND (
-                 -- a) anyone who can open a door right now (excl. transient share guests)
+                 -- a) holds a standing/active grant right now: desk SUBS + live
+                 --    booking grants (membership/tag-based grants are retired).
+                 --    Excludes transient share guests.
                  EXISTS (
                    SELECT 1 FROM beworking.bekey_access a
                     WHERE a.contact_id = cp.id
@@ -43,9 +45,7 @@ public class BeKeyAnnouncementService {
                       AND (a.ends_at IS NULL OR a.ends_at > NOW())
                       AND a.source <> 'shared'
                  )
-                 -- b) every desk user (Usuario Mesa), free included
-              OR LOWER(COALESCE(cp.tenant_type, '')) = 'usuario mesa'
-                 -- c) anyone with a current/future room booking from today onward
+                 -- b) anyone with a current/FUTURE room booking from today onward
               OR EXISTS (
                    SELECT 1 FROM beworking.bloqueos b
                     WHERE b.id_cliente = cp.id
@@ -62,10 +62,10 @@ public class BeKeyAnnouncementService {
         this.emailService = emailService;
     }
 
-    public Result run(boolean dryRun) {
+    /** Read-only: who'd be emailed now (no send). Used by dryRun. */
+    public Result preview() {
         List<Map<String, Object>> rows = jdbc.queryForList(RECIPIENTS_SQL);
 
-        // Dedupe by email (a contact can hold several grants).
         Map<String, Map<String, Object>> byEmail = new LinkedHashMap<>();
         for (Map<String, Object> r : rows) {
             String email = (String) r.get("email");
@@ -73,33 +73,41 @@ public class BeKeyAnnouncementService {
                 byEmail.putIfAbsent(email, r);
             }
         }
+        Set<String> alreadySent = new HashSet<>(
+                jdbc.queryForList("SELECT email FROM beworking.bekey_announcement_log", String.class));
+        long pending = byEmail.values().stream()
+                .filter(r -> !alreadySent.contains((String) r.get("email")))
+                .count();
+        Map<String, Integer> breakdown = new TreeMap<>();
+        for (Map<String, Object> r : byEmail.values()) {
+            breakdown.merge(String.valueOf(r.getOrDefault("tenant_type", "—")), 1, Integer::sum);
+        }
+        LOGGER.info("BeKey announcement preview: holders={} pending={} alreadySent={}",
+                byEmail.size(), pending, alreadySent.size());
+        return new Result(true, byEmail.size(), (int) pending, alreadySent.size(), 0, 0, breakdown);
+    }
 
+    /**
+     * Sends to the not-yet-emailed audience, async so a bulk run never trips the
+     * ALB gateway timeout. Idempotent via the log; safe to call again.
+     */
+    @org.springframework.scheduling.annotation.Async
+    public void sendAsync() {
+        List<Map<String, Object>> rows = jdbc.queryForList(RECIPIENTS_SQL);
+        Map<String, Map<String, Object>> byEmail = new LinkedHashMap<>();
+        for (Map<String, Object> r : rows) {
+            String email = (String) r.get("email");
+            if (email != null && !email.isBlank()) byEmail.putIfAbsent(email, r);
+        }
         Set<String> alreadySent = new HashSet<>(
                 jdbc.queryForList("SELECT email FROM beworking.bekey_announcement_log", String.class));
 
-        List<Map<String, Object>> pending = byEmail.values().stream()
-                .filter(r -> !alreadySent.contains((String) r.get("email")))
-                .toList();
-
-        // Breakdown by tenant_type (helps eyeball the dry-run audience).
-        Map<String, Integer> breakdown = new TreeMap<>();
-        for (Map<String, Object> r : byEmail.values()) {
-            String tt = String.valueOf(r.getOrDefault("tenant_type", "—"));
-            breakdown.merge(tt, 1, Integer::sum);
-        }
-
-        if (dryRun) {
-            LOGGER.info("BeKey announcement DRY-RUN: holders={} pending={} alreadySent={}",
-                    byEmail.size(), pending.size(), alreadySent.size());
-            return new Result(true, byEmail.size(), pending.size(), alreadySent.size(), 0, 0, breakdown);
-        }
-
         int sent = 0, failed = 0;
-        for (Map<String, Object> r : pending) {
+        for (Map<String, Object> r : byEmail.values()) {
             String email = (String) r.get("email");
-            String name = (String) r.get("name");
+            if (alreadySent.contains(email)) continue;
             try {
-                emailService.sendBeKeyAnnouncement(email, name);
+                emailService.sendBeKeyAnnouncement(email, (String) r.get("name"));
                 jdbc.update("INSERT INTO beworking.bekey_announcement_log(email) VALUES (?) ON CONFLICT (email) DO NOTHING", email);
                 sent++;
             } catch (Exception e) {
@@ -107,18 +115,11 @@ public class BeKeyAnnouncementService {
                 LOGGER.warn("BeKey announcement to {} failed: {}", email, e.getMessage());
             }
         }
-
-        // One copy to the team inbox so they have the exact email on record.
         if (sent > 0) {
-            try {
-                emailService.sendBeKeyAnnouncement(INFO_EMAIL, "Equipo BeWorking");
-            } catch (Exception e) {
-                LOGGER.warn("BeKey announcement info@ copy failed: {}", e.getMessage());
-            }
+            try { emailService.sendBeKeyAnnouncement(INFO_EMAIL, "Equipo BeWorking"); }
+            catch (Exception e) { LOGGER.warn("BeKey announcement info@ copy failed: {}", e.getMessage()); }
         }
-
-        LOGGER.info("BeKey announcement SENT: sent={} failed={} (holders={})", sent, failed, byEmail.size());
-        return new Result(false, byEmail.size(), pending.size(), alreadySent.size(), sent, failed, breakdown);
+        LOGGER.info("BeKey announcement SENT (async): sent={} failed={}", sent, failed);
     }
 
     public record Result(boolean dryRun, int holders, int pending, int alreadySent,
