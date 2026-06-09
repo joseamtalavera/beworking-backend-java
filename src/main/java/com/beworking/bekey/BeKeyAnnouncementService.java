@@ -33,13 +33,22 @@ public class BeKeyAnnouncementService {
                COALESCE(cp.tenant_type, '—') AS tenant_type
           FROM beworking.contact_profiles cp
          WHERE COALESCE(NULLIF(cp.email_primary, ''), NULLIF(cp.email_secondary, '')) IS NOT NULL
-           AND EXISTS (
-                 SELECT 1 FROM beworking.bekey_access a
-                  WHERE a.contact_id = cp.id
-                    AND a.revoked_at IS NULL
-                    AND a.starts_at <= NOW()
-                    AND (a.ends_at IS NULL OR a.ends_at > NOW())
-                    AND a.source <> 'shared'   -- transient guests already got a tailored invite; don't re-spam
+           AND (
+                 -- a) anyone who can open a door right now (excl. transient share guests)
+                 EXISTS (
+                   SELECT 1 FROM beworking.bekey_access a
+                    WHERE a.contact_id = cp.id
+                      AND a.revoked_at IS NULL
+                      AND a.starts_at <= NOW()
+                      AND (a.ends_at IS NULL OR a.ends_at > NOW())
+                      AND a.source <> 'shared'
+                 )
+                 -- b) every desk user (Usuario Mesa) who has ever booked, even with
+                 --    no standing grant today (they use BeKey when they come in)
+              OR (
+                   LOWER(COALESCE(cp.tenant_type, '')) = 'usuario mesa'
+                   AND EXISTS (SELECT 1 FROM beworking.bloqueos b WHERE b.id_cliente = cp.id)
+                 )
                )
         """;
 
