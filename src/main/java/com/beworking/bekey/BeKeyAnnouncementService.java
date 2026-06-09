@@ -43,11 +43,13 @@ public class BeKeyAnnouncementService {
                       AND (a.ends_at IS NULL OR a.ends_at > NOW())
                       AND a.source <> 'shared'
                  )
-                 -- b) every desk user (Usuario Mesa) who has ever booked, even with
-                 --    no standing grant today (they use BeKey when they come in)
-              OR (
-                   LOWER(COALESCE(cp.tenant_type, '')) = 'usuario mesa'
-                   AND EXISTS (SELECT 1 FROM beworking.bloqueos b WHERE b.id_cliente = cp.id)
+                 -- b) every desk user (Usuario Mesa), free included
+              OR LOWER(COALESCE(cp.tenant_type, '')) = 'usuario mesa'
+                 -- c) anyone with a current/future room booking from today onward
+              OR EXISTS (
+                   SELECT 1 FROM beworking.bloqueos b
+                    WHERE b.id_cliente = cp.id
+                      AND (b.fin_indefinido = 1 OR b.fecha_fin >= CURRENT_DATE)
                  )
                )
         """;
