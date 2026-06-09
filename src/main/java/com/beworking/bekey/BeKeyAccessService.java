@@ -232,6 +232,19 @@ public class BeKeyAccessService {
     }
 
     /**
+     * Standing desk access for a desk member (Usuario Mesa), independent of any
+     * subscription — free desk users always hold MA1O1 (desk + street door).
+     * Keyed per contact (source=membership, sourceRef=contactId), so it's
+     * idempotent and the reconcile can add/remove it as tenant_type changes.
+     */
+    @Transactional
+    public BeKeyAccess grantForMembership(Long contactId) {
+        BeKeyMemberGroup group = memberGroupRepository.findByLabel("MA1O1")
+                .orElseThrow(() -> new IllegalStateException("BeKey member group 'MA1O1' not found"));
+        return grant(contactId, group.getId(), BeKeyAccess.Source.membership, contactId, null);
+    }
+
+    /**
      * Auto-revokes all active door grants tied to a subscription (#149).
      * Mirror of grantForSubscription: when a sub is cancelled/deactivated, every
      * active grant with source=subscription and sourceRef=subscriptionId is revoked

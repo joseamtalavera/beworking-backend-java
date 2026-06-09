@@ -249,7 +249,7 @@ public class AutomationController {
                 countQuery("""
                     SELECT COUNT(*) FROM beworking.bloqueos b
                       JOIN beworking.productos p ON p.id = b.id_producto
-                     WHERE b.estado = 'Pagado'
+                     WHERE b.estado IN ('Pagado', 'Free')
                        AND b.id_cliente IS NOT NULL
                        AND (b.fin_indefinido = 1 OR b.fecha_fin >= CURRENT_DATE)
                        AND UPPER(p.nombre) IN ('MA1A1','MA1A2','MA1A3','MA1A4','MA1A5')

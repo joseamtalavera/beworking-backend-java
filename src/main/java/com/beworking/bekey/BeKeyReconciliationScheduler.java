@@ -41,7 +41,7 @@ public class BeKeyReconciliationScheduler {
                b.fecha_ini, b.fecha_fin, b.fin_indefinido
           FROM beworking.bloqueos b
           JOIN beworking.productos p ON p.id = b.id_producto
-         WHERE b.estado = 'Pagado'
+         WHERE b.estado IN ('Pagado', 'Free')
            AND b.id_cliente IS NOT NULL
            AND (b.fin_indefinido = 1 OR b.fecha_fin >= CURRENT_DATE)
            AND UPPER(p.nombre) IN ('MA1A1','MA1A2','MA1A3','MA1A4','MA1A5')
@@ -218,9 +218,51 @@ public class BeKeyReconciliationScheduler {
             }
         }
 
+        // ── Standing desk access (membership): every Usuario Mesa, free desk
+        // included, always holds MA1O1. Skip those already covered by a desk
+        // sub grant; revoke membership when a contact stops being Usuario Mesa.
+        List<Long> deskContacts = jdbcTemplate.queryForList(
+                "SELECT id FROM beworking.contact_profiles WHERE LOWER(COALESCE(tenant_type, '')) = 'usuario mesa'",
+                Long.class);
+        Set<Long> deskSet = new HashSet<>(deskContacts);
+        Map<Long, BeKeyAccess> existingMembership = new HashMap<>();
+        for (BeKeyAccess g : accessRepository.findBySourceAndRevokedAtIsNull(BeKeyAccess.Source.membership)) {
+            if (g.getSourceRef() != null) {
+                existingMembership.put(g.getSourceRef(), g);
+            }
+        }
+        for (Long cid : deskContacts) {
+            if (existingMembership.containsKey(cid)) {
+                continue;   // already has standing membership access
+            }
+            boolean coveredBySub = accessRepository.findByContactIdAndRevokedAtIsNull(cid).stream()
+                    .anyMatch(g -> g.getSource() == BeKeyAccess.Source.subscription);
+            if (coveredBySub) {
+                continue;   // their desk sub already grants MA1O1
+            }
+            try {
+                beKeyAccessService.grantForMembership(cid);
+                granted++;
+            } catch (Exception ex) {
+                logger.warn("BeKey membership grant for contact {} failed: {}", cid, ex.getMessage());
+            }
+        }
+        for (Map.Entry<Long, BeKeyAccess> e : existingMembership.entrySet()) {
+            if (deskSet.contains(e.getKey())) {
+                continue;
+            }
+            try {
+                beKeyAccessService.revoke(e.getValue().getId(), "reconcile: no longer Usuario Mesa");
+                revoked++;
+            } catch (Exception ex) {
+                logger.warn("BeKey membership revoke of access {} (contact {}) failed: {}",
+                        e.getValue().getId(), e.getKey(), ex.getMessage());
+            }
+        }
+
         if (granted > 0 || revoked > 0) {
-            logger.info("BeKey subscription reconcile: granted={} revoked={} (desired subs={})",
-                    granted, revoked, desiredIds.size());
+            logger.info("BeKey subscription/desk reconcile: granted={} revoked={} (subs={} deskContacts={})",
+                    granted, revoked, desiredIds.size(), deskSet.size());
         }
         return new RunResult(granted, revoked);
     }

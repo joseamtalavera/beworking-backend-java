@@ -714,11 +714,12 @@ class BookingService {
         List<Bloqueo> savedBloqueos = bloqueoRepository.saveAll(bloqueosToPersist);
         savedReserva.setBloqueos(savedBloqueos);
 
-        // #150 — auto-grant BeKey door access per booked slot (bloqueo), but only for
-        // paid/confirmed bookings (never while Pendiente). Each grant's window is that
-        // slot's day in Málaga time, so the key opens only on the booked days.
-        // Best-effort: Akiles failure never breaks booking creation.
-        if ("Pagado".equalsIgnoreCase(request.getStatus()) && cliente != null && producto != null) {
+        // #150 — auto-grant BeKey door access per booked slot (bloqueo) for paid
+        // AND free bookings (free users, e.g. Usuario Virtual passes, get access
+        // for the booked window only — never while Pendiente). Each grant's window
+        // is that slot's day in Málaga time. Best-effort: never breaks booking.
+        if (("Pagado".equalsIgnoreCase(request.getStatus()) || "Free".equalsIgnoreCase(request.getStatus()))
+                && cliente != null && producto != null) {
             ZoneId zone = ZoneId.of("Europe/Madrid");
             for (Bloqueo b : savedBloqueos) {
                 try {
