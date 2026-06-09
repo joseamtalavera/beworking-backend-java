@@ -1238,6 +1238,7 @@ public class InvoiceService {
                 try {
                     Map<String, Object> refundBody = new HashMap<>();
                     refundBody.put("payment_intent_id", pcStripePI);
+                    refundBody.put("account", origCuenta);
                     refundBody.put("amount_cents", grossCredit
                         .multiply(BigDecimal.valueOf(100))
                         .setScale(0, RoundingMode.HALF_UP)
@@ -1393,6 +1394,7 @@ public class InvoiceService {
                 try {
                     Map<String, Object> refundBody = new HashMap<>();
                     refundBody.put("payment_intent_id", stripePaymentIntentId);
+                    refundBody.put("account", origCuenta);
                     @SuppressWarnings("unchecked")
                     Map<String, Object> refundResult = http.post()
                         .uri(paymentsBaseUrl + "/api/refunds")
@@ -1412,6 +1414,9 @@ public class InvoiceService {
                 try {
                     Map<String, Object> voidBody = new HashMap<>();
                     voidBody.put("invoice_id", stripeInvoiceId);
+                    // Pass the account so a GT invoice voids on the GT Stripe key.
+                    // stripe-service defaults to PT when null/blank.
+                    voidBody.put("account", origCuenta);
                     @SuppressWarnings("unchecked")
                     Map<String, Object> voidResult = http.post()
                         .uri(paymentsBaseUrl + "/api/void-invoice")
