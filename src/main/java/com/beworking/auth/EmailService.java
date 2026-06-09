@@ -278,6 +278,71 @@ public class EmailService {
     }
 
     /**
+     * One-time BeKey launch announcement to current access holders (#255).
+     * Bilingual (ES + EN) in one message since contacts carry no language
+     * preference. Reply-to info@ so replies land in the team inbox. Synchronous
+     * so the bulk sender can count successes/failures and skip on failure.
+     */
+    public void sendBeKeyAnnouncement(String to, String name) {
+        String safeName = (name != null && !name.isBlank()) ? name.trim() : "";
+        String holaEs = safeName.isEmpty() ? "Hola," : "Hola " + safeName + ",";
+        String holaEn = safeName.isEmpty() ? "Hi," : "Hi " + safeName + ",";
+        String loginUrl = frontendUrl + "/login";
+        String subject = "Tu acceso ahora está en la app — BeKey ya está aquí 🔑 / Your access is now in the app";
+
+        String content = "<!doctype html>"
+                + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>BeKey</title></head>"
+                + "<body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background:#f7f7f8;\">"
+                + "<tr><td align=\"center\" style=\"padding:24px 0;\">"
+                + "<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:600px;max-width:600px;margin:0 auto;\">"
+                + "<tr><td style=\"background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:40px 32px 32px;color:#ffffff;border-radius:14px 14px 0 0;\">"
+                + "<p style=\"margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;\">BEWORKING · BEKEY</p>"
+                + "<h1 style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;line-height:1.2;color:#ffffff;\">Abre las puertas desde la app</h1>"
+                + "</td></tr>"
+                + "<tr><td style=\"background:#ffffff;padding:32px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">"
+                + "<p style=\"margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#333;\">" + holaEs + "</p>"
+                + "<p style=\"margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Tu cuenta de BeWorking estrena novedades — y la principal es <strong>BeKey</strong>: ahora <strong>abres las puertas desde la app</strong>, sin llaves ni tarjetas.</p>"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>🔑 Abre con el móvil</strong> — entra en la app, ve a <strong>BeKey</strong> y desliza para abrir. Tu <strong>PIN</strong> funciona como alternativa en el teclado.</p>"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>👥 Comparte tu acceso</strong> — da acceso temporal a un invitado; abrirá la puerta desde su propio móvil.</p>"
+                + "<p style=\"margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>✨ Todo en un sitio</strong> — reservas, facturas, domicilio fiscal y acceso, en tu panel renovado.</p>"
+                + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto 8px;\">"
+                + "<tr><td align=\"center\" style=\"border-radius:8px;background:#009624;\">"
+                + "<a href=\"" + loginUrl + "\" style=\"display:inline-block;background:#009624;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;padding:14px 36px;border-radius:8px;\">Entrar a la app</a>"
+                + "</td></tr></table>"
+                + "<hr style=\"border:0;border-top:1px solid #eee;margin:28px 0;\">"
+                + "<p style=\"margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#333;\">" + holaEn + "</p>"
+                + "<p style=\"margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Your BeWorking account has a big new feature — <strong>BeKey</strong>: you now <strong>open the doors from the app</strong>, no keys or cards.</p>"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>🔑 Open from your phone</strong> — open the app, go to <strong>BeKey</strong> and slide to open. Your <strong>PIN</strong> works as a keypad fallback.</p>"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>👥 Share your access</strong> — give a guest temporary access; they open the door from their own phone.</p>"
+                + "<p style=\"margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>✨ All in one place</strong> — bookings, invoices, business address and access, in your refreshed dashboard.</p>"
+                + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto;\">"
+                + "<tr><td align=\"center\" style=\"border-radius:8px;background:#009624;\">"
+                + "<a href=\"" + loginUrl + "\" style=\"display:inline-block;background:#009624;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;padding:14px 36px;border-radius:8px;\">Go to the app</a>"
+                + "</td></tr></table>"
+                + "<p style=\"margin:28px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#888;text-align:center;\">"
+                + "¿Dudas? / Questions? WhatsApp: <a href=\"https://wa.me/34640369759\" style=\"color:#009624;text-decoration:none;font-weight:600;\">+34 640 369 759</a></p>"
+                + "<div style=\"margin:28px -32px -32px;background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee;border-radius:0 0 14px 14px;\">"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#aaa;\">© BeWorking</p>"
+                + "</div>"
+                + "</td></tr></table></td></tr></table></body></html>";
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
+            helper.setTo(to);
+            helper.setReplyTo("info@be-working.com");
+            helper.setSubject(subject);
+            helper.setText(content, true);
+            mailSender.send(message);
+        } catch (Exception e) {
+            logger.error("Failed to send BeKey announcement to {}: {}", to, e.getMessage());
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
      * Sent right after a free user confirms their email. Explains the value of
      * the platform and nudges them toward the BeWorkingVirtual upgrade. BCCs
      * info@ so the team can pick up replies.

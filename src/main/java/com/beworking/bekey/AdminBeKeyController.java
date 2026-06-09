@@ -42,19 +42,22 @@ public class AdminBeKeyController {
     private final BeKeyEventRepository eventRepository;
     private final BeKeyMemberGroupRepository memberGroupRepository;
     private final ContactProfileRepository contactRepository;
+    private final BeKeyAnnouncementService announcementService;
 
     public AdminBeKeyController(BeKeyAccessService accessService,
                                 BeKeyAccessRepository accessRepository,
                                 BeKeyDeviceRepository deviceRepository,
                                 BeKeyEventRepository eventRepository,
                                 BeKeyMemberGroupRepository memberGroupRepository,
-                                ContactProfileRepository contactRepository) {
+                                ContactProfileRepository contactRepository,
+                                BeKeyAnnouncementService announcementService) {
         this.accessService = accessService;
         this.accessRepository = accessRepository;
         this.deviceRepository = deviceRepository;
         this.eventRepository = eventRepository;
         this.memberGroupRepository = memberGroupRepository;
         this.contactRepository = contactRepository;
+        this.announcementService = announcementService;
     }
 
     // Resolve each grant's contact name in one batch query so the admin list can
@@ -136,6 +139,18 @@ public class AdminBeKeyController {
     public ResponseEntity<List<BeKeyEvent>> listEvents(Authentication authentication) {
         if (!isAdmin(authentication)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         return ResponseEntity.ok(eventRepository.findAll(Sort.by(Sort.Direction.DESC, "occurredAt")));
+    }
+
+    /**
+     * One-shot BeKey launch announcement (#255). Defaults to dryRun=true: nothing
+     * is sent, you just get the recipient count + breakdown. Pass dryRun=false to
+     * actually send (idempotent — each holder is emailed at most once, ever).
+     */
+    @PostMapping("/announcement")
+    public ResponseEntity<?> announce(@RequestParam(name = "dryRun", defaultValue = "true") boolean dryRun,
+                                      Authentication authentication) {
+        if (!isAdmin(authentication)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        return ResponseEntity.ok(announcementService.run(dryRun));
     }
 
     /** Manual-grant request body. startsAt/expiresAt may be null (now / unbounded). */
