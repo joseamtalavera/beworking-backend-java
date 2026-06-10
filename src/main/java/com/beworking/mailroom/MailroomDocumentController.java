@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
@@ -35,11 +36,43 @@ public class MailroomDocumentController {
     private final MailroomDocumentService service;
     private final UserRepository userRepository;
     private final ContactProfileService contactService;
+    private final MailroomAnnouncementService announcementService;
 
-    public MailroomDocumentController(MailroomDocumentService service, UserRepository userRepository, ContactProfileService contactService) {
+    public MailroomDocumentController(MailroomDocumentService service, UserRepository userRepository,
+                                      ContactProfileService contactService,
+                                      MailroomAnnouncementService announcementService) {
         this.service = service;
         this.userRepository = userRepository;
         this.contactService = contactService;
+        this.announcementService = announcementService;
+    }
+
+    /**
+     * One-time Business Address / Mailbox announcement to virtual-office +
+     * coworking members. Admin-only. {@code dryRun=true} (default) returns who
+     * WOULD be emailed (counts + category breakdown), no send; {@code dryRun=false}
+     * kicks off the idempotent async send and returns the pending count.
+     */
+    @PostMapping("/announcement")
+    public ResponseEntity<?> sendAnnouncement(
+            @RequestParam(value = "dryRun", defaultValue = "true") boolean dryRun,
+            Authentication authentication) {
+        User user = resolveUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (user.getRole() != User.Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        MailroomAnnouncementService.Result preview = announcementService.preview();
+        if (dryRun) {
+            return ResponseEntity.ok(preview);
+        }
+        announcementService.sendAsync();
+        return ResponseEntity.accepted().body(Map.of(
+                "started", true,
+                "willSend", preview.pending(),
+                "breakdown", preview.breakdown()));
     }
 
     @GetMapping

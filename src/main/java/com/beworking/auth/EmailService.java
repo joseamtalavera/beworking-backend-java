@@ -343,6 +343,74 @@ public class EmailService {
     }
 
     /**
+     * One-time Business Address / Mailbox announcement to virtual-office +
+     * coworking members: mail scanning, QR package pickup, and the new tracking
+     * flow. Bilingual ES + EN in one message (contacts carry no language pref).
+     * Reply-to info@ so replies land in the team inbox. Synchronous so the bulk
+     * sender can count successes/failures and skip on failure.
+     */
+    public void sendMailroomAnnouncement(String to, String name) {
+        String safeName = (name != null && !name.isBlank()) ? name.trim() : "";
+        String holaEs = safeName.isEmpty() ? "Hola," : "Hola " + safeName + ",";
+        String holaEn = safeName.isEmpty() ? "Hi," : "Hi " + safeName + ",";
+        String loginUrl = frontendUrl + "/login";
+        String subject = "BeWorking: 📬 Tu correo y paquetes, ahora en la app — escaneo + QR / Your mail & packages, now in the app";
+
+        String content = "<!doctype html>"
+                + "<html lang=\"es\"><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Business Address</title></head>"
+                + "<body style=\"margin:0;padding:0;background:#f7f7f8;-webkit-font-smoothing:antialiased;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background:#f7f7f8;\">"
+                + "<tr><td align=\"center\" style=\"padding:24px 0;\">"
+                + "<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"width:600px;max-width:600px;margin:0 auto;\">"
+                + "<tr><td style=\"background:linear-gradient(135deg,#009624 0%,#00c853 100%);padding:40px 32px 32px;color:#ffffff;border-radius:14px 14px 0 0;\">"
+                + "<p style=\"margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.85;\">BEWORKING · BUZÓN</p>"
+                + "<h1 style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;line-height:1.2;color:#ffffff;\">Tu correo y paquetes, en la app</h1>"
+                + "</td></tr>"
+                + "<tr><td style=\"background:#ffffff;padding:32px;border-radius:0 0 14px 14px;border:1px solid #eee;border-top:0;\">"
+                // ---- Español ----
+                + "<p style=\"margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#333;\">" + holaEs + "</p>"
+                + "<p style=\"margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">Hemos mejorado tu <strong>Oficina Virtual</strong>. Esto es lo nuevo en la pestaña <strong>Business Address → Buzón</strong>:</p>"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>📬 Escaneo de correo</strong> — tu correo entrante se escanea y aparece en tu Buzón. Ábrelo y descárgalo online desde donde estés, sin pasar por la oficina.</p>"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>📦 Paquetes con QR</strong> — cuando llega un paquete recibes un <strong>código de recogida y un QR</strong> en la app. Solo enséñalo en recepción para recogerlo.</p>"
+                + "<p style=\"margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>🔔 Seguimiento en tiempo real</strong> — cada envío pasa por sus estados (Nuevo → Notificado → Visto → Recogido) y te avisamos cuando algo llega.</p>"
+                + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto 8px;\">"
+                + "<tr><td align=\"center\" style=\"border-radius:8px;background:#009624;\">"
+                + "<a href=\"" + loginUrl + "\" style=\"display:inline-block;background:#009624;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;padding:14px 36px;border-radius:8px;\">Ver mi buzón</a>"
+                + "</td></tr></table>"
+                + "<hr style=\"border:0;border-top:1px solid #eee;margin:28px 0;\">"
+                // ---- English ----
+                + "<p style=\"margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#333;\">" + holaEn + "</p>"
+                + "<p style=\"margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#666;line-height:1.6;\">We've upgraded your <strong>Virtual Office</strong>. Here's what's new in the <strong>Business Address → Mailbox</strong> tab:</p>"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>📬 Mail scanning</strong> — your incoming mail is scanned and shows up in your Mailbox. Open and download it online from anywhere, no need to come in.</p>"
+                + "<p style=\"margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>📦 Packages via QR</strong> — when a parcel arrives you get a <strong>pickup code and QR</strong> in the app. Just show it at reception to collect it.</p>"
+                + "<p style=\"margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;\"><strong>🔔 Real-time tracking</strong> — every item moves through its status (New → Notified → Viewed → Picked up), and we notify you when something arrives.</p>"
+                + "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"margin:0 auto;\">"
+                + "<tr><td align=\"center\" style=\"border-radius:8px;background:#009624;\">"
+                + "<a href=\"" + loginUrl + "\" style=\"display:inline-block;background:#009624;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:16px;padding:14px 36px;border-radius:8px;\">View my mailbox</a>"
+                + "</td></tr></table>"
+                + "<p style=\"margin:28px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#888;text-align:center;\">"
+                + "¿Dudas? / Questions? <a href=\"mailto:info@be-working.com\" style=\"color:#009624;text-decoration:none;font-weight:600;\">info@be-working.com</a> · WhatsApp: <a href=\"https://wa.me/34640369759\" style=\"color:#009624;text-decoration:none;font-weight:600;\">+34 640 369 759</a></p>"
+                + "<div style=\"margin:28px -32px -32px;background:#f9f9f9;padding:16px 32px;text-align:center;border-top:1px solid #eee;border-radius:0 0 14px 14px;\">"
+                + "<p style=\"margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#aaa;\">© BeWorking</p>"
+                + "</div>"
+                + "</td></tr></table></td></tr></table></body></html>";
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
+            helper.setTo(to);
+            helper.setReplyTo("info@be-working.com");
+            helper.setSubject(subject);
+            helper.setText(content, true);
+            mailSender.send(message);
+        } catch (Exception e) {
+            logger.error("Failed to send mailroom announcement to {}: {}", to, e.getMessage());
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
      * Sent right after a free user confirms their email. Explains the value of
      * the platform and nudges them toward the BeWorkingVirtual upgrade. BCCs
      * info@ so the team can pick up replies.
