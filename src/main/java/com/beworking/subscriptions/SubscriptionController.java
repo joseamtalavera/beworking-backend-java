@@ -911,7 +911,10 @@ public class SubscriptionController {
     }
 
     @PostMapping("/{id}/generate-invoice")
-    public ResponseEntity<?> generateInvoice(@PathVariable Integer id, @RequestParam String month) {
+    public ResponseEntity<?> generateInvoice(Authentication authentication, @PathVariable Integer id, @RequestParam String month) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         Optional<Subscription> opt = subscriptionService.findById(id);
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
         Subscription sub = opt.get();
@@ -1093,7 +1096,10 @@ public class SubscriptionController {
     }
 
     @PostMapping("/{id}/upgrade")
-    public ResponseEntity<?> upgradePlan(@PathVariable Integer id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> upgradePlan(Authentication authentication, @PathVariable Integer id, @RequestBody Map<String, Object> body) {
+        if (!isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         Optional<Subscription> opt = subscriptionService.findById(id);
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
         Subscription sub = opt.get();
