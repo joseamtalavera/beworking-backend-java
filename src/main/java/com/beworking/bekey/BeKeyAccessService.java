@@ -67,6 +67,18 @@ public class BeKeyAccessService {
         return accessRepository.findByContactIdAndRevokedAtIsNull(contactId);
     }
 
+    /**
+     * True iff the grant's time window covers "now": already started and not yet
+     * ended. A grant can be non-revoked but out of its window (e.g. an expired
+     * share whose revoke job hasn't run yet) — those must NOT grant access.
+     */
+    private boolean isWithinWindow(BeKeyAccess grant) {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (grant.getEndsAt() != null && !grant.getEndsAt().isAfter(now)) return false;
+        if (grant.getStartsAt() != null && grant.getStartsAt().isAfter(now)) return false;
+        return true;
+    }
+
     /** All currently-active (non-revoked) grants on a member group. */
     @Transactional(readOnly = true)
     public List<BeKeyAccess> listForMemberGroup(Long memberGroupId) {
@@ -82,6 +94,7 @@ public class BeKeyAccessService {
     public List<BeKeyDevice> listAccessibleDevices(Long contactId) {
         Map<Long, BeKeyDevice> byId = new LinkedHashMap<>();   // dedup, preserve order
         for (BeKeyAccess grant : accessRepository.findByContactIdAndRevokedAtIsNull(contactId)) {
+            if (!isWithinWindow(grant)) continue;   // skip not-yet-started / already-expired grants
             BeKeyMemberGroup group = memberGroupRepository.findById(grant.getMemberGroupId()).orElse(null);
             if (group == null) continue;
             Map<String, Object> akilesGroup = akiles.getMemberGroup(group.getAkilesGroupId());

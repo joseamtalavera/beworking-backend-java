@@ -9,6 +9,7 @@ import com.beworking.contacts.ContactProfileRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -263,6 +264,38 @@ public class BeKeyShareService {
             LOGGER.info("Cascade-revoked {} BeKey shares for sharer {} ({})", n, sharerContactId, reason);
         }
         return n;
+    }
+
+    /**
+     * Sweep expired shares every 10 minutes: revoke the underlying grant (which
+     * removes the Akiles association) and mark the share revoked, so it drops off
+     * the sharer's list and the guest's access is cleaned up. Door-open authz
+     * already refuses out-of-window grants, so this is for state hygiene rather
+     * than security — but it keeps the DB and Akiles in sync.
+     */
+    @Scheduled(cron = "0 5,15,25,35,45,55 * * * *")
+    @Transactional
+    public void sweepExpiredShares() {
+        if (!integrationEnabled) {
+            return;
+        }
+        List<BeKeyShare> expired = shareRepository.findByRevokedAtIsNullAndEndsAtBefore(OffsetDateTime.now());
+        int n = 0;
+        for (BeKeyShare s : expired) {
+            try {
+                if (s.getAccessId() != null) {
+                    accessService.revoke(s.getAccessId(), "share window ended");
+                }
+                s.setRevokedAt(OffsetDateTime.now());
+                shareRepository.save(s);
+                n++;
+            } catch (Exception e) {
+                LOGGER.warn("sweep of expired share {} failed: {}", s.getId(), e.getMessage());
+            }
+        }
+        if (n > 0) {
+            LOGGER.info("BeKey expiry sweep: revoked {} expired share(s)", n);
+        }
     }
 
     /** Finds the guest contact by email, or creates a lightweight 'Invitado' one. */
