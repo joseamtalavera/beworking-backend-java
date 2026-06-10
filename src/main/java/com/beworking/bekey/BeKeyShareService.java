@@ -97,17 +97,23 @@ public class BeKeyShareService {
         final boolean sendEmail = !"whatsapp".equals(ch);
         final boolean wantsWhatsapp = "whatsapp".equals(ch) || "both".equals(ch);
 
-        // 1. The sharer must hold real (non-shared) access — share the group they
-        //    hold. A guest on a source=shared grant has none here, so can't re-share.
+        // 1. The sharer must hold real (non-shared) access that is active RIGHT NOW
+        //    — share the group they hold. A guest on a source=shared grant has none
+        //    here, so can't re-share. Among several active grants (e.g. a standing
+        //    sub plus a time-boxed booking) pick the one with the most generous
+        //    expiry (unbounded wins) so the share window can be as long as allowed.
+        OffsetDateTime now = OffsetDateTime.now();
         BeKeyAccess base = accessRepository.findByContactIdAndRevokedAtIsNull(sharerContactId).stream()
                 .filter(g -> g.getSource() != BeKeyAccess.Source.shared)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("You have no access to share"));
+                .filter(g -> g.getStartsAt() == null || !g.getStartsAt().isAfter(now))   // already started
+                .filter(g -> g.getEndsAt() == null || g.getEndsAt().isAfter(now))         // not yet ended
+                .max(java.util.Comparator.comparing(BeKeyAccess::getEndsAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))  // unbounded last = greatest
+                .orElseThrow(() -> new IllegalStateException("You have no active access to share"));
         Long memberGroupId = base.getMemberGroupId();
 
         // 2. Validate the window (required, future). The end is clamped to the
         //    sharer's own grant expiry — a share can't outlive its borrowed access.
-        OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = (startsAt != null) ? startsAt : now;
         if (endsAt == null) {
             throw new IllegalArgumentException("End time is required");
