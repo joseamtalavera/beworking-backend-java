@@ -85,6 +85,11 @@ public class UserBeKeyController {
             return ResponseEntity.ok(Map.of("opened", true, "deviceId", device.getId(), "name", device.getName()));
         } catch (SecurityException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "No access to this door"));
+        } catch (BeKeyHardwareOfflineException e) {
+            // Authorized, but the door's hardware isn't answering — transient.
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "hardware_offline",
+                            "message", "The door isn't responding right now. Try again in a moment or use your PIN."));
         }
     }
 
@@ -102,9 +107,15 @@ public class UserBeKeyController {
         Long contactId = resolveContactId(authentication);
         if (contactId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         try {
-            BeKeyShare share = shareService.createShare(
-                    contactId, req.guestName(), req.guestEmail(), req.startsAt(), req.endsAt());
-            return ResponseEntity.status(HttpStatus.CREATED).body(share);
+            BeKeyShareService.ShareResult result = shareService.createShare(
+                    contactId, req.guestName(), req.guestEmail(), req.startsAt(), req.endsAt(),
+                    req.channel(), req.guestPhone());
+            Map<String, Object> body = new HashMap<>();
+            body.put("share", result.share());
+            body.put("inviteUrl", result.inviteUrl());
+            body.put("whatsappText", result.whatsappText());
+            body.put("whatsappUrl", result.whatsappUrl());
+            return ResponseEntity.status(HttpStatus.CREATED).body(body);
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
         }
@@ -125,6 +136,11 @@ public class UserBeKeyController {
         }
     }
 
-    /** Create-share request body. startsAt null = now; endsAt required. */
-    public record ShareRequest(String guestName, String guestEmail, OffsetDateTime startsAt, OffsetDateTime endsAt) {}
+    /**
+     * Create-share request body. startsAt null = now; endsAt required.
+     * channel: "email" (default) | "whatsapp" | "both"; guestPhone optional
+     * (used to target the wa.me link at the guest's number).
+     */
+    public record ShareRequest(String guestName, String guestEmail, OffsetDateTime startsAt,
+                               OffsetDateTime endsAt, String channel, String guestPhone) {}
 }

@@ -24,16 +24,16 @@ import java.util.Optional;
  * guest's contact, so the existing door-open authz enforces it — no new open
  * path, no magic link. The guest opens the door from inside the app.
  *
- * Rules: window required and capped at {@link #MAX_HOURS}h; at most
- * {@link #MAX_ACTIVE_SHARES} active shares per member; only a member who holds
- * real (non-shared) access may share, and they share the group they hold.
+ * Rules: the sharer picks any window they like; its upper bound is their own
+ * grant's expiry (a share can't outlive the access it borrows from). No cap on
+ * how many people a member shares with. Only a member who holds real
+ * (non-shared) access may share, and they share the group they hold — a guest
+ * on a {@code source=shared} grant therefore cannot re-share.
  */
 @Service
 public class BeKeyShareService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BeKeyShareService.class);
-    private static final int MAX_ACTIVE_SHARES = 3;
-    private static final long MAX_HOURS = 24;
 
     private final BeKeyShareRepository shareRepository;
     private final BeKeyAccessService accessService;
@@ -43,6 +43,7 @@ public class BeKeyShareService {
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final boolean integrationEnabled;
+    private final String frontendUrl;
 
     public BeKeyShareService(BeKeyShareRepository shareRepository,
                              BeKeyAccessService accessService,
@@ -51,7 +52,8 @@ public class BeKeyShareService {
                              RegisterService registerService,
                              UserRepository userRepository,
                              EmailService emailService,
-                             @Value("${akiles.integration.enabled:false}") boolean integrationEnabled) {
+                             @Value("${akiles.integration.enabled:false}") boolean integrationEnabled,
+                             @Value("${app.frontend-url}") String frontendUrl) {
         this.shareRepository = shareRepository;
         this.accessService = accessService;
         this.accessRepository = accessRepository;
@@ -60,7 +62,16 @@ public class BeKeyShareService {
         this.userRepository = userRepository;
         this.emailService = emailService;
         this.integrationEnabled = integrationEnabled;
+        this.frontendUrl = frontendUrl;
     }
+
+    /**
+     * What a freshly-created share hands back: the share row plus the materials
+     * the sharer needs to deliver the invite over WhatsApp themselves — the
+     * guest's entry URL and a ready-to-send bilingual message. {@code whatsappUrl}
+     * is a wa.me deep link (targeted at the guest's number when provided).
+     */
+    public record ShareResult(BeKeyShare share, String inviteUrl, String whatsappText, String whatsappUrl) {}
 
     /** Active (non-revoked) shares a member created, newest first. */
     @Transactional(readOnly = true)
@@ -69,8 +80,9 @@ public class BeKeyShareService {
     }
 
     @Transactional
-    public BeKeyShare createShare(Long sharerContactId, String guestName, String guestEmail,
-                                  OffsetDateTime startsAt, OffsetDateTime endsAt) {
+    public ShareResult createShare(Long sharerContactId, String guestName, String guestEmail,
+                                   OffsetDateTime startsAt, OffsetDateTime endsAt,
+                                   String channel, String guestPhone) {
         if (!integrationEnabled) {
             throw new IllegalStateException("BeKey integration disabled");
         }
@@ -78,8 +90,22 @@ public class BeKeyShareService {
             throw new IllegalArgumentException("Guest email is required");
         }
         final String email = guestEmail.trim().toLowerCase();
+        // "email" (default) | "whatsapp" | "both". WhatsApp delivery is handled by
+        // the sharer (we hand back a wa.me link); email is sent server-side.
+        final String ch = (channel == null || channel.isBlank()) ? "email" : channel.trim().toLowerCase();
+        final boolean sendEmail = !"whatsapp".equals(ch);
+        final boolean wantsWhatsapp = "whatsapp".equals(ch) || "both".equals(ch);
 
-        // 1. Validate the window (required, future, <= MAX_HOURS).
+        // 1. The sharer must hold real (non-shared) access — share the group they
+        //    hold. A guest on a source=shared grant has none here, so can't re-share.
+        BeKeyAccess base = accessRepository.findByContactIdAndRevokedAtIsNull(sharerContactId).stream()
+                .filter(g -> g.getSource() != BeKeyAccess.Source.shared)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("You have no access to share"));
+        Long memberGroupId = base.getMemberGroupId();
+
+        // 2. Validate the window (required, future). The end is clamped to the
+        //    sharer's own grant expiry — a share can't outlive its borrowed access.
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = (startsAt != null) ? startsAt : now;
         if (endsAt == null) {
@@ -91,37 +117,29 @@ public class BeKeyShareService {
         if (endsAt.isBefore(now)) {
             throw new IllegalArgumentException("End time is in the past");
         }
-        if (Duration.between(start, endsAt).toHours() > MAX_HOURS) {
-            throw new IllegalArgumentException("A share can last at most " + MAX_HOURS + " hours");
+        OffsetDateTime end = endsAt;
+        if (base.getEndsAt() != null && end.isAfter(base.getEndsAt())) {
+            end = base.getEndsAt();   // clamp to the sharer's own access expiry
+        }
+        if (!end.isAfter(start)) {
+            throw new IllegalStateException("Your own access ends before that window starts");
         }
 
-        // 2. The sharer must hold real (non-shared) access — share the group they hold.
-        BeKeyAccess base = accessRepository.findByContactIdAndRevokedAtIsNull(sharerContactId).stream()
-                .filter(g -> g.getSource() != BeKeyAccess.Source.shared)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("You have no access to share"));
-        Long memberGroupId = base.getMemberGroupId();
-
-        // 3. Per-member cap on active shares.
-        if (shareRepository.countBySharerContactIdAndRevokedAtIsNull(sharerContactId) >= MAX_ACTIVE_SHARES) {
-            throw new IllegalStateException("You already have " + MAX_ACTIVE_SHARES + " active shares — revoke one first");
-        }
-
-        // 4. Resolve sharer (for the email + self-share guard) and the guest contact.
+        // 3. Resolve sharer (for the email + self-share guard) and the guest contact.
         ContactProfile sharer = contactProfileRepository.findById(sharerContactId).orElse(null);
         if (sharer != null && email.equalsIgnoreCase(sharer.getEmailPrimary())) {
             throw new IllegalArgumentException("You can't share access with yourself");
         }
         Long guestContactId = resolveOrCreateGuestContact(email, guestName);
 
-        // 5. Free guest account; only NEW accounts get a password-setup link.
+        // 4. Free guest account; only NEW accounts get a password-setup link.
         boolean newUser = userRepository.findByEmail(email).isEmpty();
         User guestUser = registerService.createUserForContactSilent(email, guestName, guestContactId);
         String setupToken = (newUser && guestUser != null)
                 ? registerService.generatePasswordSetupToken(guestUser.getId(), Duration.ofDays(7))
                 : null;
 
-        // 6. Persist the share, spawn the grant, link them.
+        // 5. Persist the share, spawn the grant, link them.
         BeKeyShare share = new BeKeyShare();
         share.setSharerContactId(sharerContactId);
         share.setGuestContactId(guestContactId);
@@ -129,28 +147,78 @@ public class BeKeyShareService {
         share.setGuestName(guestName);
         share.setMemberGroupId(memberGroupId);
         share.setStartsAt(start);
-        share.setEndsAt(endsAt);
+        share.setEndsAt(end);
         share = shareRepository.save(share);
 
         BeKeyAccess access = accessService.grant(
-                guestContactId, memberGroupId, BeKeyAccess.Source.shared, share.getId(), start, endsAt);
+                guestContactId, memberGroupId, BeKeyAccess.Source.shared, share.getId(), start, end);
         if (access == null) {
             throw new IllegalStateException("Could not create the access grant");
         }
         share.setAccessId(access.getId());
         share = shareRepository.save(share);
 
-        // 7. Invite email (best-effort — the grant already exists).
-        try {
-            String sharerName = (sharer != null && sharer.getName() != null) ? sharer.getName() : "Un miembro de BeWorking";
-            emailService.sendBeKeyShareInvite(email, guestName, sharerName, start, endsAt, setupToken);
-        } catch (Exception e) {
-            LOGGER.warn("BeKey share invite email failed for {}: {}", email, e.getMessage());
+        String sharerName = (sharer != null && sharer.getName() != null) ? sharer.getName() : "Un miembro de BeWorking";
+
+        // 6. Deliver the invite. Email is sent server-side unless this is a
+        //    WhatsApp-only share; the guest's entry link is the same either way:
+        //    a password-setup URL for new accounts, login for existing ones.
+        if (sendEmail) {
+            try {
+                emailService.sendBeKeyShareInvite(email, guestName, sharerName, start, end, setupToken);
+            } catch (Exception e) {
+                LOGGER.warn("BeKey share invite email failed for {}: {}", email, e.getMessage());
+            }
         }
 
-        LOGGER.info("BeKey share {} created: sharer {} -> guest {} on group {} ({} .. {})",
-                share.getId(), sharerContactId, guestContactId, memberGroupId, start, endsAt);
-        return share;
+        // 7. WhatsApp materials: the sharer sends these from their own phone.
+        boolean needsSetup = setupToken != null && !setupToken.isBlank();
+        String inviteUrl = needsSetup
+                ? frontendUrl + "/reset-password?token=" + setupToken
+                : frontendUrl + "/login";
+        String whatsappText = null;
+        String whatsappUrl = null;
+        if (wantsWhatsapp) {
+            whatsappText = buildWhatsappText(sharerName, guestName, start, end, inviteUrl, needsSetup);
+            whatsappUrl = buildWhatsappUrl(guestPhone, whatsappText);
+        }
+
+        LOGGER.info("BeKey share {} created: sharer {} -> guest {} on group {} ({} .. {}) via {}",
+                share.getId(), sharerContactId, guestContactId, memberGroupId, start, end, ch);
+        return new ShareResult(share, inviteUrl, whatsappText, whatsappUrl);
+    }
+
+    /** Ready-to-send bilingual WhatsApp invite: window + entry link + what to do. */
+    private String buildWhatsappText(String sharerName, String guestName,
+                                     OffsetDateTime start, OffsetDateTime end,
+                                     String inviteUrl, boolean needsSetup) {
+        java.util.Locale es = new java.util.Locale("es", "ES");
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", es);
+        java.time.ZoneId madrid = java.time.ZoneId.of("Europe/Madrid");
+        String startStr = start.atZoneSameInstant(madrid).format(fmt);
+        String endStr = end.atZoneSameInstant(madrid).format(fmt);
+        String hi = (guestName != null && !guestName.isBlank()) ? "Hola " + guestName.trim() + "," : "Hola,";
+        String action = needsSetup
+                ? "Pulsa el botón para crear tu contraseña (cuenta gratuita) y abrir la puerta desde la app."
+                : "Entra en la app con tu cuenta para abrir la puerta.";
+        String actionEn = needsSetup
+                ? "Tap the button to set your password (free account) and open the door from the app."
+                : "Log in to the app to open the door.";
+        return hi + " " + sharerName + " te ha dado acceso a las puertas de BeWorking.\n"
+                + "Válido del " + startStr + " al " + endStr + ".\n"
+                + action + "\n" + inviteUrl + "\n\n"
+                + "— — —\n"
+                + sharerName + " gave you BeWorking door access (" + startStr + " – " + endStr + "). "
+                + actionEn;
+    }
+
+    /** wa.me deep link; targets the guest's number when given, else opens the picker. */
+    private String buildWhatsappUrl(String guestPhone, String text) {
+        String encoded = java.net.URLEncoder.encode(text, java.nio.charset.StandardCharsets.UTF_8);
+        String digits = (guestPhone == null) ? "" : guestPhone.replaceAll("[^0-9]", "");
+        return digits.isEmpty()
+                ? "https://wa.me/?text=" + encoded
+                : "https://wa.me/" + digits + "?text=" + encoded;
     }
 
     /** Revokes a share the requester owns (and its underlying grant). */

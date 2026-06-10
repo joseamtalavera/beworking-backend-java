@@ -7,6 +7,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -109,16 +110,31 @@ public class AkilesClient {
                 .body(Map.class);
     }
 
-    /** POST /gadgets/{gadgetId}/actions/{actionId} — actuates a gadget (opens a door). Body is empty. */
+    /**
+     * POST /gadgets/{gadgetId}/actions/{actionId} — actuates a gadget (opens a door). Body is empty.
+     * When the physical hardware is unreachable Akiles answers with an error whose
+     * type/message mentions "offline" — we translate that into a typed
+     * {@link BeKeyHardwareOfflineException} so the door-open endpoint can return a
+     * friendly "device offline" response instead of a generic 500.
+     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> doGadgetAction(String gadgetId, String actionId) {
-        return http.post()
-                .uri("/gadgets/{gadgetId}/actions/{actionId}", gadgetId, actionId)
-                .header(authHeaderName, authHeaderValue())
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .body(Map.of())
-                .retrieve()
-                .body(Map.class);
+        try {
+            return http.post()
+                    .uri("/gadgets/{gadgetId}/actions/{actionId}", gadgetId, actionId)
+                    .header(authHeaderName, authHeaderValue())
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                    .body(Map.of())
+                    .retrieve()
+                    .body(Map.class);
+        } catch (RestClientResponseException e) {
+            String body = e.getResponseBodyAsString();
+            if (body != null && body.toLowerCase().contains("offline")) {
+                LOGGER.warn("Akiles gadget {} offline: {}", gadgetId, body);
+                throw new BeKeyHardwareOfflineException("Door hardware is offline");
+            }
+            throw e;
+        }
     }
 
     /** GET /members/{id}/pins — lists a member's PIN credentials (values masked; use revealMemberPin to read). */

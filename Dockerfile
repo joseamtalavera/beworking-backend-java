@@ -17,4 +17,10 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
 EXPOSE 8080
+# Startup tuning (#267): on Fargate the long cold start is dominated by JIT and
+# class loading. -XX:TieredStopAtLevel=1 stops at the C1 compiler so the JVM
+# isn't running expensive C2 compilation during boot (cuts startup markedly;
+# negligible impact on this I/O-bound workload). JMX off trims a bit more.
+# Container-aware heap so we use the Fargate memory limit, not the host's.
+ENV JAVA_TOOL_OPTIONS="-XX:TieredStopAtLevel=1 -XX:+UseContainerSupport -XX:MaxRAMPercentage=75 -Dspring.jmx.enabled=false"
 ENTRYPOINT ["java", "-jar", "app.jar"]
