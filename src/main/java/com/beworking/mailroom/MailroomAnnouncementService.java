@@ -15,14 +15,15 @@ import java.util.TreeMap;
 
 /**
  * One-shot Business Address / Mailbox announcement (mail scanning + QR package
- * pickup + tracking) to virtual-office + coworking members.
+ * pickup + tracking) to ALL members with an active subscription.
  *
- * Audience = contacts with an ACTIVE subscription classified as virtual_office
- * or coworking — deliberately NOT driven by tenant_type tags (that tag matches
- * ~120 churned contacts and caused an over-broad blast on 2026-06-09). The
- * coworking arm mirrors SubscriptionService.resolveSubscriptionCategory
- * (product tipo='mesa' or description heuristic); the virtual-office arm matches
- * tipo/description on 'virtual'/'oficina'. Idempotent via
+ * Audience = every contact with an ACTIVE subscription (subscriptions.active =
+ * true) and a valid email — deliberately NOT driven by tenant_type tags (that
+ * tag matches ~120 churned contacts and caused an over-broad blast on
+ * 2026-06-09). We send to all active subs rather than trying to classify
+ * VO/coworking, because product-tipo/description classification under-counts
+ * coworking badly. The breakdown is a best-effort coworking/other label for the
+ * dry-run only — it does NOT gate who receives the email. Idempotent via
  * mailroom_announcement_log, so a mid-send hiccup is safe to resume. A single
  * copy also goes to info@.
  */
@@ -41,23 +42,12 @@ public class MailroomAnnouncementService {
                    OR LOWER(COALESCE(s.description,'')) LIKE '%coworking%'
                    OR LOWER(COALESCE(s.description,'')) LIKE '%mesa%'
                    OR LOWER(COALESCE(s.description,'')) LIKE '%desk%'        THEN 'coworking'
-                 ELSE 'virtual_office'
+                 ELSE 'virtual_office_or_other'
                END AS category
           FROM beworking.contact_profiles cp
           JOIN beworking.subscriptions s ON s.contact_id = cp.id AND s.active = true
           LEFT JOIN beworking.productos p ON p.id = s.producto_id
          WHERE COALESCE(NULLIF(cp.email_primary, ''), NULLIF(cp.email_secondary, '')) IS NOT NULL
-           AND (
-                 -- coworking (desk) subs
-                 LOWER(TRIM(p.tipo)) = 'mesa'
-              OR LOWER(COALESCE(s.description,'')) LIKE '%coworking%'
-              OR LOWER(COALESCE(s.description,'')) LIKE '%mesa%'
-              OR LOWER(COALESCE(s.description,'')) LIKE '%desk%'
-                 -- virtual-office subs
-              OR LOWER(COALESCE(p.tipo,''))        LIKE '%virtual%'
-              OR LOWER(COALESCE(s.description,'')) LIKE '%virtual%'
-              OR LOWER(COALESCE(s.description,'')) LIKE '%oficina virtual%'
-               )
         """;
 
     private final JdbcTemplate jdbc;
