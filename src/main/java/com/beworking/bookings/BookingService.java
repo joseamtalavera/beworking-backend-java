@@ -148,6 +148,24 @@ class BookingService {
         Centro centro = centroRepository.findByCodigoIgnoreCase(producto.getCentroCodigo())
             .orElseThrow(() -> new IllegalArgumentException("Centro not found for product: " + request.getProductName()));
 
+        // Coworking DAY-booking window (public/user path only — admins create via
+        // the authenticated /api/bookings endpoint and are unaffected). A desk day
+        // booking must fall within today … +30 days, no past dates. Subscription
+        // bookings (which carry a stripeSubscriptionId) are NOT gated here — their
+        // start-date rule is handled separately.
+        boolean isSubscriptionBooking = request.getStripeSubscriptionId() != null
+            && !request.getStripeSubscriptionId().isBlank();
+        if ("mesa".equalsIgnoreCase(producto.getTipo()) && request.getDate() != null && !isSubscriptionBooking) {
+            LocalDate start = request.getDate();
+            LocalDate end = request.getDateTo() != null ? request.getDateTo() : start;
+            LocalDate today = LocalDate.now();
+            LocalDate maxDay = today.plusDays(30);
+            if (start.isBefore(today) || start.isAfter(maxDay) || end.isAfter(maxDay)) {
+                throw new IllegalArgumentException(
+                    "Coworking day bookings must be within the next 30 days.");
+            }
+        }
+
         String email = request.getEmail().trim().toLowerCase();
         ContactProfile contact = contactRepository
             .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
