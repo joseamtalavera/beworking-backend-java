@@ -10,10 +10,13 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -40,6 +43,10 @@ public class PriceDiscrepancyService {
     private final JdbcTemplate jdbcTemplate;
     private final RestClient http = buildHttpClient();
     private final String paymentsBaseUrl;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** Guards against overlapping scans when the admin spams "Refrescar". */
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     /** Bounded HTTP client: a single slow stripe-service call can't hang the scan. */
     private static RestClient buildHttpClient() {
@@ -102,6 +109,85 @@ public class PriceDiscrepancyService {
         logger.info("Price discrepancy check: scanned {} paid invoices, found {} mismatches",
             rows.size(), out.size());
         return out;
+    }
+
+    /**
+     * Snapshot the latest scan result so the dashboard can serve it instantly
+     * (the live scan does one Stripe call per invoice and overruns the gateway
+     * timeout). One row per run_date, upserted — mirrors reconciliation_results.
+     */
+    public void persist(List<Discrepancy> rows) {
+        try {
+            String rowsJson = objectMapper.writeValueAsString(rows);
+            jdbcTemplate.update("""
+                INSERT INTO beworking.price_discrepancy_results (run_date, count, rows, created_at)
+                VALUES (CURRENT_DATE, ?, ?::jsonb, now())
+                ON CONFLICT (run_date) DO UPDATE SET
+                    count = EXCLUDED.count,
+                    rows = EXCLUDED.rows,
+                    created_at = now()
+                """, rows.size(), rowsJson);
+        } catch (Exception e) {
+            logger.error("Failed to persist price discrepancy snapshot: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Latest persisted snapshot for the dashboard. Fast — no Stripe round-trips.
+     * Returns {@code count}, {@code rows} (parsed list) and {@code runAt}; when
+     * no scan has run yet returns an empty snapshot with {@code runAt = null}.
+     */
+    public Map<String, Object> loadLatest() {
+        try {
+            Map<String, Object> row = jdbcTemplate.queryForMap("""
+                SELECT count, rows::text AS rows, created_at
+                  FROM beworking.price_discrepancy_results
+                 ORDER BY run_date DESC
+                 LIMIT 1
+                """);
+            List<Object> parsed = objectMapper.readValue(
+                (String) row.get("rows"),
+                objectMapper.getTypeFactory().constructCollectionType(List.class, Object.class));
+            return Map.of(
+                "count", row.get("count") != null ? row.get("count") : 0,
+                "rows", parsed,
+                "runAt", row.get("created_at"),
+                "running", running.get());
+        } catch (EmptyResultDataAccessException e) {
+            return Map.of("count", 0, "rows", List.of(), "running", running.get());
+        } catch (Exception e) {
+            logger.warn("Failed to load price discrepancy snapshot: {}", e.getMessage());
+            return Map.of("count", 0, "rows", List.of(), "running", running.get());
+        }
+    }
+
+    /**
+     * Run a fresh scan off the request thread and persist it, so the admin
+     * "Refrescar" action never blocks on (and never 504s from) the Stripe
+     * round-trips. No-op if a scan is already in flight.
+     *
+     * @return true if a scan was started, false if one was already running.
+     */
+    public boolean triggerAsyncRescan() {
+        if (!running.compareAndSet(false, true)) {
+            return false;
+        }
+        Thread worker = new Thread(() -> {
+            try {
+                persist(findRecent());
+            } catch (Exception e) {
+                logger.error("Async price discrepancy rescan failed: {}", e.getMessage(), e);
+            } finally {
+                running.set(false);
+            }
+        }, "price-discrepancy-rescan");
+        worker.setDaemon(true);
+        worker.start();
+        return true;
+    }
+
+    public boolean isRunning() {
+        return running.get();
     }
 
     /** Compare one DB row's total against Stripe's collected amount. Null = no discrepancy. */

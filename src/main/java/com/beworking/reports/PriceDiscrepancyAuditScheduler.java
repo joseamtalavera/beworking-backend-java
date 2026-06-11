@@ -35,6 +35,9 @@ public class PriceDiscrepancyAuditScheduler {
 
     public RunResult runOnce() {
         List<PriceDiscrepancyService.Discrepancy> rows = service.findRecent();
+        // Always snapshot — even an empty result, so the dashboard can show
+        // "0 discrepancies, last run X" instead of going stale or re-scanning.
+        service.persist(rows);
         if (rows.isEmpty()) {
             logger.info("Price discrepancy audit: nothing diverging today");
             return new RunResult(0, false);

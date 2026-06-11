@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,11 +38,28 @@ public class ReportsController {
         if (!isAdmin) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        List<PriceDiscrepancyService.Discrepancy> rows = discrepancyService.findRecent();
+        // Serve the cached snapshot — the live scan does one Stripe call per
+        // paid invoice and overran the gateway timeout (504). It's refreshed by
+        // the daily scheduler and by the POST /run trigger below.
+        return ResponseEntity.ok(discrepancyService.loadLatest());
+    }
+
+    @PostMapping("/price-discrepancies/run")
+    public ResponseEntity<?> runPriceDiscrepancies(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        // Fire-and-forget: the scan runs off the request thread and persists its
+        // snapshot when done. The client polls GET /price-discrepancies.
+        boolean started = discrepancyService.triggerAsyncRescan();
         Map<String, Object> result = new HashMap<>();
-        result.put("count", rows.size());
-        result.put("rows", rows);
-        return ResponseEntity.ok(result);
+        result.put("status", started ? "started" : "already-running");
+        return ResponseEntity.accepted().body(result);
     }
 
     @GetMapping("/invoice-audit")
