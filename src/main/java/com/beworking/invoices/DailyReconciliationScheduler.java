@@ -122,11 +122,13 @@ public class DailyReconciliationScheduler {
             "SELECT f.id, f.idfactura, " +
             "       UPPER(COALESCE(NULLIF(f.holdedcuenta, ''), 'PT')) AS cuenta, " +
             "       COALESCE(NULLIF(f.billing_name, ''), f.descripcion) AS \"clientName\", " +
+            "       cp.phone_primary AS \"customerPhone\", " +
             "       f.estado, " +
             "       f.creacionfecha AS \"fechaFactura\", " +
             "       f.total, " +
             "       f.stripeinvoiceid AS \"stripeInvoiceId\" " +
             "  FROM beworking.facturas f " +
+            "  LEFT JOIN beworking.contact_profiles cp ON cp.id = f.idcliente " +
             " WHERE EXTRACT(YEAR FROM f.creacionfecha) = EXTRACT(YEAR FROM CURRENT_DATE) " +
             "   AND UPPER(COALESCE(NULLIF(f.holdedcuenta, ''), 'PT')) = ? " +
             "   AND LOWER(COALESCE(f.category, '')) IN ('virtual_office', 'coworking') " +
@@ -240,12 +242,45 @@ public class DailyReconciliationScheduler {
             }
         }
 
+        // 8. Enrich the surviving Unpaid rows with the customer-facing Stripe
+        //    hosted payment URL so the dashboard WhatsApp outreach can embed a
+        //    "pay here" link (same pattern as the meeting-room reconciliation).
+        //    Best-effort and only for rows that actually carry a Stripe invoice.
+        for (Map<String, Object> row : result.pendingInvoices) {
+            Object sid = row.get("stripeInvoiceId");
+            if (sid != null && !sid.toString().isBlank()) {
+                row.put("hostedInvoiceUrl", fetchHostedInvoiceUrl(sid.toString(), account));
+            }
+        }
+
         logger.info("Reconciliation [{}]: dbActive={} stripeActive={} pastDue={} missing={} dbOnly={} stripeOnly={} stripePaidDbPending={}",
             account, result.dbActive, result.stripeActive, result.stripePastDue,
             result.missingInvoices.size(), result.dbOnlySubIds.size(), result.stripeOnlySubIds.size(),
             result.stripePaidDbPending.size());
 
         return result;
+    }
+
+    /**
+     * Customer-facing Stripe hosted payment URL for an unpaid invoice, so the
+     * dashboard WhatsApp outreach can embed a "pay here" link. Best-effort:
+     * returns null on any failure or when the row has no Stripe invoice.
+     */
+    private String fetchHostedInvoiceUrl(String stripeInvoiceId, String account) {
+        if (paymentsBaseUrl == null || paymentsBaseUrl.isBlank()
+                || stripeInvoiceId == null || stripeInvoiceId.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> resp = http.get()
+                .uri(paymentsBaseUrl + "/api/invoices/" + stripeInvoiceId + "/hosted-url?account=" + account)
+                .retrieve()
+                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            return resp != null ? (String) resp.get("hostedInvoiceUrl") : null;
+        } catch (Exception e) {
+            logger.warn("Failed to fetch hosted invoice URL for {}: {}", stripeInvoiceId, e.getMessage());
+            return null;
+        }
     }
 
     private List<Map<String, Object>> enrichDbOnlySubs(List<String> subIds) {
