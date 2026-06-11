@@ -129,7 +129,10 @@ public class SecurityConfig {
             .headers(headers -> headers
                 .contentTypeOptions(withDefaults())
                 .xssProtection(withDefaults())
-                .frameOptions(withDefaults())
+                // Allow our own pages (e.g. document-viewer.html) to embed
+                // same-origin responses like the mailroom PDF /download stream.
+                // Still blocks framing by any external site.
+                .frameOptions(frame -> frame.sameOrigin())
                 .httpStrictTransportSecurity(hsts -> hsts
                     .maxAgeInSeconds(31536000)
                     .includeSubDomains(true)
