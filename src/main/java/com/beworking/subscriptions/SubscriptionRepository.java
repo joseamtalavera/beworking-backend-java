@@ -27,10 +27,17 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Inte
     List<Subscription> findBankTransferDueForMonth(@Param("month") String month);
 
     /**
-     * Active subscriptions whose coverage period contains :date. Used by the
-     * public availability endpoint to mark subscribed-desk products as occupied
-     * for the day, even when no per-day Bloqueo exists.
+     * Desk subscriptions whose paid coverage period contains :date. A desk is
+     * occupied while start_date <= date <= end_date, regardless of the `active`
+     * flag — so a subscription cancelled mid-period (active=false, end_date set
+     * to its paid-through date) still holds its desk until that date. This is
+     * what prevents overbooking a desk that's been cancelled but is still paid.
+     *
+     * Coverage rule:
+     *   · ongoing (end_date IS NULL) counts only while still active
+     *   · otherwise the desk is held through end_date (the paid-through date)
      */
-    @Query("SELECT s FROM Subscription s WHERE s.active = true AND s.productoId IS NOT NULL AND s.startDate <= :date AND (s.endDate IS NULL OR s.endDate >= :date)")
+    @Query("SELECT s FROM Subscription s WHERE s.productoId IS NOT NULL AND s.startDate <= :date "
+         + "AND ((s.endDate IS NULL AND s.active = true) OR s.endDate >= :date)")
     List<Subscription> findActiveCoveringDate(@Param("date") LocalDate date);
 }

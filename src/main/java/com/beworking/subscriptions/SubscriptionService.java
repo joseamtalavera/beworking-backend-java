@@ -84,7 +84,11 @@ public class SubscriptionService {
     }
 
     public List<Subscription> findActiveDeskSubscriptions() {
-        return subscriptionRepository.findByActiveTrueAndProductoIdIsNotNull();
+        // Desks currently occupied = subscriptions whose paid coverage contains
+        // today. A sub cancelled mid-period keeps its desk until its paid-through
+        // end_date, so the admin floor plan doesn't free a still-paid desk (which
+        // would let it be double-booked).
+        return subscriptionRepository.findActiveCoveringDate(java.time.LocalDate.now());
     }
 
     public Optional<Subscription> findByStripeSubscriptionId(String stripeSubscriptionId) {
@@ -99,12 +103,39 @@ public class SubscriptionService {
         return subscriptionRepository.save(subscription);
     }
 
-    public void deactivate(Integer id) {
+    public void deactivate(Integer id, LocalDate paidThrough) {
         subscriptionRepository.findById(id).ifPresent(sub -> {
             sub.setActive(false);
-            sub.setEndDate(LocalDate.now());
+            // Hold the desk until the paid-through date (Stripe current_period_end)
+            // instead of freeing it on the cancellation date — otherwise a desk
+            // that's cancelled but still paid shows free and can be double-booked.
+            // Fall back to the monthly anniversary of the start date when the
+            // paid-through is unknown (e.g. bank-transfer subs with no Stripe
+            // period): a sub that started on the 10th is paid through the 10th of
+            // the following month, NOT the calendar month-end.
+            LocalDate end = paidThrough != null
+                ? paidThrough
+                : monthlyPaidThrough(sub.getStartDate(), LocalDate.now());
+            sub.setEndDate(end);
             subscriptionRepository.save(sub);
         });
+    }
+
+    /**
+     * The end of the current monthly billing period for a sub anchored on
+     * {@code start}, as of {@code ref}: the first monthly anniversary of the
+     * start date strictly after {@code ref}. E.g. start=May 10, ref=Jun 11 → Jul 10.
+     */
+    static LocalDate monthlyPaidThrough(LocalDate start, LocalDate ref) {
+        if (start == null) {
+            return ref.withDayOfMonth(1).plusMonths(1).minusDays(1);
+        }
+        long months = java.time.temporal.ChronoUnit.MONTHS.between(start, ref);
+        LocalDate end = start.plusMonths(months + 1);
+        while (!end.isAfter(ref)) {
+            end = end.plusMonths(1);
+        }
+        return end;
     }
 
     /**

@@ -731,10 +731,11 @@ public class SubscriptionController {
             }
         }
 
+        LocalDate paidThrough = null;
         if (sub.getStripeSubscriptionId() != null && !sub.getStripeSubscriptionId().isBlank()) {
-            cancelStripeSubscription(sub);
+            paidThrough = cancelStripeSubscription(sub);
         }
-        subscriptionService.deactivate(id);
+        subscriptionService.deactivate(id, paidThrough);
 
         // Best-effort: revoke any BeKey door access tied to this subscription (#149).
         try {
@@ -796,21 +797,32 @@ public class SubscriptionController {
         return ResponseEntity.noContent().build();
     }
 
-    private void cancelStripeSubscription(Subscription sub) {
+    /**
+     * Cancels the Stripe subscription and returns its paid-through date
+     * (Stripe current_period_end) so the desk can stay occupied until then.
+     * Returns null on any failure or when Stripe didn't report a period end.
+     */
+    private LocalDate cancelStripeSubscription(Subscription sub) {
         try {
             String tenant = "GT".equalsIgnoreCase(sub.getCuenta()) ? "gt" : null;
             String uri = "/api/subscriptions/" + sub.getStripeSubscriptionId();
             if (tenant != null) {
                 uri += "?tenant=" + tenant;
             }
-            http.delete()
+            @SuppressWarnings("unchecked")
+            Map<String, Object> resp = http.delete()
                 .uri(uri)
                 .retrieve()
-                .toBodilessEntity();
+                .body(Map.class);
             logger.info("Cancelled Stripe subscription {} for local subscription {}", sub.getStripeSubscriptionId(), sub.getId());
+            if (resp != null && resp.get("currentPeriodEnd") != null) {
+                long epoch = ((Number) resp.get("currentPeriodEnd")).longValue();
+                return java.time.Instant.ofEpochSecond(epoch).atZone(java.time.ZoneOffset.UTC).toLocalDate();
+            }
         } catch (Exception e) {
             logger.error("Failed to cancel Stripe subscription {}: {}", sub.getStripeSubscriptionId(), e.getMessage());
         }
+        return null;
     }
 
     private String mapCountryToIso(String country) {
