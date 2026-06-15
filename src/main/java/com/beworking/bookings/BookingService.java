@@ -166,6 +166,21 @@ class BookingService {
             }
         }
 
+        // Coworking SUBSCRIPTION start window (public/user path only — admins
+        // create via the admin-only /api/subscriptions endpoint and are exempt).
+        // A desk subscription may only start in the current month or on the 1st
+        // of next month — never later. The booking app sends the 1st of the
+        // chosen month, so we allow [1st of this month … 1st of next month].
+        if ("mesa".equalsIgnoreCase(producto.getTipo()) && request.getDate() != null && isSubscriptionBooking) {
+            LocalDate start = request.getDate();
+            LocalDate firstOfThisMonth = LocalDate.now().withDayOfMonth(1);
+            LocalDate firstOfNextMonth = firstOfThisMonth.plusMonths(1);
+            if (start.isBefore(firstOfThisMonth) || start.isAfter(firstOfNextMonth)) {
+                throw new IllegalArgumentException(
+                    "Coworking subscriptions can only start this month or on the 1st of next month.");
+            }
+        }
+
         String email = request.getEmail().trim().toLowerCase();
         ContactProfile contact = contactRepository
             .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
