@@ -70,6 +70,7 @@ class BookingService {
     private final com.beworking.tax.TaxResolver taxResolver;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final com.beworking.invoices.BillingSnapshotService billingSnapshotService;
+    private final com.beworking.subscriptions.SubscriptionService subscriptionService;
 
     BookingService(ReservaRepository reservaRepository,
                    BloqueoRepository bloqueoRepository,
@@ -84,7 +85,8 @@ class BookingService {
                    com.beworking.tax.TaxResolver taxResolver,
                    org.springframework.context.ApplicationEventPublisher eventPublisher,
                    com.beworking.invoices.BillingSnapshotService billingSnapshotService,
-                   com.beworking.bekey.BeKeyAccessService beKeyAccessService) {
+                   com.beworking.bekey.BeKeyAccessService beKeyAccessService,
+                   com.beworking.subscriptions.SubscriptionService subscriptionService) {
         this.reservaRepository = reservaRepository;
         this.bloqueoRepository = bloqueoRepository;
         this.contactRepository = contactRepository;
@@ -99,6 +101,7 @@ class BookingService {
         this.eventPublisher = eventPublisher;
         this.billingSnapshotService = billingSnapshotService;
         this.beKeyAccessService = beKeyAccessService;
+        this.subscriptionService = subscriptionService;
     }
 
     @Transactional(readOnly = true)
@@ -280,6 +283,38 @@ class BookingService {
 
         // Flush pending Hibernate INSERTs so jdbcTemplate invoice queries see the new bloqueo
         entityManager.flush();
+
+        // ── Persist a linked subscription row for desk SUBSCRIPTION bookings ──
+        // A desk sub from the booking/user app creates the Stripe sub + this
+        // bloqueo. Without a local beworking.subscriptions row the Stripe invoice
+        // webhook (/api/webhooks/subscription-invoice) can't match the sub → no
+        // factura, and the sub never shows on the contact (#282). Persist it here
+        // so the existing webhook generates the factura from the Stripe invoice
+        // amounts. Idempotent: skip if this Stripe sub is already stored.
+        if (isSubscriptionBooking
+                && subscriptionService.findByStripeSubscriptionId(request.getStripeSubscriptionId()).isEmpty()) {
+            String subCuenta = resolveContactCuenta(contact.getId());
+            int subVatPercent = resolveContactVatPercent(contact.getId(), subCuenta);
+            com.beworking.subscriptions.Subscription sub = new com.beworking.subscriptions.Subscription();
+            sub.setContactId(contact.getId());
+            sub.setBillingMethod("stripe");
+            sub.setStripeSubscriptionId(request.getStripeSubscriptionId());
+            sub.setStripeCustomerId(request.getStripeCustomerId());
+            sub.setMonthlyAmount(request.getMonthlyAmount());
+            sub.setCurrency("EUR");
+            sub.setCuenta(subCuenta);
+            sub.setDescription("Coworking - " + producto.getNombre());
+            sub.setBillingInterval("month");
+            sub.setVatPercent(subVatPercent);
+            sub.setStartDate(request.getDate() != null ? request.getDate() : LocalDate.now());
+            sub.setProductoId(producto.getId());
+            sub.setActive(true);
+            sub.setCreatedAt(java.time.LocalDateTime.now());
+            sub.setUpdatedAt(java.time.LocalDateTime.now());
+            subscriptionService.save(sub);
+            LOGGER.info("Persisted desk subscription row (stripeSub={}, contact={}) for public booking",
+                request.getStripeSubscriptionId(), contact.getId());
+        }
 
         // ── Auto-create invoice for paid public bookings ──
         // Skip when the booking is backed by a Stripe Subscription — the

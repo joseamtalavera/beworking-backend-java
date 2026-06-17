@@ -3,6 +3,7 @@ package com.beworking.bookings;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -54,7 +55,23 @@ public class PublicBookingRequest {
 
     private String stripeSubscriptionId;
 
+    // Set only on desk SUBSCRIPTION bookings from the booking/user app. The
+    // backend persists a linked beworking.subscriptions row so the Stripe
+    // invoice webhook can generate the factura and the sub shows on the contact.
+    private String stripeCustomerId;
+
+    // Monthly amount (gross, EUR) the booking app charges via Stripe for a desk
+    // subscription. Stored on the sub row for reconciliation/display; the factura
+    // amount itself still comes from the Stripe invoice via the webhook.
+    private BigDecimal monthlyAmount;
+
     private List<String> weekdays;
+
+    public String getStripeCustomerId() { return stripeCustomerId; }
+    public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
+
+    public BigDecimal getMonthlyAmount() { return monthlyAmount; }
+    public void setMonthlyAmount(BigDecimal monthlyAmount) { this.monthlyAmount = monthlyAmount; }
 
     public List<String> getWeekdays() { return weekdays; }
     public void setWeekdays(List<String> weekdays) { this.weekdays = weekdays; }
