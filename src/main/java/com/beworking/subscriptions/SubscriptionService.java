@@ -207,10 +207,18 @@ public class SubscriptionService {
             cuentaId = cuentaOpt.get().getId();
         }
 
-        // Generate invoice number — reuse the one already reserved during invoice.created
+        // Generate invoice number — reuse the one already reserved during
+        // invoice.created ONLY when it's one of OUR numbers (PT/GT/OF + digits).
+        // A charge_automatically sub created directly (booking-app desk sub) has
+        // no pre-reservation step, so Stripe's own auto-number (e.g.
+        // "43F33606-0035") leaks in via stripeInvoiceNumber. Reusing that yields a
+        // malformed idfactura and an int-overflow NumberFormatException (#282).
+        // When the reserved number isn't ours, generate a proper sequential one.
+        String reserved = payload.getStripeInvoiceNumber();
+        boolean reservedIsOurs = reserved != null && reserved.matches("(?i)^(PT|GT|OF)\\d+$");
         String invoiceNumber;
-        if (payload.getStripeInvoiceNumber() != null && !payload.getStripeInvoiceNumber().isBlank()) {
-            invoiceNumber = payload.getStripeInvoiceNumber();
+        if (reservedIsOurs) {
+            invoiceNumber = reserved;
             logger.info("Reusing pre-reserved invoice number {} for stripeInvoiceId={}",
                 invoiceNumber, payload.getStripeInvoiceId());
         } else if (cuentaId != null) {
