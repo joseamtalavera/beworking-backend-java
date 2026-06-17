@@ -491,6 +491,40 @@ class BookingService {
         return response;
     }
 
+    /**
+     * Read-only availability check for a desk/room over a date range. Mirrors the
+     * conflict-detection loop in {@link #createReserva} (same per-day expansion +
+     * findOverlapping) WITHOUT persisting anything. The public booking flow calls
+     * this BEFORE creating a Stripe subscription/charge, so a slot conflict is
+     * surfaced up front instead of leaving an orphan paid sub (#282).
+     */
+    @Transactional(readOnly = true)
+    List<BookingConflictException.ConflictSlot> checkAvailability(
+            String productName, LocalDate from, LocalDate to,
+            String startTime, String endTime, List<String> weekdaysRaw) {
+        Producto producto = productoRepository.findByNombreIgnoreCase(productName)
+            .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productName));
+        Set<DayOfWeek> weekdays = normalizeWeekdays(weekdaysRaw);
+        LocalTime st = parseTime(startTime != null && !startTime.isBlank() ? startTime : "00:00");
+        LocalTime et = parseTime(endTime != null && !endTime.isBlank() ? endTime : "23:59");
+        LocalDate end = to != null ? to : from;
+        List<BookingConflictException.ConflictSlot> conflicts = new ArrayList<>();
+        LocalDate cursor = from;
+        while (!cursor.isAfter(end)) {
+            if (weekdays == null || weekdays.contains(cursor.getDayOfWeek())) {
+                LocalDateTime slotStart = cursor.atTime(st);
+                LocalDateTime slotEnd = cursor.atTime(et);
+                if (slotEnd.isAfter(slotStart)) {
+                    bloqueoRepository.findOverlapping(producto.getId(), slotStart, slotEnd).stream()
+                        .map(e -> BookingConflictException.conflict(e.getFechaIni(), e.getFechaFin()))
+                        .forEach(conflicts::add);
+                }
+            }
+            cursor = cursor.plusDays(1);
+        }
+        return conflicts;
+    }
+
     private String resolveContactCuenta(Long contactId) {
         try {
             String cuenta = jdbcTemplate.queryForObject(

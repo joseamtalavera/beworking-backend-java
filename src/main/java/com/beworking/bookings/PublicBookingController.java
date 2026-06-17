@@ -75,6 +75,30 @@ public class PublicBookingController {
         }
     }
 
+    /**
+     * Pre-charge availability check. The booking/user app calls this BEFORE
+     * confirming the SetupIntent / creating the Stripe subscription, so a slot
+     * conflict is rejected up front (200 with available=false) rather than after
+     * a charge has been collected — which previously left an orphan paid sub
+     * with no local record (#282). Never creates or mutates anything.
+     */
+    @PostMapping("/bookings/availability")
+    public ResponseEntity<?> checkAvailability(@Valid @RequestBody AvailabilityCheckRequest request) {
+        Map<String, Object> body = new HashMap<>();
+        try {
+            var conflicts = bookingService.checkAvailability(
+                request.getProductName(), request.getDate(), request.getDateTo(),
+                request.getStartTime(), request.getEndTime(), request.getWeekdays());
+            body.put("available", conflicts.isEmpty());
+            body.put("conflicts", conflicts);
+            return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException ex) {
+            body.put("available", false);
+            body.put("message", ex.getMessage());
+            return ResponseEntity.badRequest().body(body);
+        }
+    }
+
     private void tryRefundPaymentIntent(String paymentIntentId, String reason) {
         if (paymentIntentId == null || paymentIntentId.isBlank()) return;
         try {
