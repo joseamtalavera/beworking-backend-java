@@ -110,6 +110,18 @@ public class SubscriptionController {
 
         String billingMethod = request.getBillingMethod() != null ? request.getBillingMethod() : "stripe";
 
+        // Resolve the desk product id from its name when the client didn't send a
+        // productoId (e.g. admin Spaces floor-plan-click path, where the wizard only
+        // carries the desk name). This mirrors BookingService.createPublicBooking,
+        // which always resolves the producto by name — so admin-created desk subs
+        // persist a productoId and occupy the floor plan, exactly like booking-app
+        // subs. Without it the sub saves productoId=null and the desk stays "available".
+        if (request.getProductoId() == null
+                && request.getProductName() != null && !request.getProductName().isBlank()) {
+            productoRepository.findByNombreIgnoreCase(request.getProductName().trim())
+                .ifPresent(p -> request.setProductoId(p.getId()));
+        }
+
         // Bank-transfer subs are billed entirely in our own DB — no Stripe
         // subscription and no Stripe-hosted invoice. We skip the whole Stripe
         // block below, persist the sub as billing_method='bank_transfer', and

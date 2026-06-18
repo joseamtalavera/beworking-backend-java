@@ -26,9 +26,13 @@ public class CreateSubscriptionRequest {
     private String billingMethod;
     private String billingInterval;
     private Long productoId;
+    private String productName;
 
     public Long getContactId() { return contactId; }
     public void setContactId(Long contactId) { this.contactId = contactId; }
+
+    public String getProductName() { return productName; }
+    public void setProductName(String productName) { this.productName = productName; }
 
     public String getStripeSubscriptionId() { return stripeSubscriptionId; }
     public void setStripeSubscriptionId(String stripeSubscriptionId) { this.stripeSubscriptionId = stripeSubscriptionId; }
