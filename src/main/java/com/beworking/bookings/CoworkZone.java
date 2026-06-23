@@ -80,4 +80,13 @@ public final class CoworkZone {
     public static String akilesGroupForProduct(String productName) {
         return forProductName(productName).map(z -> z.akilesGroup).orElse(null);
     }
+
+    /**
+     * The bookable-window end for a desk product's zone, or null if the product
+     * isn't zoned or its zone has no end. Used to auto-terminate seasonal desk
+     * subscriptions (e.g. the summer MA1O5 zone ends 2026-08-31).
+     */
+    public static LocalDate seasonEndForProduct(String productName) {
+        return forProductName(productName).map(z -> z.activeTo).orElse(null);
+    }
 }

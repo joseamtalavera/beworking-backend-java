@@ -122,6 +122,15 @@ public class SubscriptionController {
                 .ifPresent(p -> request.setProductoId(p.getId()));
         }
 
+        // Seasonal desk zones (e.g. summer MA1O5) auto-terminate at their window
+        // end: the DB sub gets an end_date and the Stripe sub a cancel_at, so it
+        // doesn't renew past the season.
+        final LocalDate seasonEnd = request.getProductoId() == null ? null
+            : productoRepository.findById(request.getProductoId())
+                .map(com.beworking.bookings.Producto::getNombre)
+                .map(com.beworking.bookings.CoworkZone::seasonEndForProduct)
+                .orElse(null);
+
         // Bank-transfer subs are billed entirely in our own DB — no Stripe
         // subscription and no Stripe-hosted invoice. We skip the whole Stripe
         // block below, persist the sub as billing_method='bank_transfer', and
@@ -254,6 +263,11 @@ public class SubscriptionController {
                     stripeRequest.put("trial_end", trialEndEpoch);
                 }
                 stripeRequest.put("proration_behavior", "none");
+                if (seasonEnd != null) {
+                    // Stop renewing at season end (start of the day after).
+                    stripeRequest.put("cancel_at",
+                        seasonEnd.plusDays(1).atStartOfDay(java.time.ZoneId.of("Europe/Madrid")).toEpochSecond());
+                }
 
                 // Pass billing interval (month, quarter, year)
                 String interval = request.getBillingInterval() != null ? request.getBillingInterval() : "month";
@@ -351,7 +365,7 @@ public class SubscriptionController {
         boolean euIntracommunity = isEuVatNumber(effectiveVat);
         sub.setVatPercent(euIntracommunity ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
         sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
-        sub.setEndDate(request.getEndDate());
+        sub.setEndDate(seasonEnd != null ? seasonEnd : request.getEndDate());
         sub.setProductoId(request.getProductoId());
         sub.setActive(true);
         sub.setCreatedAt(LocalDateTime.now());
