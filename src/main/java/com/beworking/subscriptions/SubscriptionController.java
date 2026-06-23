@@ -654,7 +654,6 @@ public class SubscriptionController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        LocalDate today = LocalDate.now();
         List<Subscription> activeSubs = subscriptionService.findActiveDeskSubscriptions();
 
         // Resolve each active desk sub's product name once, to bucket by zone.
@@ -672,7 +671,8 @@ public class SubscriptionController {
         List<Map<String, Object>> zones = new ArrayList<>();
         long primaryTotal = 0, primaryOccupied = 0;
         for (com.beworking.bookings.CoworkZone zone : com.beworking.bookings.CoworkZone.ALL) {
-            if (!zone.isActiveOn(today)) continue;
+            // All zones are permanent fixtures now (a zone may be blocked for
+            // booking outside its window, but it still shows in occupancy).
             String prefixUpper = zone.prefix.toUpperCase();
             long total = productoRepository.countByNombrePrefix(zone.prefix);
             long occupied = activeSubs.stream()
