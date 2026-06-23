@@ -2,6 +2,11 @@ package com.beworking.bekey;
 
 import com.beworking.contacts.ContactProfile;
 import com.beworking.contacts.ContactProfileRepository;
+import com.beworking.bookings.CoworkZone;
+import com.beworking.bookings.Producto;
+import com.beworking.bookings.ProductoRepository;
+import com.beworking.subscriptions.Subscription;
+import com.beworking.subscriptions.SubscriptionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,6 +39,8 @@ public class BeKeyAccessService {
     private final ObjectMapper objectMapper;
     private final BeKeyEventRepository eventRepository;
     private final ContactProfileRepository contactProfileRepository;
+    private final SubscriptionRepository subscriptionRepository;
+    private final ProductoRepository productoRepository;
 
     /** Master kill-switch for all Akiles writes (#244). Default false: safe everywhere until set true in the prod task-def. */
     private final boolean integrationEnabled;
@@ -46,6 +53,8 @@ public class BeKeyAccessService {
             BeKeyDeviceRepository deviceRepository,
             BeKeyEventRepository eventRepository,
             ContactProfileRepository contactProfileRepository,
+            SubscriptionRepository subscriptionRepository,
+            ProductoRepository productoRepository,
             ObjectMapper objectMapper,
             @Value("${akiles.integration.enabled:false}") boolean integrationEnabled
     ) {
@@ -56,6 +65,8 @@ public class BeKeyAccessService {
         this.deviceRepository = deviceRepository;
         this.eventRepository = eventRepository;
         this.contactProfileRepository = contactProfileRepository;
+        this.subscriptionRepository = subscriptionRepository;
+        this.productoRepository = productoRepository;
         this.objectMapper = objectMapper;
         this.integrationEnabled = integrationEnabled;
         LOGGER.info("BeKeyAccessService initialized: akiles.integration.enabled={}", integrationEnabled);
@@ -239,8 +250,24 @@ public class BeKeyAccessService {
             LOGGER.info("grantForSubscription: category '{}' -> no standing access (sub {})", category, subscriptionId);
             return null;
         }
-        BeKeyMemberGroup group = memberGroupRepository.findByLabel(label)
-                .orElseThrow(() -> new IllegalStateException("BeKey member group '" + label + "' not found"));
+        // Refine the door by the sub's actual desk product: a zone with its own
+        // group (e.g. the summer MA1O5 pop-up -> MA1A5 door) overrides the default
+        // coworking MA1O1. Falls back to MA1O1 when the product isn't zoned.
+        if (subscriptionId != null) {
+            String zoneGroup = subscriptionRepository.findById(subscriptionId.intValue())
+                    .map(Subscription::getProductoId)
+                    .filter(java.util.Objects::nonNull)
+                    .flatMap(productoRepository::findById)
+                    .map(Producto::getNombre)
+                    .map(CoworkZone::akilesGroupForProduct)
+                    .orElse(null);
+            if (zoneGroup != null) {
+                label = zoneGroup;
+            }
+        }
+        final String resolvedLabel = label;
+        BeKeyMemberGroup group = memberGroupRepository.findByLabel(resolvedLabel)
+                .orElseThrow(() -> new IllegalStateException("BeKey member group '" + resolvedLabel + "' not found"));
         return grant(contactId, group.getId(), BeKeyAccess.Source.subscription, subscriptionId, null);
     }
 
@@ -306,13 +333,20 @@ public class BeKeyAccessService {
             return null;
         }
         String code = roomCode.trim().toUpperCase();
+        // Desk products in a day-rate zone (e.g. the summer MA1O5 pop-up) open
+        // their zone's door for the booked day. Standing-access zones (MA1O1)
+        // return null here — desk access comes from the subscription grant.
+        CoworkZone zone = CoworkZone.forProductName(code).orElse(null);
+        if (zone != null) {
+            return zone.dayBookingDoor ? zone.akilesGroup : null;
+        }
         if (code.equals("MA1A1")) {
             return "MA1O1";              // desks share the office group
         }
         if (code.matches("MA1A[2-5]")) {
             return code;                 // aulas map to their same-named group
         }
-        return null;                     // MA1O1-N (virtual office) + anything unmapped
+        return null;                     // virtual office + anything unmapped
     }
 
     /**

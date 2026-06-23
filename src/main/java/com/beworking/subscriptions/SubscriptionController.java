@@ -654,14 +654,49 @@ public class SubscriptionController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        long totalDesks = productoRepository.countByNombrePrefix("MA1O1-");
-        long occupiedDesks = subscriptionService.findActiveDeskSubscriptions().stream()
-            .filter(s -> s.getProductoId() != null)
-            .count();
+        LocalDate today = LocalDate.now();
+        List<Subscription> activeSubs = subscriptionService.findActiveDeskSubscriptions();
+
+        // Resolve each active desk sub's product name once, to bucket by zone.
+        Set<Long> productIds = activeSubs.stream()
+            .map(Subscription::getProductoId)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        Map<Long, String> productNames = new HashMap<>();
+        productoRepository.findAllById(productIds).forEach(p ->
+            productNames.put(p.getId(), p.getNombre() == null ? "" : p.getNombre().toUpperCase()));
+
+        // One row per coworking zone that is bookable today (so the summer A5 zone
+        // appears only during its window). Top-level totals stay the primary zone
+        // for backward compatibility with the existing single-row card.
+        List<Map<String, Object>> zones = new ArrayList<>();
+        long primaryTotal = 0, primaryOccupied = 0;
+        for (com.beworking.bookings.CoworkZone zone : com.beworking.bookings.CoworkZone.ALL) {
+            if (!zone.isActiveOn(today)) continue;
+            String prefixUpper = zone.prefix.toUpperCase();
+            long total = productoRepository.countByNombrePrefix(zone.prefix);
+            long occupied = activeSubs.stream()
+                .map(Subscription::getProductoId)
+                .filter(java.util.Objects::nonNull)
+                .map(productNames::get)
+                .filter(n -> n != null && n.startsWith(prefixUpper))
+                .count();
+            Map<String, Object> z = new HashMap<>();
+            z.put("roomCode", zone.roomCode);
+            z.put("prefix", zone.prefix);
+            z.put("akilesGroup", zone.akilesGroup);
+            z.put("total", total);
+            z.put("occupied", occupied);
+            z.put("activeFrom", zone.activeFrom == null ? null : zone.activeFrom.toString());
+            z.put("activeTo", zone.activeTo == null ? null : zone.activeTo.toString());
+            zones.add(z);
+            if (zones.size() == 1) { primaryTotal = total; primaryOccupied = occupied; }
+        }
 
         Map<String, Object> body = new HashMap<>();
-        body.put("totalDesks", totalDesks);
-        body.put("occupiedDesks", occupiedDesks);
+        body.put("totalDesks", primaryTotal);
+        body.put("occupiedDesks", primaryOccupied);
+        body.put("zones", zones);
         return ResponseEntity.ok(body);
     }
 
