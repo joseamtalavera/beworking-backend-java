@@ -836,6 +836,8 @@ public class SubscriptionController {
                 emailService.sendSubscriptionCancellationAdminNotification(
                         c.getName(), email, sub.getDescription(), sub.getCuenta(),
                         sub.getStripeSubscriptionId(), sub.getId(), cancelledBy);
+                // Also notify the customer that their subscription was cancelled.
+                emailService.sendSubscriptionCancellationToCustomer(email, c.getName(), sub.getDescription());
             });
         } catch (Exception e) {
             logger.warn("Failed to send sub-cancel notification for sub {}: {}", id, e.getMessage());

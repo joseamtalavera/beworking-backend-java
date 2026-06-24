@@ -909,6 +909,40 @@ public class EmailService {
         sendHtml("info@be-working.com", subject, body);
     }
 
+    /** Customer-facing confirmation that their subscription was cancelled. */
+    @Async
+    public void sendSubscriptionCancellationToCustomer(String to, String contactName, String description) {
+        if (to == null || to.isBlank()) return;
+        String name = contactName != null && !contactName.isBlank() ? contactName : "Hola";
+        String concept = description != null && !description.isBlank() ? description : "tu suscripción";
+        String body = "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"></head>"
+                + "<body style=\"margin:0;padding:0;background:#f7f7f8;font-family:Arial,Helvetica,sans-serif;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr><td align=\"center\" style=\"padding:24px 0;\">"
+                + "<table role=\"presentation\" width=\"600\" style=\"max-width:600px;\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\">"
+                + "<tr><td style=\"background:#159028;color:#fff;padding:24px 28px;border-radius:14px 14px 0 0;\">"
+                + "<p style=\"margin:0 0 4px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.85;\">BEWORKING</p>"
+                + "<h1 style=\"margin:0;font-size:22px;font-weight:700;\">Suscripción cancelada</h1></td></tr>"
+                + "<tr><td style=\"background:#fff;padding:24px 28px;border:1px solid #eee;border-top:0;border-radius:0 0 14px 14px;color:#333;font-size:15px;line-height:1.6;\">"
+                + "<p style=\"margin:0 0 14px;\">" + name + ",</p>"
+                + "<p style=\"margin:0 0 14px;\">Te confirmamos que tu suscripción <strong>" + concept + "</strong> ha sido cancelada. No se realizarán más cobros.</p>"
+                + "<p style=\"margin:0 0 14px;\">Si crees que se trata de un error o quieres reactivarla, responde a este correo y te ayudamos.</p>"
+                + "<p style=\"margin:18px 0 0;color:#777;font-size:13px;\">Gracias por confiar en BeWorking.</p>"
+                + "</td></tr></table></td></tr></table></body></html>";
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            applyFrom(helper);
+            helper.setTo(to);
+            helper.setBcc("info@be-working.com");
+            helper.setReplyTo("info@be-working.com");
+            helper.setSubject("BeWorking: Tu suscripción ha sido cancelada");
+            helper.setText(body, true);
+            mailSender.send(message);
+        } catch (Exception e) {
+            System.err.println("Failed to send customer cancellation email to " + to + ": " + e.getMessage());
+        }
+    }
+
     private static String cancelRow(String label, String value) {
         return "<div style=\"padding:8px 0;border-bottom:1px dashed #eee;\">"
                 + "<div style=\"font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.3px;\">" + label + "</div>"

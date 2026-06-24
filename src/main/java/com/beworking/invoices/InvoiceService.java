@@ -1974,8 +1974,10 @@ public class InvoiceService {
                             && Boolean.TRUE.equals(checkResult.get("hasPaymentMethod"));
 
                         boolean forceInvoice = "invoice".equals(request.getPaymentMode());
+                        boolean cardCharged = false;
 
                         if (hasCard && !forceInvoice) {
+                          try {
                             // Charge the saved card
                             @SuppressWarnings("unchecked")
                             java.util.List<Map<String, Object>> methods =
@@ -2025,9 +2027,18 @@ public class InvoiceService {
                                     """, invoiceId);
                                 normalizedStatus = "Pagado";
                                 paymentMethod = "card_charged";
+                                cardCharged = true;
                             }
-                        } else {
-                            // No card on file → create and send Stripe invoice
+                          } catch (Exception chargeEx) {
+                            // Off-session charge can't do 3DS — cards that require
+                            // authentication (or hard declines) fall back to a payable
+                            // hosted invoice the customer settles on-session.
+                            System.err.println("Card charge failed for " + invoiceNumber
+                                + " — falling back to payment link: " + chargeEx.getMessage());
+                          }
+                        }
+                        if (!cardCharged) {
+                            // No card on file (or charge failed) → create and send Stripe invoice
                             String contactName = getContactName(request.getClientId());
                             if (contactName == null || contactName.isBlank()) {
                                 contactName = request.getClientName();
