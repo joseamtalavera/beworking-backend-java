@@ -215,6 +215,12 @@ public class BeKeyAccessService {
         if (associationId == null) {
             throw new IllegalStateException("Akiles addGroupAssociation returned no id for contact " + contactId);
         }
+        // Diagnostic: compare what we SENT to what Akiles STORED (starts_at/ends_at
+        // in the returned association). Reveals whether Akiles honours our window.
+        LOGGER.info("Akiles assoc created (contact {}, group {}): sent starts_at={} ends_at={} | Akiles returned starts_at={} ends_at={}",
+                contactId, group.getAkilesGroupId(),
+                effectiveStart.toInstant(), expiresAt != null ? expiresAt.toInstant() : null,
+                assoc.get("starts_at"), assoc.get("ends_at"));
 
         // 5. Persist the canonical record.
         BeKeyAccess access = new BeKeyAccess();
