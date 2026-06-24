@@ -342,6 +342,17 @@ public class SubscriptionService {
      * month format: "yyyy-MM" (e.g. "2026-03")
      */
     @Transactional
+    /** Number of months billed per cycle for a billing interval (default monthly = 1). */
+    public static int monthsForInterval(String interval) {
+        if (interval == null) return 1;
+        return switch (interval.toLowerCase()) {
+            case "year" -> 12;
+            case "half_year" -> 6;
+            case "quarter" -> 3;
+            default -> 1;
+        };
+    }
+
     public Map<String, Object> createBankTransferInvoice(Subscription subscription, String month) {
         // Resolve cuenta
         String cuentaCodigo = subscription.getCuenta();
@@ -369,8 +380,11 @@ public class SubscriptionService {
         Long nextInternalId = jdbcTemplate.queryForObject(
             "SELECT nextval('beworking.facturas_id_seq')", Long.class);
 
-        // VAT calculation
-        BigDecimal subtotal = subscription.getMonthlyAmount();
+        // VAT calculation. The stored amount is the MONTHLY rate; a non-monthly
+        // billing interval charges that × the number of months in the cycle
+        // (quarter ×3, half-year ×6, year ×12).
+        BigDecimal subtotal = subscription.getMonthlyAmount()
+            .multiply(BigDecimal.valueOf(monthsForInterval(subscription.getBillingInterval())));
         int vatPercent = resolveVatPercent(subscription);
         BigDecimal vatAmount = subtotal.multiply(BigDecimal.valueOf(vatPercent))
             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);

@@ -87,6 +87,7 @@ public class LocalSubscriptionScheduler {
 
         return switch (interval) {
             case "quarter" -> monthsBetween >= 3;
+            case "half_year" -> monthsBetween >= 6;
             case "year" -> monthsBetween >= 12;
             default -> true;
         };

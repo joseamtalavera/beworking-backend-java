@@ -224,7 +224,10 @@ public class SubscriptionController {
                 // configured IVA percentage, and Stripe layers VAT on top automatically.
                 // Pre-fix: we were sending base + VAT to Stripe AND letting Stripe add
                 // VAT again — double-taxation. Customer was charged ~21% over.
-                BigDecimal baseAmount = request.getMonthlyAmount();
+                // Stored amount is the MONTHLY rate; a non-monthly interval bills
+                // it × months in the cycle (quarter ×3, half-year ×6, year ×12).
+                int intervalMonths = SubscriptionService.monthsForInterval(request.getBillingInterval());
+                BigDecimal baseAmount = request.getMonthlyAmount().multiply(BigDecimal.valueOf(intervalMonths));
                 int vatPercent = taxExempt ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21);
                 int amountCents = baseAmount.multiply(BigDecimal.valueOf(100)).intValue();
 
