@@ -365,7 +365,16 @@ public class SubscriptionController {
         sub.setBillingInterval(request.getBillingInterval() != null ? request.getBillingInterval() : "month");
         boolean hasVatNumber = effectiveVat != null && !effectiveVat.isBlank();
         sub.setVatNumber(hasVatNumber ? effectiveVat : null);
-        boolean euIntracommunity = isEuVatNumber(effectiveVat);
+        // Intra-community reverse charge (0%) applies ONLY when the customer's EU
+        // VAT prefix is a DIFFERENT country than the supplier (ES for PT cuenta,
+        // EE for GT). A domestic VAT number (e.g. ES customer on the PT/ES entity)
+        // is NOT intra-community and must carry the local rate. Mirrors the
+        // supplierCountry logic in the Stripe block above; the naive
+        // isEuVatNumber() check alone wrongly zeroed VAT for domestic ES subs.
+        String subCuenta = request.getCuenta() != null ? request.getCuenta().toUpperCase() : "PT";
+        String subSupplierCountry = "GT".equals(subCuenta) ? "EE" : "ES";
+        boolean euIntracommunity = isEuVatNumber(effectiveVat)
+                && !effectiveVat.trim().replaceAll("\\s+", "").substring(0, 2).toUpperCase().equals(subSupplierCountry);
         sub.setVatPercent(euIntracommunity ? 0 : (request.getVatPercent() != null ? request.getVatPercent() : 21));
         sub.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
         sub.setEndDate(seasonEnd != null ? seasonEnd : request.getEndDate());
