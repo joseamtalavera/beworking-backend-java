@@ -214,10 +214,20 @@ public class SubscriptionService {
         // "43F33606-0035") leaks in via stripeInvoiceNumber. Reusing that yields a
         // malformed idfactura and an int-overflow NumberFormatException (#282).
         // When the reserved number isn't ours, generate a proper sequential one.
+        // Prefer the number persisted at reservation time, keyed by stripeInvoiceId
+        // (V96). This is authoritative and immune to the invoice.created→finalized
+        // race that previously let a second number be minted (Stripe PT4958 /
+        // BeWorking PT4959, leaving PT4958 a gap). Fall back to Stripe's echoed
+        // number, then to a fresh sequential one.
+        var persistedReservation = findReservedInvoiceNumber(payload.getStripeInvoiceId());
         String reserved = payload.getStripeInvoiceNumber();
         boolean reservedIsOurs = reserved != null && reserved.matches("(?i)^(PT|GT|OF)\\d+$");
         String invoiceNumber;
-        if (reservedIsOurs) {
+        if (persistedReservation.isPresent()) {
+            invoiceNumber = persistedReservation.get();
+            logger.info("Reusing persisted reserved invoice number {} for stripeInvoiceId={}",
+                invoiceNumber, payload.getStripeInvoiceId());
+        } else if (reservedIsOurs) {
             invoiceNumber = reserved;
             logger.info("Reusing pre-reserved invoice number {} for stripeInvoiceId={}",
                 invoiceNumber, payload.getStripeInvoiceId());
@@ -501,6 +511,56 @@ public class SubscriptionService {
      * Legacy fallback: if the sub has no stored vat_percent (very old rows
      * not covered by V48), recompute from contact billing data + cuenta.
      */
+    /**
+     * Reserve the next invoice number for a subscription's upcoming Stripe invoice
+     * and persist it keyed by stripeInvoiceId (V96), so {@link #createInvoiceFromSubscription}
+     * can later reuse the EXACT number deterministically instead of depending on
+     * Stripe echoing it back via invoice.number (which races with finalize and
+     * produced a divergent number + a gap, e.g. PT4958 vs PT4959).
+     *
+     * <p>Idempotent on stripeInvoiceId: a re-fired invoice.created returns the
+     * same number without bumping the counter again. With no stripeInvoiceId it
+     * behaves as before (generate, return, persist nothing).
+     */
+    public String reserveInvoiceNumber(Subscription subscription, String stripeInvoiceId) {
+        String cuentaCodigo = subscription.getCuenta();
+        boolean keyed = stripeInvoiceId != null && !stripeInvoiceId.isBlank();
+        if (keyed) {
+            var existing = findReservedInvoiceNumber(stripeInvoiceId);
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
+        String invoiceNumber;
+        Optional<Cuenta> cuentaOpt = cuentaService.getCuentaByCodigo(cuentaCodigo);
+        if (cuentaOpt.isPresent()) {
+            invoiceNumber = cuentaService.generateNextInvoiceNumber(cuentaOpt.get().getId());
+        } else {
+            invoiceNumber = cuentaService.generateNextInvoiceNumber("PT");
+        }
+        if (keyed) {
+            jdbcTemplate.update(
+                "INSERT INTO beworking.invoice_number_reservations (stripe_invoice_id, invoice_number, cuenta) "
+                    + "VALUES (?, ?, ?) ON CONFLICT (stripe_invoice_id) DO NOTHING",
+                stripeInvoiceId, invoiceNumber, cuentaCodigo);
+            // If a concurrent reservation for the same invoice won the insert,
+            // return the persisted one so both callers agree.
+            return findReservedInvoiceNumber(stripeInvoiceId).orElse(invoiceNumber);
+        }
+        return invoiceNumber;
+    }
+
+    /** Looks up a persisted invoice-number reservation by Stripe invoice id (V96). */
+    public Optional<String> findReservedInvoiceNumber(String stripeInvoiceId) {
+        if (stripeInvoiceId == null || stripeInvoiceId.isBlank()) {
+            return Optional.empty();
+        }
+        var rows = jdbcTemplate.query(
+            "SELECT invoice_number FROM beworking.invoice_number_reservations WHERE stripe_invoice_id = ?",
+            (rs, n) -> rs.getString("invoice_number"), stripeInvoiceId);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
     int resolveVatPercent(Subscription subscription) {
         // Lock-in path: stored value wins.
         if (subscription.getVatPercent() != null) {

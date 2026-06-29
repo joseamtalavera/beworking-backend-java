@@ -1,7 +1,5 @@
 package com.beworking.subscriptions;
 
-import com.beworking.cuentas.Cuenta;
-import com.beworking.cuentas.CuentaService;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -25,14 +23,12 @@ public class SubscriptionWebhookController {
     private static final Logger logger = LoggerFactory.getLogger(SubscriptionWebhookController.class);
 
     private final SubscriptionService subscriptionService;
-    private final CuentaService cuentaService;
 
     @Value("${app.webhook.callback-secret:}")
     private String callbackSecret;
 
-    public SubscriptionWebhookController(SubscriptionService subscriptionService, CuentaService cuentaService) {
+    public SubscriptionWebhookController(SubscriptionService subscriptionService) {
         this.subscriptionService = subscriptionService;
-        this.cuentaService = cuentaService;
     }
 
     @PostMapping("/subscription-invoice")
@@ -256,6 +252,7 @@ public class SubscriptionWebhookController {
     public ResponseEntity<Map<String, Object>> reserveInvoiceNumber(
         @RequestParam String stripeSubscriptionId,
         @RequestParam(required = false) String stripeCustomerId,
+        @RequestParam(required = false) String stripeInvoiceId,
         @RequestHeader(value = "X-Callback-Secret", required = false) String secret
     ) {
         if (callbackSecret != null && !callbackSecret.isBlank()) {
@@ -281,16 +278,12 @@ public class SubscriptionWebhookController {
         Subscription subscription = subOpt.get();
         String cuentaCodigo = subscription.getCuenta();
 
-        String invoiceNumber;
-        Optional<Cuenta> cuentaOpt = cuentaService.getCuentaByCodigo(cuentaCodigo);
-        if (cuentaOpt.isPresent()) {
-            invoiceNumber = cuentaService.generateNextInvoiceNumber(cuentaOpt.get().getId());
-        } else {
-            invoiceNumber = cuentaService.generateNextInvoiceNumber("PT");
-        }
+        // Persist the reservation keyed by stripeInvoiceId (V96) so the local
+        // factura reuses this exact number; idempotent if invoice.created re-fires.
+        String invoiceNumber = subscriptionService.reserveInvoiceNumber(subscription, stripeInvoiceId);
 
-        logger.info("Reserved invoice number {} for subscription {} (cuenta={})",
-            invoiceNumber, stripeSubscriptionId, cuentaCodigo);
+        logger.info("Reserved invoice number {} for subscription {} (cuenta={}, stripeInvoiceId={})",
+            invoiceNumber, stripeSubscriptionId, cuentaCodigo, stripeInvoiceId);
 
         Map<String, Object> response = new HashMap<>();
         response.put("invoiceNumber", invoiceNumber);
