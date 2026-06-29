@@ -1054,6 +1054,8 @@ public class SubscriptionController {
         String plan = (String) body.getOrDefault("plan", "basic");
         String stripeCustomerId = (String) body.get("stripeCustomerId");
         String paymentMethodId = (String) body.get("paymentMethodId");
+        String billingInterval = body.get("billingInterval") != null && !body.get("billingInterval").toString().isBlank()
+                ? body.get("billingInterval").toString() : "month";
 
         if (stripeCustomerId == null || stripeCustomerId.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "stripeCustomerId is required"));
@@ -1101,7 +1103,10 @@ public class SubscriptionController {
             }
         }
         int vatPercent = taxExempt ? 0 : 21;
-        int baseAmountCents = amount.multiply(java.math.BigDecimal.valueOf(100)).intValue();
+        // Per-cycle price = monthly rate × months in the interval (Stripe charges this).
+        int intervalMonths = SubscriptionService.monthsForInterval(billingInterval);
+        int baseAmountCents = amount.multiply(java.math.BigDecimal.valueOf(intervalMonths))
+                .multiply(java.math.BigDecimal.valueOf(100)).intValue();
 
         // Create Stripe subscription via /api/subscriptions/auto (card already on file)
         try {
@@ -1112,6 +1117,7 @@ public class SubscriptionController {
             stripeRequest.put("currency", "eur");
             stripeRequest.put("description", "BeWorking " + planLabel);
             stripeRequest.put("tenant", "bw");
+            stripeRequest.put("interval", billingInterval);
             stripeRequest.put("collection_method", "charge_automatically");
             stripeRequest.put("tax_exempt", taxExempt);
             stripeRequest.put("customer_id", stripeCustomerId);
@@ -1139,6 +1145,7 @@ public class SubscriptionController {
             sub.setCurrency("EUR");
             sub.setDescription("BeWorking " + planLabel);
             sub.setBillingMethod("stripe");
+            sub.setBillingInterval(billingInterval);
             sub.setCuenta(cuenta);
             sub.setStartDate(java.time.LocalDate.now());
             sub.setActive(true);
@@ -1217,6 +1224,13 @@ public class SubscriptionController {
 
         BigDecimal newAmount = new BigDecimal(body.get("monthlyAmount").toString());
         String newDescription = body.get("description") != null ? body.get("description").toString() : sub.getDescription();
+        // Optional interval change (month/quarter/half_year/year). Default: keep the
+        // sub's current interval. monthly_amount stays the MONTHLY rate; the Stripe
+        // price is monthly × months-in-cycle.
+        String newInterval = body.get("billingInterval") != null && !body.get("billingInterval").toString().isBlank()
+                ? body.get("billingInterval").toString()
+                : (sub.getBillingInterval() != null ? sub.getBillingInterval() : "month");
+        int intervalMonths = SubscriptionService.monthsForInterval(newInterval);
 
         // Update Stripe subscription if it exists
         if (sub.getStripeSubscriptionId() != null && !sub.getStripeSubscriptionId().isBlank()
@@ -1224,32 +1238,36 @@ public class SubscriptionController {
             try {
                 String tenant = "GT".equalsIgnoreCase(sub.getCuenta()) ? "gt" : "bw";
 
-                // Send NET amount to Stripe. update-amount preserves the sub's
-                // default_tax_rate, so Stripe layers VAT once on top. Previously we
-                // sent base+VAT (gross) here while the tax rate also applied —
-                // double-taxation (same bug fixed on the create path in 0de88bc).
-                int amountCents = newAmount.multiply(BigDecimal.valueOf(100)).intValue();
+                // Send the NET per-cycle amount (monthly × months) to Stripe.
+                // update-amount preserves the sub's default_tax_rate, so Stripe
+                // layers VAT once on top, and applies the change at the next
+                // renewal (proration_behavior=none).
+                int amountCents = newAmount.multiply(BigDecimal.valueOf(intervalMonths))
+                        .multiply(BigDecimal.valueOf(100)).intValue();
 
                 http.post()
                     .uri("/api/subscriptions/" + sub.getStripeSubscriptionId() + "/update-amount")
                     .header("Content-Type", "application/json")
-                    .body(Map.of("amount_cents", amountCents, "tenant", tenant, "description", newDescription))
+                    .body(Map.of("amount_cents", amountCents, "tenant", tenant,
+                            "description", newDescription, "interval", newInterval))
                     .retrieve()
                     .toBodilessEntity();
 
-                logger.info("Upgraded Stripe subscription {} to {} cents", sub.getStripeSubscriptionId(), amountCents);
+                logger.info("Upgraded Stripe subscription {} to {} cents (interval={})",
+                        sub.getStripeSubscriptionId(), amountCents, newInterval);
             } catch (Exception e) {
                 logger.error("Failed to upgrade Stripe subscription: {}", e.getMessage());
                 return ResponseEntity.status(502).body(Map.of("error", "Failed to update Stripe: " + e.getMessage()));
             }
         }
 
-        // Update local record
+        // Update local record (monthly_amount = monthly rate; interval tracked separately)
         sub.setMonthlyAmount(newAmount);
         sub.setDescription(newDescription);
+        sub.setBillingInterval(newInterval);
         sub.setUpdatedAt(java.time.LocalDateTime.now());
         subscriptionService.save(sub);
 
-        return ResponseEntity.ok(Map.of("message", "Plan upgraded", "newAmount", newAmount));
+        return ResponseEntity.ok(Map.of("message", "Plan upgraded", "newAmount", newAmount, "interval", newInterval));
     }
 }
