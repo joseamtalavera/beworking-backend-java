@@ -543,6 +543,7 @@ public class SubscriptionController {
         }
 
         Subscription sub = subOpt.get();
+        boolean wasActive = Boolean.TRUE.equals(sub.getActive());
         if (request.getStripeSubscriptionId() != null) sub.setStripeSubscriptionId(request.getStripeSubscriptionId());
         if (request.getStripeCustomerId() != null) sub.setStripeCustomerId(request.getStripeCustomerId());
         if (request.getCuenta() != null) sub.setCuenta(request.getCuenta());
@@ -551,6 +552,9 @@ public class SubscriptionController {
         if (request.getVatPercent() != null) sub.setVatPercent(request.getVatPercent());
         if (request.getEndDate() != null) sub.setEndDate(request.getEndDate());
         if (request.getProductoId() != null) sub.setProductoId(request.getProductoId());
+        // Only fire cancellation side-effects on a genuine active -> inactive transition,
+        // so re-saving an already-inactive sub doesn't re-send emails or re-revoke access.
+        boolean deactivating = false;
         if (request.getActive() != null) {
             sub.setActive(request.getActive());
             if (!request.getActive() && sub.getEndDate() == null) {
@@ -560,10 +564,18 @@ public class SubscriptionController {
             if (!request.getActive() && sub.getStripeSubscriptionId() != null && !sub.getStripeSubscriptionId().isBlank()) {
                 cancelStripeSubscription(sub);
             }
+            deactivating = wasActive && !request.getActive();
         }
         sub.setUpdatedAt(LocalDateTime.now());
 
         Subscription saved = subscriptionService.save(sub);
+
+        // Admin-app cancel goes through this PUT (active=false); run the same
+        // BeKey-revoke + email-info@/customer + tenant_type side-effects the
+        // user-app DELETE path runs, so admin cancellations aren't silent.
+        if (deactivating) {
+            runCancellationSideEffects(saved, id, authentication);
+        }
         return ResponseEntity.ok(saved);
     }
 
@@ -810,6 +822,21 @@ public class SubscriptionController {
         }
         subscriptionService.deactivate(id, paidThrough);
 
+        runCancellationSideEffects(sub, id, authentication);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Side-effects that must run whenever a subscription is cancelled, regardless of
+     * the entry point — the user-app DELETE /{id} or the admin-app PUT /{id} with
+     * active=false. Revokes BeKey door access, cascade-revokes shares the member
+     * handed out, emails info@ + the customer, and drops the free-booking tenant_type
+     * if this was the contact's last active sub. All steps best-effort; never blocks
+     * the request. The DELETE and PUT paths previously diverged here — only DELETE
+     * sent the cancellation email — so admin cancellations went out silently.
+     */
+    private void runCancellationSideEffects(Subscription sub, Integer id, Authentication authentication) {
         // Best-effort: revoke any BeKey door access tied to this subscription (#149).
         try {
             beKeyAccessService.revokeForSubscription(id.longValue(), "subscription cancelled");
@@ -834,7 +861,6 @@ public class SubscriptionController {
         }
 
         // Notify info@ on every manual cancellation (admin + user self-cancel).
-        // Best-effort: never block the request.
         try {
             String cancelledBy = isAdmin(authentication)
                     ? "ADMIN (" + authentication.getName() + ")"
@@ -868,8 +894,6 @@ public class SubscriptionController {
         } catch (Exception e) {
             logger.warn("Failed to clear tenant_type after sub {} cancel: {}", id, e.getMessage());
         }
-
-        return ResponseEntity.noContent().build();
     }
 
     /**
