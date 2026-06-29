@@ -414,10 +414,32 @@ public class RegisterService {
             email = email.toLowerCase().trim();
         }
         var userOpt = userRepository.findByEmail(email);
-        if (userOpt.isEmpty()) {
-            return false;
+        User user;
+        if (userOpt.isPresent()) {
+            user = userOpt.get();
+        } else {
+            // Self-heal: many customers exist only as a contact_profiles row with no
+            // login (provisioning drift — admin/import/subscription paths create the
+            // contact but not the user). Without this, forgot-password silently no-ops
+            // and they can never recover ("credenciales inválidas" + no email). If a
+            // matching contact exists, create the missing login on the fly and send the
+            // reset link. resetPassword() flips emailConfirmed, so completing the link
+            // yields a working, confirmed account — no admin/manual SQL needed.
+            var contactOpt = contactProfileRepository
+                .findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                    email, email, email, email);
+            if (contactOpt.isEmpty()) {
+                return false;
+            }
+            ContactProfile cp = contactOpt.get();
+            String name = cp.getContactName() != null && !cp.getContactName().isBlank()
+                ? cp.getContactName() : cp.getName();
+            user = createUserForContactSilent(email, name, cp.getId());
+            if (user == null) {
+                return false;
+            }
+            logger.info("Self-healed missing login for contact {} ({}) during password reset", cp.getId(), email);
         }
-        User user = userOpt.get();
         String token = UUID.randomUUID().toString();
         user.setConfirmationToken(hashToken(token));
         user.setConfirmationTokenExpiry(Instant.now().plus(1, ChronoUnit.HOURS));

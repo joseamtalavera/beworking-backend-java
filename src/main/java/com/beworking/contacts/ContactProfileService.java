@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import com.beworking.auth.RegisterService;
 import com.beworking.auth.UserRepository;
 import com.beworking.bookings.CentroRepository;
 import org.slf4j.Logger;
@@ -43,18 +42,15 @@ public class ContactProfileService {
     private final UserRepository userRepository;
     private final ViesVatService viesVatService;
     private final CentroRepository centroRepository;
-    private final RegisterService registerService;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     public ContactProfileService(ContactProfileRepository repository, UserRepository userRepository,
                                   ViesVatService viesVatService, CentroRepository centroRepository,
-                                  RegisterService registerService,
                                   org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.repository = repository;
         this.userRepository = userRepository;
         this.viesVatService = viesVatService;
         this.centroRepository = centroRepository;
-        this.registerService = registerService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -521,17 +517,10 @@ public class ContactProfileService {
         eventPublisher.publishEvent(new ContactProfileCreatedEvent(
             savedProfile.getId(), savedProfile.getEmailPrimary()));
 
-        // Auto-create or link user account for this contact
-        if (savedProfile.getEmailPrimary() != null && !savedProfile.getEmailPrimary().isBlank()) {
-            String contactName = savedProfile.getContactName() != null && !savedProfile.getContactName().isBlank()
-                ? savedProfile.getContactName() : savedProfile.getName();
-            com.beworking.auth.User user = registerService.createUserForContact(
-                savedProfile.getEmailPrimary(), contactName, savedProfile.getId());
-            if (user != null && savedProfile.getAvatar() != null) {
-                user.setAvatar(savedProfile.getAvatar());
-                userRepository.save(user);
-            }
-        }
+        // Login provisioning is centralized: the ContactProfileCreatedEvent
+        // published above is handled by ContactLoginProvisionListener (AFTER_COMMIT),
+        // which guarantees a users row + welcome/set-password email for every
+        // contact-creation path. Don't re-provision inline here (would duplicate work).
 
         return savedProfile;
     }
