@@ -1232,6 +1232,19 @@ public class SubscriptionController {
                 : (sub.getBillingInterval() != null ? sub.getBillingInterval() : "month");
         int intervalMonths = SubscriptionService.monthsForInterval(newInterval);
 
+        // Optional new billing date (yyyy-MM-dd). Moves the billing anchor: Stripe
+        // pauses billing until this date (trial_end) and re-anchors there. No
+        // proration. Must be in the future.
+        java.time.LocalDate newBillingDate = null;
+        Long trialEndEpoch = null;
+        if (body.get("billingDate") != null && !body.get("billingDate").toString().isBlank()) {
+            newBillingDate = java.time.LocalDate.parse(body.get("billingDate").toString());
+            if (!newBillingDate.isAfter(java.time.LocalDate.now())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "billingDate must be a future date"));
+            }
+            trialEndEpoch = newBillingDate.atStartOfDay(java.time.ZoneId.of("Europe/Madrid")).toEpochSecond();
+        }
+
         // Update Stripe subscription if it exists
         if (sub.getStripeSubscriptionId() != null && !sub.getStripeSubscriptionId().isBlank()
                 && !sub.getStripeSubscriptionId().startsWith("sub_sched_")) {
@@ -1245,16 +1258,24 @@ public class SubscriptionController {
                 int amountCents = newAmount.multiply(BigDecimal.valueOf(intervalMonths))
                         .multiply(BigDecimal.valueOf(100)).intValue();
 
+                Map<String, Object> updateBody = new HashMap<>();
+                updateBody.put("amount_cents", amountCents);
+                updateBody.put("tenant", tenant);
+                updateBody.put("description", newDescription);
+                updateBody.put("interval", newInterval);
+                if (trialEndEpoch != null) {
+                    updateBody.put("trial_end", trialEndEpoch);
+                }
+
                 http.post()
                     .uri("/api/subscriptions/" + sub.getStripeSubscriptionId() + "/update-amount")
                     .header("Content-Type", "application/json")
-                    .body(Map.of("amount_cents", amountCents, "tenant", tenant,
-                            "description", newDescription, "interval", newInterval))
+                    .body(updateBody)
                     .retrieve()
                     .toBodilessEntity();
 
-                logger.info("Upgraded Stripe subscription {} to {} cents (interval={})",
-                        sub.getStripeSubscriptionId(), amountCents, newInterval);
+                logger.info("Upgraded Stripe subscription {} to {} cents (interval={}, billingDate={})",
+                        sub.getStripeSubscriptionId(), amountCents, newInterval, newBillingDate);
             } catch (Exception e) {
                 logger.error("Failed to upgrade Stripe subscription: {}", e.getMessage());
                 return ResponseEntity.status(502).body(Map.of("error", "Failed to update Stripe: " + e.getMessage()));
@@ -1265,6 +1286,9 @@ public class SubscriptionController {
         sub.setMonthlyAmount(newAmount);
         sub.setDescription(newDescription);
         sub.setBillingInterval(newInterval);
+        if (newBillingDate != null) {
+            sub.setStartDate(newBillingDate);
+        }
         sub.setUpdatedAt(java.time.LocalDateTime.now());
         subscriptionService.save(sub);
 
