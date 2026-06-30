@@ -1227,10 +1227,15 @@ public class SubscriptionController {
         // amount — a user could otherwise set €0).
         boolean admin = isAdmin(authentication);
         if (!admin) {
-            String authEmail = authentication.getName();
-            var ownerOpt = contactRepository.findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
-                    authEmail, authEmail, authEmail, authEmail);
-            if (ownerOpt.isEmpty() || !ownerOpt.get().getId().equals(sub.getContactId())) {
+            // Verify ownership via the user's tenant_id (= contact id), NOT by
+            // matching the login email against the contact's email fields — a
+            // user's login email isn't always one of the contact emails, which
+            // would wrongly 403 (contact↔login email drift).
+            Long myContactId = userRepository.findByEmail(authentication.getName())
+                    .map(User::getTenantId).orElse(null);
+            if (myContactId == null || !myContactId.equals(sub.getContactId())) {
+                logger.warn("Self-upgrade forbidden: user={} myContactId={} subContactId={} subId={}",
+                        authentication.getName(), myContactId, sub.getContactId(), id);
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
         }
