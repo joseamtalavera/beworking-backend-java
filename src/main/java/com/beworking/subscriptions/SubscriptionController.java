@@ -1215,15 +1215,41 @@ public class SubscriptionController {
 
     @PostMapping("/{id}/upgrade")
     public ResponseEntity<?> upgradePlan(Authentication authentication, @PathVariable Integer id, @RequestBody Map<String, Object> body) {
-        if (!isAdmin(authentication)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        if (authentication == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         Optional<Subscription> opt = subscriptionService.findById(id);
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
         Subscription sub = opt.get();
 
-        BigDecimal newAmount = new BigDecimal(body.get("monthlyAmount").toString());
-        String newDescription = body.get("description") != null ? body.get("description").toString() : sub.getDescription();
+        // Admins can edit any sub to any amount. A non-admin may change their OWN
+        // sub, but the price must come from a real plan (never a client-supplied
+        // amount — a user could otherwise set €0).
+        boolean admin = isAdmin(authentication);
+        if (!admin) {
+            String authEmail = authentication.getName();
+            var ownerOpt = contactRepository.findFirstByEmailPrimaryIgnoreCaseOrEmailSecondaryIgnoreCaseOrEmailTertiaryIgnoreCaseOrRepresentativeEmailIgnoreCase(
+                    authEmail, authEmail, authEmail, authEmail);
+            if (ownerOpt.isEmpty() || !ownerOpt.get().getId().equals(sub.getContactId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+        }
+
+        BigDecimal newAmount;
+        String newDescription;
+        if (admin) {
+            newAmount = new BigDecimal(body.get("monthlyAmount").toString());
+            newDescription = body.get("description") != null ? body.get("description").toString() : sub.getDescription();
+        } else {
+            // Self-service: derive the price from the requested plan key, server-side.
+            String planKey = body.get("plan") != null ? body.get("plan").toString().toLowerCase().trim() : "";
+            var planOpt = planRepository.findByPlanKey(planKey);
+            if (planOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Unknown plan"));
+            }
+            newAmount = planOpt.get().getPrice();
+            newDescription = "Oficina Virtual " + planOpt.get().getName();
+        }
         // Optional interval change (month/quarter/half_year/year). Default: keep the
         // sub's current interval. monthly_amount stays the MONTHLY rate; the Stripe
         // price is monthly × months-in-cycle.
@@ -1237,7 +1263,7 @@ public class SubscriptionController {
         // proration. Must be in the future.
         java.time.LocalDate newBillingDate = null;
         Long trialEndEpoch = null;
-        if (body.get("billingDate") != null && !body.get("billingDate").toString().isBlank()) {
+        if (admin && body.get("billingDate") != null && !body.get("billingDate").toString().isBlank()) {
             newBillingDate = java.time.LocalDate.parse(body.get("billingDate").toString());
             if (!newBillingDate.isAfter(java.time.LocalDate.now())) {
                 return ResponseEntity.badRequest().body(Map.of("error", "billingDate must be a future date"));
