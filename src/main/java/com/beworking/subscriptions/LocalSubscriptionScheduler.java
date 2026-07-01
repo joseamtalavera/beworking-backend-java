@@ -42,6 +42,15 @@ public class LocalSubscriptionScheduler {
           int skipped = 0;
   
           for (Subscription sub : dueSubscriptions) {
+              // €0 "hold" subscriptions (e.g. a desk reserved for internal/admin use)
+              // occupy the desk via subscriptionResponses but must never generate an
+              // invoice.
+              if (sub.getMonthlyAmount() == null || sub.getMonthlyAmount().signum() <= 0) {
+                  skipped++;
+                  logger.info("Skipping subscription {} (contact={}): zero-amount hold, no invoice",
+                      sub.getId(), sub.getContactId());
+                  continue;
+              }
               if (!isDueForMonth(sub, current)) {
                   skipped++;
                   logger.info("Skipping subscription {} (contact={}, interval={}, lastInvoiced={}): not due this month",
