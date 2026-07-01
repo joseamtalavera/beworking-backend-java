@@ -809,13 +809,20 @@ public class SubscriptionController {
             .map(Subscription::getProductoId)
             .filter(java.util.Objects::nonNull)
             .collect(java.util.stream.Collectors.toSet());
+        // Every coworking zone bookable today (permanent MA1O1 + seasonal MA1O5/A5
+        // during its window), so both zones' desks are assignable.
+        java.time.LocalDate today = java.time.LocalDate.now();
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Producto p : productoRepository.findByNombrePrefix("MA1O1-")) {
-            Map<String, Object> entry = new HashMap<>();
-            entry.put("id", p.getId());
-            entry.put("nombre", p.getNombre());
-            entry.put("available", !occupied.contains(p.getId()));
-            result.add(entry);
+        for (com.beworking.bookings.CoworkZone zone : com.beworking.bookings.CoworkZone.ALL) {
+            if (!zone.isActiveOn(today)) continue;
+            for (Producto p : productoRepository.findByNombrePrefix(zone.prefix)) {
+                Map<String, Object> entry = new HashMap<>();
+                entry.put("id", p.getId());
+                entry.put("nombre", p.getNombre());
+                entry.put("available", !occupied.contains(p.getId()));
+                entry.put("zone", zone.roomCode);
+                result.add(entry);
+            }
         }
         return ResponseEntity.ok(result);
     }
