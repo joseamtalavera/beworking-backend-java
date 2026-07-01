@@ -794,6 +794,32 @@ public class SubscriptionController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * Desk-slot products (MA1O1-N) each flagged with whether they are free
+     * (not linked to an active desk subscription). Accessible to any
+     * authenticated user so the self-service upgrade dialog can offer only
+     * available desks; admins use the same data in the add/edit-sub dialogs.
+     */
+    @GetMapping("/desk-products/available")
+    public ResponseEntity<?> availableDeskProducts(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        java.util.Set<Long> occupied = subscriptionService.findActiveDeskSubscriptions().stream()
+            .map(Subscription::getProductoId)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Producto p : productoRepository.findByNombrePrefix("MA1O1-")) {
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("id", p.getId());
+            entry.put("nombre", p.getNombre());
+            entry.put("available", !occupied.contains(p.getId()));
+            result.add(entry);
+        }
+        return ResponseEntity.ok(result);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deactivate(Authentication authentication, @PathVariable Integer id) {
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -1056,6 +1082,15 @@ public class SubscriptionController {
         String paymentMethodId = (String) body.get("paymentMethodId");
         String billingInterval = body.get("billingInterval") != null && !body.get("billingInterval").toString().isBlank()
                 ? body.get("billingInterval").toString() : "month";
+        // Optional desk assignment (MA1O1-N) for the desk plan; the 30-min desk
+        // reconcile grants BeKey access for the linked desk.
+        Long selfProductoId = null;
+        if (body.get("productoId") != null && !body.get("productoId").toString().isBlank()) {
+            try {
+                long v = Long.parseLong(body.get("productoId").toString());
+                if (v > 0) selfProductoId = v;
+            } catch (NumberFormatException ignored) { }
+        }
 
         if (stripeCustomerId == null || stripeCustomerId.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "stripeCustomerId is required"));
@@ -1154,6 +1189,7 @@ public class SubscriptionController {
             sub.setVatPercent(vatPercent);
             sub.setStripeSubscriptionId((String) stripeResult.get("subscriptionId"));
             sub.setStripeCustomerId((String) stripeResult.get("customerId"));
+            sub.setProductoId(selfProductoId);
             subscriptionService.save(sub);
 
             // Promote contact to "Usuario Virtual" so booking-usage grants the
@@ -1311,6 +1347,21 @@ public class SubscriptionController {
                 logger.error("Failed to upgrade Stripe subscription: {}", e.getMessage());
                 return ResponseEntity.status(502).body(Map.of("error", "Failed to update Stripe: " + e.getMessage()));
             }
+        }
+
+        // Optional desk assignment (productoId). Links the sub to a specific desk
+        // slot (MA1O1-N) so the floor plan shows it occupied and the 30-min desk
+        // reconcile grants BeKey access. "0" / empty clears the assignment.
+        if (body.containsKey("productoId")) {
+            Object raw = body.get("productoId");
+            Long productoId = null;
+            if (raw != null && !raw.toString().isBlank()) {
+                try {
+                    long v = Long.parseLong(raw.toString());
+                    if (v > 0) productoId = v;
+                } catch (NumberFormatException ignored) { }
+            }
+            sub.setProductoId(productoId);
         }
 
         // Update local record (monthly_amount = monthly rate; interval tracked separately)
