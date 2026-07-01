@@ -48,6 +48,21 @@ public class CreateReservaRequest {
     @NotBlank
     private String status;
 
+    // When true, persist the Reserva but create NO bloqueos. Used for desk
+    // subscription bookings: the active subscription holds the desk on its own
+    // (PublicAvailabilityController.subscriptionResponses), so materialising a
+    // bloqueo per day for the whole period is both redundant and harmful (it
+    // created Volodymyr's 364-day MA1O1-5 holds / PT4963).
+    private boolean skipBloqueos;
+
+    public boolean isSkipBloqueos() {
+        return skipBloqueos;
+    }
+
+    public void setSkipBloqueos(boolean skipBloqueos) {
+        this.skipBloqueos = skipBloqueos;
+    }
+
     public Long getContactId() {
         return contactId;
     }

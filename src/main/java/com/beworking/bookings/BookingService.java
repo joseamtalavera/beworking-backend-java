@@ -228,6 +228,11 @@ class BookingService {
         reservaRequest.setReservationType("Por Horas");
         reservaRequest.setDateFrom(request.getDate());
         reservaRequest.setDateTo(request.getDateTo() != null ? request.getDateTo() : request.getDate());
+        // Desk subscriptions don't materialise bloqueos — the active sub holds the
+        // desk. Prevents the per-day-for-the-whole-period expansion (PT4963).
+        if (isSubscriptionBooking && "mesa".equalsIgnoreCase(producto.getTipo())) {
+            reservaRequest.setSkipBloqueos(true);
+        }
         reservaRequest.setStatus("Pendiente");
         reservaRequest.setAttendees(request.getAttendees());
         if (request.getWeekdays() != null && !request.getWeekdays().isEmpty()) {
@@ -688,6 +693,18 @@ class BookingService {
         Producto producto = productoRepository.findByIdForUpdate(request.getProductoId())
             .orElseThrow(() -> new IllegalArgumentException("Producto not found: " + request.getProductoId()));
 
+        // Desk (Mesa) day-bookings are single-day drop-ins. A longer hold must be a
+        // subscription — which sets skipBloqueos and holds the desk via the active
+        // sub (subscriptionResponses), never a bloqueo per day. Applies to every
+        // path (public + admin), so no one can re-create the 364-day desk hold.
+        if (!request.isSkipBloqueos()
+                && "mesa".equalsIgnoreCase(producto.getTipo())
+                && request.getDateFrom() != null && request.getDateTo() != null
+                && !request.getDateFrom().isEqual(request.getDateTo())) {
+            throw new IllegalArgumentException(
+                "Desk day-bookings are limited to a single day. Use a subscription for longer stays.");
+        }
+
         // Usuario Virtual free-booking limit (5/month, any product, any creation path).
         // Rejects when admin/user tries to register a free booking past the cap so the
         // counter and the actual rule stay in sync.
@@ -721,7 +738,9 @@ class BookingService {
         List<BookingConflictException.ConflictSlot> conflicts = new ArrayList<>();
 
         LocalDate cursor = startDate;
-        while (!cursor.isAfter(endDate)) {
+        // skipBloqueos (desk subscriptions) → persist the Reserva but no bloqueos;
+        // the active sub holds the desk.
+        while (!request.isSkipBloqueos() && !cursor.isAfter(endDate)) {
             if (weekdays == null || weekdays.contains(cursor.getDayOfWeek())) {
                 for (CreateReservaRequest.TimeSlot slot : request.getTimeSlots()) {
                     LocalTime startTime = parseTime(slot.getFrom());
